@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
-import { THREAD_FILTERS, TICKET_FILTERS, type Api, type ApiResponse, type RouteParams } from './api.ts'
+import { LOCAL_BOARD_COLUMNS, THREAD_FILTERS, TICKET_FILTERS, type Api, type ApiResponse, type RouteParams } from './api.ts'
 import { sourceSkills } from './context.ts'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-session-controller/types'
 import { PromptConflict, SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, builtInParts, defaultPrompts, savePrompts, type Prompts }
@@ -26,7 +26,7 @@ import { overview } from './views/overview.ts'
 import { settingsView } from './views/settings.ts'
 import { sourcesStatus, type SetupState } from './views/sources.ts'
 import { decisionList, search, threadDetail, threadList } from './views/threads.ts'
-import { executorLoad, ticketDetail, ticketList } from './views/tickets.ts'
+import { executorLoad, localBoard, ticketDetail, ticketList } from './views/tickets.ts'
 import { LocalRequestSchema, LocalTaskError, localMessages, type LocalTasks } from '../sources/local.ts'
 
 export interface HttpHost {
@@ -143,6 +143,8 @@ type Routes = { [K in keyof Api]: (input: Input<K>) => ApiResponse<K> | Promise<
 const offset = z.coerce.number().int().nonnegative().catch(0)
 const limit = (fallback: number, max: number) => z.coerce.number().int().positive().catch(fallback).transform(value => Math.min(max, value))
 const TicketsQuery = z.object({ state: z.enum(TICKET_FILTERS).catch('open'), offset, limit: limit(20, 1000) })
+const LocalBoardQuery = z.object({ column: z.enum(LOCAL_BOARD_COLUMNS), q: z.string().trim().max(200).default(''), offset,
+  limit: limit(20, 1000) })
 const ThreadsQuery = z.object({ filter: z.enum(THREAD_FILTERS).catch('subscribed'), offset, limit: limit(20, 1000) })
 const ThreadQuery = z.object({ limit: limit(50, 100), before: z.string().optional(), around: z.string().optional() })
 const DecisionsQuery = z.object({ kind: z.string().default(''), window: z.literal('24h').optional().catch(undefined), offset,
@@ -158,9 +160,19 @@ function routes(runtime: HttpHost): Routes {
   const ticket = (id: string) => { if (!store.tickets.get(id)) throw new RouteError(404, 'Ticket not found'); return id }
   const promptBody = (input: { body: (maxBytes?: number) => Promise<unknown> }) => input.body(4 * runtime.machine.promptMaxChars.get() + 4096)
   return {
+    'GET local/board': ({ query }) => {
+      if (!runtime.local) throw new RouteError(404, 'Local task intake is not enabled')
+      const { column, q, offset, limit } = LocalBoardQuery.parse(query)
+      return localBoard(views(runtime), column, offset, limit, q)
+    },
     'GET local/workspaces': () => {
       if (!runtime.local) throw new RouteError(404, 'Local task intake is not enabled')
       return runtime.local.workspaces()
+    },
+    'POST local/workspaces': async ({ body }) => {
+      if (!runtime.local) throw new RouteError(404, 'Local task intake is not enabled')
+      const request = z.object({ directory: z.string().trim().min(1).max(4096) }).strict().parse(await body(32 * 1024))
+      return runtime.local.addWorkspace(request.directory)
     },
     'POST local/tasks': async ({ body }) => {
       if (!runtime.local) throw new RouteError(404, 'Local task intake is not enabled')

@@ -10,7 +10,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { PluginConfigViewProps } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { openKnownSession, SessionNavigationError } from '../navigation.ts'
+import { openKnownSession, pickWorkspaceDirectory, SessionNavigationError } from '../navigation.ts'
 import { App } from './app.tsx'
 import { PluginConfig, usePageForm } from './deployment.tsx'
 import { en, zh } from './locales.ts'
@@ -41,8 +41,12 @@ function Mounted({ ctx, t }: { ctx: ClientContext; t: T }) {
       throw error
     }
   }, [ctx, t])
+  const openWorkspace = useCallback(async (id: string) => {
+    await ctx.uiWorkspace.openWorkspace(id as Parameters<typeof ctx.uiWorkspace.openWorkspace>[0])
+  }, [ctx])
+  const pickDirectory = useCallback(() => pickWorkspaceDirectory(() => ctx.uiWorkspace.pickDirectory()), [ctx])
   const form = usePageForm(ctx.get('configForms')?.get<Record<string, unknown>>(ENTRY))
-  return <App t={t} openSession={openSession} deploymentForm={form} />
+  return <App t={t} openSession={openSession} openWorkspace={openWorkspace} pickDirectory={pickDirectory} deploymentForm={form} />
 }
 
 export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace']

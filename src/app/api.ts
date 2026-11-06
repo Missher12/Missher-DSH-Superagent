@@ -14,12 +14,16 @@ export const TICKET_FILTERS = ['open', 'person', 'working', 'idle', 'ended'] as 
 export const THREAD_FILTERS = ['subscribed', 'evaluating', 'recent', 'all'] as const
 export type TicketFilter = typeof TICKET_FILTERS[number]
 export type ThreadFilter = typeof THREAD_FILTERS[number]
+export const LOCAL_BOARD_COLUMNS = ['queued', 'running', 'attention', 'idle', 'ended'] as const
+export type LocalBoardColumn = typeof LOCAL_BOARD_COLUMNS[number]
 interface Paged { offset?: number; limit?: number }
 /** Whether a context update was already injected into the main Session or is still pending delivery. */
 type Delivery = 'injected' | 'pending'
 
 export interface Api {
-  'GET local/workspaces': { response: { title: string; directory: string }[] }
+  'GET local/board': { query: Paged & { column: LocalBoardColumn; q?: string }; response: TicketListView }
+  'GET local/workspaces': { response: { id: string; title: string; directory: string }[] }
+  'POST local/workspaces': { body: { directory: string }; response: Awaited<ReturnType<LocalTasks['addWorkspace']>> }
   'POST local/tasks': { body: LocalRequest; response: Awaited<ReturnType<LocalTasks['create']>> }
   'POST local/tasks/:id/followup': { body: { requestId: string; text: string }; response: Awaited<ReturnType<LocalTasks['followup']>> }
   'GET state': { response: StateView }

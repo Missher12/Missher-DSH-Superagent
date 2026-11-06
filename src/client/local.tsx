@@ -26,6 +26,10 @@ const rememberDraft = (draft: ReturnType<typeof blank>) => {
 export function prepareLocalTask(directory: string, instructions: string, title: string) {
   rememberDraft({ ...blank(), directory, instructions, title, open: true })
 }
+/** Select a project while keeping an unfinished task's instructions and title. */
+export function selectLocalWorkspace(directory: string) {
+  rememberDraft({ ...readDraft(), directory, open: true })
+}
 
 export function LocalTaskComposer({ paused = false }: { paused?: boolean }) {
   const { t, call, navigate } = usePanel()
@@ -51,32 +55,38 @@ export function LocalTaskComposer({ paused = false }: { paused?: boolean }) {
     } catch (error) { setFailure(errorText(error)); throw error }
   })
   return <div className="dt-local-composer">
-    <div className="dt-actions">
+    <div className="dt-actions dt-local-composer-head">
+      {draft.open && <h2 className="dt-local-compose-title">{t('localNewTask')}</h2>}
       <Button variant={draft.open ? 'ghost' : 'primary'} icon={<Icon name={draft.open ? 'close' : 'plus'} />}
         disabled={submit.busy || paused} onClick={() => edit({ open: !draft.open })}>{t(draft.open ? 'cancel' : 'localNewTask')}</Button>
-      {!draft.open && <span className="dt-hint">{t('localComposerHint')}</span>}
     </div>
     {draft.open && <form className="dt-form dt-local-form" onSubmit={event => { event.preventDefault(); void submit.run() }}>
       <Fields disabled={submit.busy || paused}>
-        <Field label={t('localInstructions')} note={t('localInstructionsHint')}><textarea required className="dt-textarea" rows={5}
-          value={draft.instructions} maxLength={64000} placeholder={t('localInstructionsPlaceholder')}
-          onChange={event => edit({ instructions: event.target.value })} /></Field>
-        <div className="dt-actions">{(['research', 'diagnose', 'develop'] as const).map(kind => <Button key={kind} size="sm"
-          onClick={() => edit({ instructions: t(`localExample.${kind}`) })}>{t(`localExampleLabel.${kind}`)}</Button>)}</div>
-        <Field label={t('localDirectory')} note={t('localDirectoryHint')}><Input required pattern="/.*" value={draft.directory}
-          placeholder="/Users/.../project" onChange={event => edit({ directory: event.target.value })} /></Field>
-        {workspaces.length > 0 && <Field label={t('localChooseWorkspace')}><select className="dt-select" value=""
-          onChange={event => { if (event.target.value) edit({ directory: event.target.value }) }}>
-          <option value="">{t('localChooseWorkspacePlaceholder')}</option>
-          {workspaces.map(workspace => <option key={workspace.directory} value={workspace.directory}>{workspace.title} — {workspace.directory}</option>)}
-        </select></Field>}
-        <Field label={t('localTaskTitle')} note={t('localTitleHint')}><Input maxLength={160} value={draft.title}
+        <div className="dt-local-request">
+          <Field label={t('localInstructions')}><textarea required className="dt-textarea" rows={5}
+            value={draft.instructions} maxLength={64000} placeholder={t('localInstructionsPlaceholder')}
+            onChange={event => edit({ instructions: event.target.value })} /></Field>
+          <div className="dt-actions dt-local-examples">{(['research', 'diagnose', 'develop'] as const).map(kind => <Button key={kind} size="sm"
+            onClick={() => edit({ instructions: t(`localExample.${kind}`) })}>{t(`localExampleLabel.${kind}`)}</Button>)}</div>
+        </div>
+        <div className="dt-local-project">
+          <Field label={t('localDirectory')} note={t('localDirectoryHint')}><Input required pattern="/.*" value={draft.directory}
+            placeholder="/Users/.../project" onChange={event => edit({ directory: event.target.value })} /></Field>
+          {workspaces.length > 0 && <Field label={t('localChooseWorkspace')}><select className="dt-select" value=""
+            onChange={event => { if (event.target.value) edit({ directory: event.target.value }) }}>
+            <option value="">{t('localChooseWorkspacePlaceholder')}</option>
+            {workspaces.map(workspace => <option key={workspace.directory} value={workspace.directory}>{workspace.title} — {workspace.directory}</option>)}
+          </select></Field>}
+        </div>
+        <Field label={t('localTaskTitle')}><Input maxLength={160} value={draft.title}
           placeholder={t('localTitlePlaceholder')} onChange={event => edit({ title: event.target.value })} /></Field>
-        <Hint>{t('localDispatchHint')}</Hint>
-        {failure && <p className="dt-error" role="alert">{failure}</p>}
-        <div className="dt-actions">
-          <Button type="submit" variant="primary" disabled={!draft.instructions.trim() || !draft.directory.trim()}>{t(submit.busy ? 'localSubmitting' : 'localDispatch')}</Button>
-          <Button variant="ghost" onClick={() => { setFailure(undefined); setDraft({ ...blank(), directory: draft.directory, open: true }) }}>{t('localClearDraft')}</Button>
+        <div className="dt-local-form-footer">
+          <Hint>{t('localDispatchHint')}</Hint>
+          {failure && <p className="dt-error" role="alert">{failure}</p>}
+          <div className="dt-actions">
+            <Button variant="ghost" onClick={() => { setFailure(undefined); setDraft({ ...blank(), directory: draft.directory, open: true }) }}>{t('localClearDraft')}</Button>
+            <Button type="submit" variant="primary" disabled={!draft.instructions.trim() || !draft.directory.trim()}>{t(submit.busy ? 'localSubmitting' : 'localDispatch')}</Button>
+          </div>
         </div>
       </Fields>
     </form>}
@@ -97,8 +107,9 @@ export function LocalFollowup({ id, completed = false, onSent }: { id: string; c
   })
   return <form className="dt-form dt-local-form" onSubmit={event => { event.preventDefault(); void send.run() }}>
     <Fields disabled={send.busy}>
-      <Field label={t(completed ? 'localContinue' : 'localFollowup')} note={t(completed ? 'localContinueHint' : 'localFollowupHint')}>
+      <Field label={t(completed ? 'localContinue' : 'localFollowup')}>
         <textarea required className="dt-textarea" rows={2} maxLength={64000} value={text}
+          placeholder={t(completed ? 'localContinuePlaceholder' : 'localFollowupPlaceholder')}
           onChange={event => { setFailure(undefined); setText(event.target.value) }} /></Field>
       {failure && <p className="dt-error" role="alert">{failure}</p>}
       <div className="dt-actions"><Button type="submit" variant="primary" disabled={!text.trim()}>{t(send.busy ? 'localSubmitting'

@@ -5,6 +5,7 @@ import { type ApiResponse } from '../app/api.ts'
 import { Input } from './controls.tsx'
 import { SaveBar } from './draft.tsx'
 import { usePanel } from './provider.tsx'
+import { PromptsPage } from './prompts.tsx'
 import { Field, Fields, SettingsProvider, numberOf, useBlockDraft, useSettings } from './settings-kit.tsx'
 import { errorText } from './text.ts'
 import { Hint, Section } from './widgets.tsx'
@@ -29,7 +30,7 @@ function SettingsForm() {
   const reasoning = choices.find(choice => choice.value === selected)?.model.reasoning
   const defaultModel = catalog?.default
   const defaultName = defaultModel && (catalog.groups.find(group => group.id === defaultModel.provider)?.models.find(model => model.id === defaultModel.model)?.name ?? defaultModel.model)
-  return <form className="dt-form" onSubmit={event => { void draft.submit(event) }}>
+  return <form className="dt-form dt-local-settings" onSubmit={event => { void draft.submit(event) }}>
     <Fields disabled={draft.busy}>
       <Section title={t('localSettingsTitle')}>
         <Field label={t('localTaskModel')} note={t('localModelHint')}>
@@ -61,5 +62,12 @@ function SettingsForm() {
 }
 
 export function LocalSettings() {
-  return <SettingsProvider><SettingsForm /></SettingsProvider>
+  const { t } = usePanel()
+  const [promptsOpen, setPromptsOpen] = useState(false)
+  return <SettingsProvider><div className="dt-form"><SettingsForm />
+    <details className="dt-local-details dt-local-prompt-settings" onToggle={event => setPromptsOpen(event.currentTarget.open)}>
+      <summary>{t('settingsGroup.prompts')}</summary>
+      <div className="dt-local-details-body">{promptsOpen && <PromptsPage />}</div>
+    </details>
+  </div></SettingsProvider>
 }

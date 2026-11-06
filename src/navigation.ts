@@ -21,3 +21,9 @@ export async function openKnownSession(sessions: Pick<ISessions, 'list' | 'refre
   open(id)
   return true
 }
+
+interface DirectoryPickerScope { __DSH_DIRECTORY_PICKER__?: { pick: () => Promise<string | null> } }
+/** Match DSH's native directory-flow driver: Desktop uses its preload bridge; web uses the Host picker. */
+export function pickWorkspaceDirectory(hostPick: () => Promise<string | null>, scope: DirectoryPickerScope = globalThis as DirectoryPickerScope) {
+  return scope.__DSH_DIRECTORY_PICKER__ ? scope.__DSH_DIRECTORY_PICKER__.pick() : hostPick()
+}

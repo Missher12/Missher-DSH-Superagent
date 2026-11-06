@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 /** Explicit desktop intake. Git/GitHub and MCP adapters use the same SourceKind boundary. */
 import { realpathSync, statSync } from 'node:fs'
-import { isAbsolute } from 'node:path'
+import { basename, isAbsolute } from 'node:path'
 import { z } from 'zod'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { Runtime } from '../app/runtime.ts'
@@ -23,6 +23,11 @@ const messages = family<LocalMessage[]>('local-messages:')
 export const localMessages = (runtime: Pick<Runtime, 'store'>, id: string): LocalMessage[] => runtime.store.get(messages(id)) ?? []
 /** An actionable local intake or task-control error shown to the user. */
 export class LocalTaskError extends Error {}
+function projectDirectory(value: string): string {
+  if (!isAbsolute(value)) throw new LocalTaskError('工作区需要填写绝对路径')
+  try { const path = realpathSync(value); if (statSync(path).isDirectory()) return path } catch { /* Explain invalid input below. */ }
+  throw new LocalTaskError('工作区不存在或不是目录')
+}
 
 /** Only this installation's human-facing entry can create a local trigger. */
 export class LocalTasks {
@@ -46,7 +51,13 @@ export class LocalTasks {
   }
   workspaces() {
     return this.ctx.workspaceRegistry.list().filter(workspace => workspace.path !== this.runtime.machine.stateDir)
-      .map(workspace => ({ title: workspace.title, directory: workspace.path }))
+      .map(workspace => ({ id: workspace.id, title: workspace.title, directory: workspace.path }))
+  }
+  async addWorkspace(directory: string): Promise<{ id: string; title: string; directory: string }> {
+    directory = projectDirectory(directory)
+    if (directory === realpathSync(this.runtime.machine.stateDir)) throw new LocalTaskError('这是调度数据目录，请选择项目目录')
+    const workspace = await this.ctx.workspaceRegistry.create(directory)
+    return { id: workspace.id, title: workspace.title || basename(directory), directory }
   }
   private ticket(id: string): Ticket {
     const ticket = this.runtime.store.tickets.get(id)
@@ -65,9 +76,7 @@ export class LocalTasks {
   }
   async create(value: LocalRequest) {
     const request = LocalRequestSchema.parse(value)
-    if (!isAbsolute(request.directory)) throw new LocalTaskError('工作区需要填写绝对路径')
-    try { request.directory = realpathSync(request.directory); if (!statSync(request.directory).isDirectory()) throw new Error() }
-    catch { throw new LocalTaskError('工作区不存在或不是目录') }
+    request.directory = projectDirectory(request.directory)
     const { store } = this.runtime
     const ctx = this.ctx
     let preset = ctx.permissionPresets.defaultPreset

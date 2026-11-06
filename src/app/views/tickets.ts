@@ -3,6 +3,7 @@ import { liveTicket, threadKey, ticketStage, type AcceptMode, type AdmissionCell
   type TicketStage } from '../../core/index.ts'
 import { workerSessionId } from '../../executor/dsh.ts'
 import type { Store } from '../store.ts'
+import type { LocalBoardColumn } from '../api.ts'
 import { channelLink, decisionView, newestFirst, page, snapshot, threadSummary, ticketLine, type Snapshot,
   type ViewHost } from './records.ts'
 import { markdown, preview } from './text.ts'
@@ -41,6 +42,19 @@ export function ticketList(host: ViewHost, stage: 'open' | TicketStage['stage'],
   return { ...result, items: result.items.map(ticket => ticketRow(view, ticket)) }
 }
 export type TicketListView = ReturnType<typeof ticketList>
+/** Filter before paging so a long queue never hides an older running conversation. */
+export function localBoard(host: ViewHost, column: LocalBoardColumn, offset: number, limit: number, query = ''): TicketListView {
+  const view = snapshot(host)
+  const needle = query.trim().toLowerCase()
+  const tickets = (column === 'ended' ? host.store.tickets.list() : host.store.tickets.open()).filter(ticket => {
+    const stage = ticketStage(ticket)
+    const group = stage.stage === 'ended' ? 'ended' : stage.stage === 'working'
+      ? stage.action === 'queued' ? 'queued' : 'running' : stage.stage === 'idle' ? 'idle' : 'attention'
+    return group === column && (!needle || `${ticket.title}\n${ticket.execution?.directory ?? ''}`.toLowerCase().includes(needle))
+  }).sort(newestFirst)
+  const result = page(tickets, offset, limit)
+  return { ...result, items: result.items.map(ticket => ticketRow(view, ticket)) }
+}
 export function ticketRow(view: Snapshot, ticket: Ticket) {
   const line = ticketLine(view, ticket)
   const channel = ticket.channels[0]

@@ -1,11 +1,41 @@
-import { realpathSync } from 'node:fs'
-import { afterEach, describe, expect, it } from 'vitest'
+import { mkdirSync, realpathSync } from 'node:fs'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { startRuntime, type Host } from './fixtures/host.ts'
 
 let host: Host | undefined
 afterEach(async () => { await host?.stop(); host = undefined })
 
 describe('DSH local task source', () => {
+  it('serves the same local prompt defaults to the main session and panel after a custom version is saved', async () => {
+    host = await startRuntime(undefined, { mode: 'local' })
+    host.runtime.prompts.save({ ...host.runtime.prompts.current().config, communication: 'A saved custom notification rule.' }, 0, 'panel')
+    let text = '', offset: number | null = 0
+    while (offset !== null) {
+      const page = await host.runTool(host.runtime.masterId, 'orchestrator_read', { resource: 'prompts/defaults', offset, limit: 8000 }) as {
+        text: string; next_offset: number | null
+      }
+      text += page.text; offset = page.next_offset
+    }
+    const defaults = JSON.parse(text).config
+    expect(defaults.scope).toContain('Execute only tasks explicitly dispatched by the user.')
+    expect(defaults.skills.local).toContain('omit pr_number')
+    expect(defaults.communication).not.toBe('A saved custom notification rule.')
+    expect(await host.api('GET', 'prompts')).toMatchObject({ status: 200, body: { defaults } })
+  })
+
+  it('keeps waiting tickets separate from tickets needing a person', async () => {
+    host = await startRuntime(undefined, { mode: 'local' })
+    const task = await host.runtime.local!.create({ requestId: 'board-idle', title: '等待后续要求', instructions: '检查说明', directory: host.directory })
+    await host.runtime.idle()
+    const agent = host.agents.get(`worker-${task.ticketId}`)!
+    agent.status = 'idle'
+    host.ctx.emit('agent/status', { agent, status: 'idle' } as never)
+    await vi.waitFor(() => expect(host!.runtime.store.tickets.get(task.ticketId)!.assignments.at(-1)?.report?.state).toBe('waiting'))
+    expect(await host.api('GET', 'local/board?column=attention')).toMatchObject({ status: 200, body: { total: 0, items: [] } })
+    expect(await host.api('GET', 'local/board?column=idle')).toMatchObject({ status: 200,
+      body: { total: 1, items: [{ id: task.ticketId, stage: 'idle' }] } })
+  })
+
   it('creates one task in the chosen workspace, preserves permissions, and rejects reused IDs with changed scope', async () => {
     host = await startRuntime(undefined, { mode: 'local' })
     const local = host.runtime.local
@@ -93,6 +123,30 @@ describe('DSH local task source', () => {
     host.runtime.local!.stop(first.ticketId)
   })
 
+  it('keeps running conversations visible beyond a full page of queued tasks and moves failures and stops to their own columns', async () => {
+    host = await startRuntime(undefined, { mode: 'local' })
+    const local = host.runtime.local!
+    const first = await local.create({ requestId: 'board-running', title: '正在执行的任务', instructions: '检查说明', directory: host.directory })
+    const queued = []
+    for (let index = 0; index < 22; index++) queued.push(await local.create({ requestId: `board-queue-${index}`,
+      title: `排队任务 ${index}`, instructions: '检查另一个文件', directory: host.directory }))
+    await host.runtime.idle()
+    expect(await host.api('GET', 'local/board?column=running&limit=1')).toMatchObject({ status: 200,
+      body: { total: 1, next_offset: null, items: [{ id: first.ticketId, sessionId: `worker-${first.ticketId}`, stage: 'working' }] } })
+    expect(await host.api('GET', 'local/board?column=queued&limit=1')).toMatchObject({ status: 200,
+      body: { total: 22, next_offset: 1, items: [{ stage: 'working', action: 'queued', sessionId: '' }] } })
+    expect(await host.api('GET', `local/board?column=queued&q=${encodeURIComponent('排队任务 21')}&limit=1`)).toMatchObject({ status: 200,
+      body: { total: 1, next_offset: null, items: [{ id: queued[21]!.ticketId }] } })
+    await host.runTool(`worker-${first.ticketId}`, 'orchestrator_report', { state: 'failed', summary: '执行失败，需要检查配置' })
+    await host.runtime.idle()
+    expect(await host.api('GET', 'local/board?column=attention')).toMatchObject({ status: 200,
+      body: { total: 1, items: [{ id: first.ticketId, stage: 'person', action: 'failed' }] } })
+    local.stop(queued[0]!.ticketId)
+    await host.runtime.idle()
+    expect(await host.api('GET', 'local/board?column=ended')).toMatchObject({ status: 200,
+      body: { total: 1, items: [{ id: queued[0]!.ticketId, ended: { outcome: 'stopped' } }] } })
+  })
+
   it('keeps a worker permission reduction when its session is resolved again', async () => {
     host = await startRuntime(undefined, { mode: 'local' })
     await host.controller.create({ sessionId: 'permission-origin' })
@@ -121,4 +175,14 @@ describe('DSH local task source', () => {
     expect(continued.inputs.filter(input => input.kind === 'trigger' && host!.runtime.store.triggers.get(input.triggerId)?.text === '再总结三个要点')).toHaveLength(1)
     expect(host.runtime.store.tickets.list()).toHaveLength(1)
   })
+})
+
+it('registers an existing project as a DSH workspace without dispatching a task', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const directory = `${host.directory}/workspace-project`
+  mkdirSync(directory)
+  expect(await host.api('POST', 'local/workspaces', { directory })).toMatchObject({ status: 200,
+    body: { id: realpathSync(directory), title: 'workspace-project', directory: realpathSync(directory) } })
+  expect(host.runtime.store.tickets.list()).toHaveLength(0)
+  expect((await host.api('POST', 'local/workspaces', { directory: `${directory}/missing` })).status).toBeGreaterThanOrEqual(400)
 })

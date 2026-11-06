@@ -106,6 +106,9 @@ export interface PanelServer {
   pending: number
   form?: ConfigForm<Record<string, unknown>> | undefined
   opened: string[]
+  openedWorkspaces: string[]
+  pickedDirectory: string | null
+  workspaceChoices: { id: string; title: string; directory: string }[]
   dropped: DroppedReply[]
   failing: Extract<Problem, { kind: 'outgoing' }>['outgoing'][]
 }
@@ -160,8 +163,8 @@ function sourceStatuses(): SourceStatusRow[] {
 const stateView = (): StateView => ({
   setup: server.setup, load: { running: server.setup.problem ? 0 : 2, queued: 0, maxWorkers: server.settings.executor.maxWorkers },
   masterId: 'master', paused: server.settings.paused,
-  // The panel does not read health; the service script does.
-  health: {},
+  // Keep local status indicators on the same health board as the other views.
+  health: server.health,
 })
 const settingsView = (): ApiResponse<'GET settings'> => ({
   policyVersion: 'abcdef1234567890',
@@ -247,7 +250,7 @@ function initial(): PanelServer {
     en: 'Feishu message' } }
   const defaults = { revision: 0, previousRevision: null, savedAt: '', source: 'defaults' }
   return {
-    health: {}, down: false, pending: 0, opened: [], requests: [], misuse: [], queued: new Set(), dropped: [], failing: [],
+    health: {}, down: false, pending: 0, opened: [], openedWorkspaces: [], pickedDirectory: null, workspaceChoices: [{ id: 'workspace-test', title: '测试工作区', directory: '/tmp/work' }], requests: [], misuse: [], queued: new Set(), dropped: [], failing: [],
     setup: { mode: 'github', machine: MACHINE, problem: null, feishuProblem: null,
       accounts: { repository: 'acme/widgets', agent: 'agent-bot', feishu: { appId: 'cli_bot', brand: 'feishu', botId: 'ou_bot',
         name: 'Widgets Bot' } } },
@@ -291,7 +294,26 @@ const ticketOf = (id: string) =>
 const SourceSave = z.object({ enabled: z.boolean(), config: z.unknown() })
 
 const ROUTES: { [K in keyof Api]: Route<K> } = {
-  'GET local/workspaces': { answer: () => [{ title: '测试工作区', directory: '/tmp/work' }] },
+  'GET local/board': { query: ['column', 'q', 'offset', 'limit'], answer: ({ query }) => {
+    const records = [...new Map([...server.tickets.open, ...server.person, ...server.tickets.ended].map(ticket => [ticket.id, ticket])).values()]
+    const needle = (query.q ?? '').toLowerCase()
+    const items = records.filter(ticket => {
+      const column = ticket.stage === 'ended' ? 'ended' : ticket.stage === 'working'
+        ? ticket.action === 'queued' ? 'queued' : 'running' : ticket.stage === 'idle' ? 'idle' : 'attention'
+      return column === query.column && `${ticket.title}\n${ticket.directory ?? ''}`.toLowerCase().includes(needle)
+    })
+    const offset = Number(query.offset ?? 0), limit = Number(query.limit ?? 20)
+    return { items: items.slice(offset, offset + limit), total: items.length,
+      next_offset: offset + limit < items.length ? offset + limit : null }
+  } },
+  'GET local/workspaces': { answer: () => server.workspaceChoices },
+  'POST local/workspaces': { body: true, answer: ({ body }) => {
+    const existing = server.workspaceChoices.find(item => item.directory === body.directory)
+    if (existing) return existing
+    const workspace = { id: `workspace-${server.workspaceChoices.length}`, title: body.directory.split('/').at(-1)!, directory: body.directory }
+    server.workspaceChoices.push(workspace)
+    return workspace
+  } },
   'POST local/tasks': { body: true, answer: ({ body }) => {
     const task = { ...ticketDetail(), id: 'local-test', title: body.title, local: true, directory: body.directory,
       summary: '', messages: [], mandate: { ...ticketDetail().mandate, scope: body.instructions } }

@@ -94,7 +94,7 @@ function PromptSections({ config, view, changed, selected, onSelect, onEdit }: {
       </>))}
       <div className="dt-nav-group">{t('promptBuiltInGroup')}</div>
       {view.parts.map(entry => item(`part/${entry.key}`, <span>{sectionLabel(t, view, `part/${entry.key}`)}
-        {config.overrides?.[entry.key] && <span className="dt-changed-tag">{t('promptChanged')}</span>}
+        {partText(config, entry) !== partText(view.defaults, entry) && <span className="dt-changed-tag">{t('promptChanged')}</span>}
         {updated(config, entry) && <span className="dt-changed-tag dt-updated-tag">{t('promptDefaultUpdated')}</span>}
         {unsaved(`part/${entry.key}`)}</span>))}
       <div className="dt-nav-group">{t('promptSkillsGroup')}</div>
@@ -146,7 +146,11 @@ function BuiltInEditor({ config, view, part, onEdit }: {
 }) {
   const { t } = usePanel()
   const name = `part/${part.key}`
-  const reset = () => onEdit(withOverride(config, part, undefined), { from: { reset: name } })
+  const fallback = view.defaults.overrides?.[part.key]
+  const reset = () => {
+    const next = withOverride(config, part, undefined)
+    onEdit(fallback ? { ...next, overrides: { ...next.overrides, [part.key]: fallback } } : next, { from: { reset: name } })
+  }
   // The built-in text the override was edited from, when this installation kept that one.
   const base = config.overrides?.[part.key]?.base
   const previous = view.defaultChanged.find(item => item.part === part.key && item.base === base)?.previous
@@ -154,7 +158,8 @@ function BuiltInEditor({ config, view, part, onEdit }: {
     : `promptReadBy.${part.roles[0]!}` as const
   return <div className="dt-prompt-main">
     <div className="dt-subhead"><h3 className="dt-section-title">{sectionLabel(t, view, name)}</h3>
-      <span className="dt-actions"><Button variant="outline" size="sm" icon={<Icon name="refresh" />} disabled={!config.overrides?.[part.key]}
+      <span className="dt-actions"><Button variant="outline" size="sm" icon={<Icon name="refresh" />}
+        disabled={partText(config, part) === partText(view.defaults, part) && !updated(config, part)}
         onClick={reset}>{t('promptResetSection')}</Button></span></div>
     <Hint>{t(readBy)}</Hint>
     {part.placeholders && <Hint>{t('promptTemplateHint', { placeholders: part.placeholders.join(t('listSeparator')) })}</Hint>}
@@ -228,7 +233,7 @@ function FullPrompt({ config, view, dirty, revision, onEdit }: {
         : kind === 'fixed' && entry ? partText(config, entry) : undefined
       const base = from(shown === 'saved' ? view.current.config : view.defaults)
       const edited = kind === 'team' ? !isSkill(part.name) && text !== sectionText(view.defaults, part.name)
-        : !!entry && !!preview.config.overrides?.[entry.key]
+        : !!entry && partText(preview.config, entry) !== partText(view.defaults, entry)
       // A generated part's template the draft changed shows filled, as it is not compared.
       const template = kind === 'generated' && !!entry
         && preview.config.overrides?.[entry.key]?.text !== view.current.config.overrides?.[entry.key]?.text

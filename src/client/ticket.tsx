@@ -2,8 +2,9 @@
 import { useState, type ReactNode } from 'react'
 import { LocalTicketPage } from './local-ticket.tsx'
 import { ApiError, usePoll, type TicketPageView } from './api.ts'
-import { DisclosureRow, Dot, Icon, Tag, type IconName } from './controls.tsx'
-import { decisionMark, reportDot, ticketMark } from './marks.ts'
+import { DisclosureRow, Dot, Icon, type IconName } from './controls.tsx'
+import { decisionMark, ticketMark } from './marks.ts'
+import { Assignments } from './ticket-assignments.tsx'
 import { usePanel } from './provider.tsx'
 import { settingsRoute } from './route.ts'
 import { Earlier, ThreadLine, automatedRuns } from './rows.tsx'
@@ -43,28 +44,6 @@ function Details({ icon, title, open = false, children }: { icon: IconName; titl
   return <DisclosureRow icon={<Icon name={icon} />} title={title} open={shown} onToggle={() => setShown(!shown)}>
     <div className="dt-disclosure-body">{children}</div>
   </DisclosureRow>
-}
-function Assignments({ ticket }: { ticket: TicketPageView }) {
-  const { t } = usePanel()
-  const report = (state: string) => t('assignmentReportShort', { state: valueLabel(t, 'report', state) })
-  return <ul className="dt-list">{ticket.assignments.slice().reverse().map((item, index) => <li key={item.id} className="dt-row">
-    <Dot state={item.state === 'running' ? reportDot(item.report?.state) : 'idle'} label={valueLabel(t, 'assignment', item.state)} />
-    <div className="dt-row-main">
-      <div className="dt-row-title">{t('assignmentNumber', { number: ticket.assignments.length - index })}</div>
-      <div className="dt-row-meta">
-        {/* A running Assignment whose worker reported a non-progress state has ended its turn; show that report as its tag and end its span there. */}
-        {item.turnEndedAt && item.report ? <Tag tone="neutral">{report(item.report.state)}</Tag> : <Tag tone={item.state === 'running'
-          ? 'info'
-          : 'neutral'}>{valueLabel(t, 'assignment', item.state)}</Tag>}
-        {item.state !== 'running' && item.report && <span>{report(item.report.state)}</span>}
-        <span>{t('assignmentSpan', { from: when(item.startedAt ?? item.createdAt, t('lang')), to: when(item.endedAt ?? item.turnEndedAt,
-          t('lang')) || t('now') })}</span>
-        {item.endedReason && <span>{reasonLabel(t, item.endedReason)}</span>}
-      </div>
-    </div>
-    {item.ref && item.ref !== ticket.sessionId && <div className="dt-row-actions"><SessionButton variant="outline"
-      sessionId={item.ref} /></div>}
-  </li>)}</ul>
 }
 function MandateDetails({ ticket, actor }: { ticket: TicketPageView; actor: string }) {
   const { t, navigate } = usePanel()
