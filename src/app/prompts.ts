@@ -135,7 +135,7 @@ export class PromptConflict extends Error {}
 export class Prompts {
   private readonly versions: Versions<PromptVersion>
   constructor(private readonly store: Store, private readonly maxChars: () => number, private readonly environment: () => Variable[] | undefined,
-    private readonly feishu: () => boolean) {
+    private readonly feishu: () => boolean, private readonly local: () => boolean = () => false) {
     this.versions = new Versions(store, KV.prompts.revision, KV.prompts.version)
   }
   /** A role's prompt; the main Session's Policy section follows the settings as they are now, at each model request. */
@@ -144,11 +144,21 @@ export class Prompts {
   }
   /** Returns skills to register in every Session: built-in Source skills (`feishu` only when a Feishu bot is configured) followed by team skills. */
   skills(config: PromptConfig): [string, string][] {
-    return [...this.feishu() ? ['feishu'] : [], 'github', ...Object.keys(config.skills)].map(name => [name, composeSkill(config, name)])
+    return [...this.local() ? [] : [...this.feishu() ? ['feishu'] : [], 'github'], ...Object.keys(config.skills)].map(name => [name, composeSkill(config, name)])
+  }
+  defaults(): PromptConfig {
+    if (!this.local()) return defaultPrompts()
+    return {
+      communication: 'Use the task language. Reply through the task local Channel only when a result is usable, a decision is needed, or execution failed. Do not post to external services. Keep notifications short.',
+      scope: 'Execute only tasks explicitly dispatched by the user. Follow the target workspace AGENTS.md. Preserve unrelated and uncommitted work. Never create subagents or agent teams unless the task explicitly asks for them.',
+      delivery: 'Deliver local changes, the validation actually performed, and unresolved limitations. Do not commit, push, open pull requests or publish unless the user explicitly requested that action. Local tasks report ready without pr_number. Ask one concrete human_action question when blocked.',
+      skills: { local: 'Local DSH tasks are explicit requests. Use orchestrator_read for their original instructions and task history. Executors report with orchestrator_report; omit pr_number. The main Session forwards useful worker_report results with orchestrator_reply, purpose=result, or asks worker_attention unchanged. It must not do implementation itself or create extra tasks. Human replies arrive on the task local Thread.' },
+      overrides: { 'runtime/work': { text: 'Work in DSH_SUPERAGENT_DIR, the user-selected existing workspace. Read its AGENTS.md and original task. Implement the requested scope, verify proportionately, preserve unrelated files, and report ready with the actual result. Report blocked or failed honestly. Use human_action for a missing decision. No GitHub setup, PR, commit or push is required. Only perform those actions when the user explicitly requests them.' } },
+    }
   }
   current(): PromptVersion {
     const revision = this.versions.revision()
-    return revision ? this.version(revision) : { revision: 0, previousRevision: null, savedAt: '', source: 'defaults', config: defaultPrompts() }
+    return revision ? this.version(revision) : { revision: 0, previousRevision: null, savedAt: '', source: 'defaults', config: this.defaults() }
   }
   /** Reads a revision by number; revision 0 resolves to built-in defaults before the first save persists it. */
   version(revision: number): PromptVersion {

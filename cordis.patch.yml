@@ -3,12 +3,16 @@
 # refuses to start without stateDir.
 - insert:
     - id: dsh-superagent
-      name: dsh-superagent
+      name: '@missher/dsh-superagent'
+      config:
+        mode: local
+        stateDir: !!js (process.env.DSH_HOME || (process.env.HOME || process.env.USERPROFILE) + '/.dsh') + '/superagent-local'
     - id: dsh-superagent-github
-      name: dsh-superagent/github-watch
+      name: '@missher/dsh-superagent/github-watch'
+      disabled: true
     # Optional Feishu Source; requires configuring a bot CLI after enabling.
     - id: dsh-superagent-feishu
-      name: dsh-superagent/feishu-watch
+      name: '@missher/dsh-superagent/feishu-watch'
       disabled: true
     # The agent preset of every Executor Session (WORKER_PRESET in src/app/sessions.ts); the main Session has its own, below.
     # It is DSH's `standard` preset with only what a worker needs, and a shell whose foreground command moves to a background job

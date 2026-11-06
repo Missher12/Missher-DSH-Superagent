@@ -1,39 +1,52 @@
-# dsh-superagent
+# Missher DSH Superagent
 
-> **Research prototype for reference only, not an official DeepSeek product.** This code grew out of our team's day-to-day development work, with much of the engineering done by coding agents. Treat it as research code, not production-ready software. It may still contain bugs, and its coding style and engineering practices may be inconsistent. Review and adapt it before using it in your own environment.
->
-> We have adapted it for publication, so it is not identical to our internal version or the implementation described in *Exploring Super-agent Design: Towards a More Autonomous Agent System*. Some designs discussed in the article are directions for future development and are not implemented in this prototype.
+在 DSH 里派出项目任务，让它在独立会话中执行，回来查看进度和结果。
 
-dsh-superagent is a proactive coding agent for one GitHub repository, packaged as a bundle for [DeepSeek Harness](https://www.deepseek.com/en/harness/). It listens to GitHub and, optionally, Feishu. When someone allowed asks the agent for work, it opens a work item, works on it in its own agent session and directory, and answers in the original conversation, for example with a pull request. A web panel shows what needs a person.
+适用场景：调研代码、定位问题、修改功能、运行相关检查。任务会在你选择的已有项目目录内工作，遵守该项目的 `AGENTS.md`。
 
-It is also a way of working with an agent: **take as little human attention as possible, and give as much value as possible.** An agent that can act for a whole team can also waste a whole team's attention, so it acts only when asked or when a rule the team wrote allows it, and speaks only when someone must act or can use a result. [docs/000-philosophy.md](docs/000-philosophy.md) explains the principle and what it asks of the operator.
+## 安装
 
-## Setup
+要求：DeepSeek Harness `0.2.1-rc.4`，已配置可用模型。
 
-Setup has many steps, so an agent does it with you. Ask your coding agent:
+1. 在 DSH「插件 → 添加插件 → 安装第三方插件」填入本地 `.tgz` 的绝对路径。
+2. 安装完成后点击「立即启用」。
+3. 打开侧栏 **Superagent**。首次使用无需配置 GitHub、飞书或额外 CLI。
 
-> Read SETUP.md in this repository and set up dsh-superagent with me.
+升级时通过 DSH 插件管理器替换安装包。任务数据保存在当前 DSH 数据目录下的 `superagent-local`，更新插件不会主动清理任务记录。
 
-It asks one short question at a time, shows the full plan once, and then installs and configures everything. [SETUP.md](SETUP.md) is what it follows.
+## 怎么用
 
-## Documentation
+**面板派单**：在「任务」页点击「新建任务」，写清要求，选择已有工作区或填写项目文件夹路径，然后点击「派出任务」。标题可以留空；切换页面会保留尚未发出的草稿。
 
-Read the numbered documents in order; each builds only on the ones before it.
+**聊天派单**：在项目的普通 DSH 会话里直接说：
 
-- [000 Philosophy](docs/000-philosophy.md)
-- [001 Domain model](docs/001-domain.md)
-- [002 Authorization](docs/002-authorization.md)
-- [003 Execution](docs/003-execution.md)
-- [004 Prompts](docs/004-prompts.md)
-- [005 Panel](docs/005-panel.md)
-- [006 Deployment](docs/006-deployment.md): manual setup, configuration, upgrades and troubleshooting
-- [007 Architecture](docs/007-architecture.md)
-- [008 Cookbook](docs/008-cookbook.md): adding a Source
+> 把这个任务交给 Superagent 后台执行：分析当前项目的登录流程，指出可能的问题，先给结论，不修改文件。
 
-## Development
+聊天工具仅在你明确要求派单时使用，结果会回到来源会话。普通聊天和开发请求仍由当前会话处理。
 
-`pnpm check` runs the typecheck, the tests and the build.
+**跟进任务**：打开任务即可查看最新结果和执行过程。进行中可补充要求，失败后可重试；已完成的任务可填写下一步要求继续执行。手动停止的任务不会自动恢复，“重新派单”会先生成供你检查的草稿。
 
-## License
+## 默认行为
 
-[MIT](LICENSE)
+- 默认同时执行一个任务。同一项目的任务始终依次执行。
+- 使用 DSH 默认模型；可以在插件「设置」中为之后新建的任务选择模型和并发数。
+- 聊天派单继承来源会话的具名权限，面板派单使用 DSH 默认权限；插件不会自行扩权。
+- 提交、推送、发布和创建子代理都需要你明确要求。
+- DSH 关闭后任务不会继续运行；记录会保留，未完成的执行会在重启后恢复。
+- 任务使用已有项目，不会自动创建隔离副本；停止也不会撤销已经写入的文件。
+
+「使用帮助」页提供调研、排查和开发的要求示例。
+
+## Git / MCP 扩展
+
+已预留任务来源适配接口，当前只启用 DSH 内派单。首版不启动外部 MCP 服务，不监听 Git 事件。
+
+适配方式和运行边界见 [本地模式及扩展说明](docs/local-mode.md)。源码中的编号文档和 SETUP.md 介绍上游引擎与独立 GitHub 部署，本地插件日常使用无需执行这些部署步骤。
+
+## 开发
+
+Node 24，`pnpm install` 后运行 `pnpm check`；用 `pnpm pack --pack-destination dist` 生成安装包。原生加载需要用目标 DSH 宿主另行验证，不能只以标准 Node 构建成功作为依据。
+
+## 来源与许可
+
+基于 [DeepSeek Harness 团队的 MIT 研究原型](https://github.com/deepseek-ai/dsh-superagent-prototype) 适配。本项目并非 DeepSeek 官方产品，保留上游代码与 [MIT 许可证](LICENSE)。

@@ -35,7 +35,9 @@ export class Setup {
     this.variables = agentVariables(host.machine.stateDir)
   }
   /** Host command environment with agent git variables applied and the worker shim directory excluded from PATH. */
-  get commandEnvironment(): Record<string, string | undefined> { return { ...this.variables, PATH: this.path } }
+  get commandEnvironment(): Record<string, string | undefined> {
+    return this.host.machine.mode === 'local' ? {} : { ...this.variables, PATH: this.path }
+  }
   get deployment(): Deployment {
     if (!this.resolved) throw new Error(`dsh-superagent is waiting for setup: ${this.problem?.detail ?? 'setup has not run'}`)
     return this.resolved
@@ -59,13 +61,14 @@ export class Setup {
   restart(): void { setTimeout(this.host.restart, 0) }
   /** Verify account CLIs for a modified source block before saving, ignoring setup errors belonging to other blocks. */
   async checkAccounts(block: SettingsBlock, settings: Settings): Promise<void> {
+    if (this.host.machine.mode === 'local') return
     const { machine } = this.host
     const check = block === 'source:feishu' ? resolveFeishuBot(machine, settings.sources.feishu?.config, this.probe())
       : resolveDeployment(machine, settings.sources.github?.config, this.probe())
     await check.catch((error: unknown) => { if (!(error instanceof SetupError) || error.place === block.slice(7)) throw error })
   }
   async blockCommands(blocked: readonly string[]): Promise<void> {
-    if (this.resolved) await writeEnvironment(this.resolved, blocked)
+    if (this.resolved?.github) await writeEnvironment(this.resolved, blocked)
   }
   restore(): void { this.restoreEnvironment?.(); this.restoreEnvironment = undefined }
   /** Probes CLIs the way worker shells run them, using `stateDir` as `cwd` since it exists even before the repository clone is valid. */
@@ -75,6 +78,7 @@ export class Setup {
   }
   private async resolve(settings: Settings): Promise<Deployment> {
     const { context, machine, lifetime } = this.host
+    if (machine.mode === 'local') return { ...machine, repository: '' }
     const probe = this.probe()
     const deployment = await resolveDeployment(machine, settings.sources.github?.config, probe)
     const feishu = await resolveFeishuBot(machine, settings.sources.feishu?.config, probe).catch((error: unknown) => {

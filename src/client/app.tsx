@@ -17,6 +17,7 @@ import { actorName, errorText, reasonLabel, valueLabel, type T, readableMarkers 
 import { ThreadPage } from './thread.tsx'
 import { TicketPage } from './ticket.tsx'
 import { TriggerStatus } from './trigger.tsx'
+import { LocalHelp, LocalPages } from './local-app.tsx'
 import { When } from './widgets.tsx'
 
 export interface AppProps {
@@ -147,6 +148,7 @@ function Pages({ route, openTab, deploymentForm }: { route: Route; openTab: (tab
   const page = (() => {
     switch (route.page) {
       case 'overview': return <OverviewPage />
+      case 'help': return <LocalHelp />
       case 'source': return <SourceStatus />
       case 'trigger': return route.id !== undefined ? <ThreadPage key={route.id} id={route.id} target={route.query?.trigger} />
         : <TriggerStatus filter={route.query?.filter ?? 'subscribed'} />
@@ -158,6 +160,7 @@ function Pages({ route, openTab, deploymentForm }: { route: Route; openTab: (tab
         deploymentForm={deploymentForm} /> : waiting
     }
   })()
+  if (state?.setup.mode === 'local') return <LocalPages route={route} openTab={openTab} />
   return <div className="dt-page">
     <div className="dt-column">
       <Header masterId={state?.masterId} />

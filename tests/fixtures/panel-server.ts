@@ -205,7 +205,7 @@ export const acceptDecision = (): NonNullable<TicketPageView['decision']> => ({ 
   reason: [{ code: 'explicitRouted' }], at: '2026-09-22T00:00:00Z', strength: 'explicit', ticketId: undefined,
   triggerIds: ['e1'], thread: 'feishu:oc_1:om_root', rules: [], preview: '@bot 修一下', ticketTitle: undefined })
 const ticketDetail = (): TicketPageView => ({
-  ...ticketSummary(), paused: false, decision: acceptDecision(), threads: [threadSummary()],
+  ...ticketSummary(), local: false, messages: [], paused: false, decision: acceptDecision(), threads: [threadSummary()],
   mandate: { strength: 'explicit', policyVersion: 'abcdef1234567890', basis: { via: 'addressed', sender: 'Alice', addressed: 'mention' },
     actor: actor('feishu', MEMBER), scope: '修复登录页回归' },
   basis: { facts: [{ name: 'sender', value: 'Alice' }, { name: 'addressed', value: 'mention' }], legacy: false },
@@ -248,7 +248,7 @@ function initial(): PanelServer {
   const defaults = { revision: 0, previousRevision: null, savedAt: '', source: 'defaults' }
   return {
     health: {}, down: false, pending: 0, opened: [], requests: [], misuse: [], queued: new Set(), dropped: [], failing: [],
-    setup: { machine: MACHINE, problem: null, feishuProblem: null,
+    setup: { mode: 'github', machine: MACHINE, problem: null, feishuProblem: null,
       accounts: { repository: 'acme/widgets', agent: 'agent-bot', feishu: { appId: 'cli_bot', brand: 'feishu', botId: 'ou_bot',
         name: 'Widgets Bot' } } },
     settings, revisions: { policy: 3, eval: 1, executor: 0 },
@@ -291,6 +291,16 @@ const ticketOf = (id: string) =>
 const SourceSave = z.object({ enabled: z.boolean(), config: z.unknown() })
 
 const ROUTES: { [K in keyof Api]: Route<K> } = {
+  'GET local/workspaces': { answer: () => [{ title: '测试工作区', directory: '/tmp/work' }] },
+  'POST local/tasks': { body: true, answer: ({ body }) => {
+    const task = { ...ticketDetail(), id: 'local-test', title: body.title, local: true, directory: body.directory,
+      summary: '', messages: [], mandate: { ...ticketDetail().mandate, scope: body.instructions } }
+    server.ticketDetails[task.id] = task
+    server.tickets.open.push(ticketSummary({ id: task.id, title: task.title, directory: task.directory }))
+    return { ticketId: task.id, title: task.title, stage: { stage: 'working' }, directory: body.directory, sessionId: 'worker-local-test', summary: '', attention: undefined, messages: [] }
+  } },
+  'POST local/tasks/:id/followup': { body: true, answer: ({ params }) => ({
+    ticketId: params.id, title: 'Local task', stage: { stage: 'working' }, directory: '/tmp/work', sessionId: `worker-${params.id}`, summary: '', attention: undefined, messages: [] }) },
   'GET state': { answer: stateView },
   'GET overview': { answer: overviewView },
   'GET search': { query: ['q'], answer: async ({ query }) => {
@@ -457,8 +467,7 @@ type Ops = Parameters<ConfigForm<Record<string, unknown>>['mutate']>[0]
 export function fakeForm(writable = true, accept = true) {
   const listeners = new Set<() => void>()
   let snapshot: ConfigFormSnapshot<Record<string, unknown>> = { status: 'ready', value: { ...MACHINE }, base: undefined, user: undefined,
-    revision: 1, writable,
-    mode: 'host' }
+    revision: 1, writable }
   const notify = () => { for (const listener of listeners) listener() }
   const mutations: { ops: Ops; revision: number | undefined }[] = []
   const form: ConfigForm<Record<string, unknown>> = {

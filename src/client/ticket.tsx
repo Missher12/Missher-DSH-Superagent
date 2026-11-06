@@ -1,5 +1,6 @@
 /** Ticket detail page: stage and actions, Mandate details, undelivered/delivered Inputs, subscribed Threads, and Assignments. */
 import { useState, type ReactNode } from 'react'
+import { LocalTicketPage } from './local-ticket.tsx'
 import { ApiError, usePoll, type TicketPageView } from './api.ts'
 import { DisclosureRow, Dot, Icon, Tag, type IconName } from './controls.tsx'
 import { decisionMark, reportDot, ticketMark } from './marks.ts'
@@ -112,6 +113,7 @@ export function TicketPage({ id }: { id: string }) {
   if (!data) return <><PageHead
     title={t('term.ticket')} />{error instanceof ApiError && error.missing ? <Hint>{t('ticketNotFound')}</Hint> : <LoadState
       error={error} loading />}</>
+  if (data.local) return <LocalTicketPage data={data} error={error} reload={reload} />
   const status = ticketMark(t, data)
   const actor = actorName(t, data.mandate.actor)
   const { legacy } = data.basis

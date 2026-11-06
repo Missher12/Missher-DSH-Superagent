@@ -288,6 +288,18 @@ Some generic modules still refer directly to GitHub or Feishu:
 
 ## Modules
 
+Local desktop adaptation additions:
+
+| Module | Purpose |
+| --- | --- |
+| `src/sources/local.ts` | Explicit local intake, idempotent requests, inherited permissions, task tools and result delivery |
+| `src/source-api.ts` | Public Source adapter boundary reserved for Git/GitHub and MCP integrations |
+| `src/client/local.tsx` | Local task composer and follow-up form |
+| `src/client/local-app.tsx` | Local task list, everyday navigation, and usage help |
+| `src/client/local-ticket.tsx` | Local task results, continue/stop/retry controls, and folded task records |
+| `src/client/local-settings.tsx` | Local model selection and concurrency settings |
+
+
 | Path | Responsibility |
 | --- | --- |
 | `src/index.ts` | The main plugin entry: reads the machine settings, starts the Runtime, and gives it the restart that a save of a Source's account uses |
@@ -400,6 +412,15 @@ Some generic modules still refer directly to GitHub or Feishu:
 `src/sources/github.ts` and `src/sources/feishu.ts` are also the entries of the two Source plugins, built by `tsdown.config.ts` and exported in `package.json` as `./github-watch` and `./feishu-watch`. The bundle's `cordis.patch.yml` inserts the three plugins, with Feishu disabled.
 
 ## Tests
+
+Local desktop adaptation checks:
+
+| Test | Covers |
+| --- | --- |
+| `tests/local-setup.spec.ts` | Startup without external accounts or process environment changes |
+| `tests/local-tasks.spec.ts` | Task identity, selected workspace, permissions, follow-ups, stop, result delivery and restart persistence |
+| `tests/local-panel.spec.tsx` | User dispatch and task-specific follow-ups in the panel |
+
 
 | Test | Covers |
 | --- | --- |

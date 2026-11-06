@@ -1,4 +1,5 @@
 /** Type-only management API contract between the web panel and host routes, imported by the panel without bundling host code. */
+import type { LocalRequest, LocalTasks } from '../sources/local.ts'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { PromptConfig, Prompts } from './prompts.ts'
 import type { PromptsView, StateView, TicketPageView } from './http.ts'
@@ -18,6 +19,9 @@ interface Paged { offset?: number; limit?: number }
 type Delivery = 'injected' | 'pending'
 
 export interface Api {
+  'GET local/workspaces': { response: { title: string; directory: string }[] }
+  'POST local/tasks': { body: LocalRequest; response: Awaited<ReturnType<LocalTasks['create']>> }
+  'POST local/tasks/:id/followup': { body: { requestId: string; text: string }; response: Awaited<ReturnType<LocalTasks['followup']>> }
   'GET state': { response: StateView }
   'GET overview': { response: OverviewView }
   'GET search': { query: { q: string }; response: SearchView }

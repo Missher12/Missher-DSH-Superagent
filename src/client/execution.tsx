@@ -10,6 +10,7 @@ import { TicketLine } from './rows.tsx'
 import { ConfigHistory, Field, Fields, ModelField, numberOf, useBlockDraft, useSettings } from './settings-kit.tsx'
 import { localized } from './text.ts'
 import { ConfirmButton, Hint, LabelValue, LoadMore, LoadState, Section, StatusHead } from './widgets.tsx'
+import { LocalTaskComposer } from './local.tsx'
 
 export function ExecutionStatus({ filter: current, state, reload }: {
   filter: TicketFilter; state: StateView; reload: () => Promise<void>
@@ -25,6 +26,7 @@ export function ExecutionStatus({ filter: current, state, reload }: {
     : { tone: 'ongoing', label: t('executorRunning') }
   const action = paused ? 'resumeProcessing' : 'pauseProcessing'
   return <>
+    {state.setup.mode === 'local' && !paused && <LocalTaskComposer />}
     <StatusHead hint={t('executionStatusIntro')} settings="execution" />
     <div className="dt-row-meta dt-status-line">
       <span className="dt-status-text" data-state={status.tone}>{status.label}</span>

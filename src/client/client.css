@@ -380,3 +380,28 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-admission-slot { display: inline-flex; flex: none; width: 16px; }
 .dt-info-warn { color: var(--dsw-alias-state-warn-primary); }
 .dt-field-segmented { max-width: 240px; }
+
+.dt-local-composer { margin-bottom: 20px; }
+.dt-local-form { margin: 12px 0 20px; padding: 16px; border: 1px solid var(--dsw-alias-border-l3); border-radius: 12px; }
+/* Local mode keeps everyday work ahead of technical records. */
+.dt-local-title { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; }
+.dt-local-intro { margin: 0; font-size: 14px; line-height: 22px; color: var(--dsw-alias-label-secondary); }
+.dt-local-status { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.dt-local-status > .dt-btn { margin-left: auto; }
+.dt-local-task-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.dt-local-task-head h2 { margin: 0; font-size: 18px; line-height: 26px; overflow-wrap: anywhere; }
+.dt-local-path { min-width: 0; overflow-wrap: anywhere; }
+.dt-local-empty { padding: 24px 0; color: var(--dsw-alias-label-secondary); font-size: 14px; line-height: 22px; }
+.dt-local-empty p { margin: 0 0 8px; }
+.dt-local-steps { margin: 0; padding-left: 22px; font-size: 14px; line-height: 24px; display: grid; gap: 8px; }
+.dt-local-example { padding: 12px 0; font-size: 14px; line-height: 22px; }
+.dt-local-details { border-top: 0.5px solid var(--dsw-alias-border-l2); font-size: 13px; line-height: 22px; }
+.dt-local-details > summary { cursor: pointer; padding: 14px 0; color: var(--dsw-alias-label-secondary); }
+.dt-local-details-body { padding-bottom: 16px; display: grid; gap: 12px; }
+.dt-local-record { border-left: 2px solid var(--dsw-alias-border-l2); padding-left: 12px; }
+.dt-local-page .dt-local-form .dt-fieldset { display: flex; flex-direction: column; gap: 16px; }
+.dt-local-page .dt-filters > .dt-input { margin-left: auto; max-width: 280px; }
+@container (max-width: 600px) {
+  .dt-local-page .dt-filters > .dt-input { margin-left: 0; max-width: 100%; width: 100%; }
+  .dt-local-status > .dt-btn { margin-left: 0; }
+}

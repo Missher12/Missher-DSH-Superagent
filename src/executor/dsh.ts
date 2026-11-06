@@ -224,6 +224,21 @@ export class DshExecutor implements Executor {
   private readonly personal = new Map<string, string>()
   /** The timers of workers that go on after a passing failure, which dispose clears. */
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
+  /** Local workspaces reserved while an asynchronous launch or wake has not reached its first step. */
+  private readonly localStarts = new Map<string, string>()
+
+  private reserveWorker(ticket: Ticket, by: 'launch' | 'wake' | 'person'): void {
+    const directory = sourceTrigger(this.host, ticket)?.source === 'local' ? ticket.execution?.directory : undefined
+    if (directory) {
+      const starting = [...this.localStarts].some(([id, path]) => id !== ticket.id && path === directory)
+      const stopping = [...this.stopping.keys()].some(id => id !== ticket.id && this.host.store.tickets.get(id)?.execution?.directory === directory)
+      const working = this.host.store.tickets.open().some(other => other.id !== ticket.id && other.execution?.directory === directory && this.running(other))
+      if (starting || stopping || working) throw new Later('Another local task is using this workspace')
+    }
+    this.slots.reserve(ticket.id, by)
+    if (directory) this.localStarts.set(ticket.id, directory)
+  }
+  private freeWorker(id: string): void { this.localStarts.delete(id); this.slots.free(id) }
   /** Registers the `launch` and `delivery` effect handlers; both are held (concurrency limit 0) while processing is paused. */
   constructor(private readonly host: ExecutorHost) {
     this.slots = new WorkerSlots(() => host.store.tickets.open().filter(ticket => this.running(ticket)).map(ticket => ticket.id),
@@ -236,7 +251,10 @@ export class DshExecutor implements Executor {
   }
   /** Populates a newly accepted ticket's `execution` attributes (worktree name, workspace directory, and assignment text). */
   prepare(ticket: Ticket, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>): Ticket {
-    return { ...ticket, execution: ticketExecution(ticket, outcome, this.host.store.settings(), this.host.machine.stateDir) }
+    const execution = ticketExecution(ticket, outcome, this.host.store.settings(), this.host.machine.stateDir)
+    const origin = sourceTrigger(this.host, ticket)
+    if (origin?.source === 'local' && typeof origin.meta.directory === 'string') execution.directory = origin.meta.directory
+    return { ...ticket, execution }
   }
   /**
    * Runs the configured `executor.prepare` command for a new ticket workspace in its parent directory with the ticket's
@@ -271,7 +289,7 @@ export class DshExecutor implements Executor {
     const ticket = this.host.store.tickets.get(ticketId)
     const assignment = ticket && latestAssignment(ticket)
     if (!ticket || !liveTicket(ticket) || assignment?.id !== assignmentId || assignment.state !== 'pending') return
-    this.slots.reserve(ticketId, 'launch')
+    this.reserveWorker(ticket, 'launch')
     try { await this.launch(ticket, assignment); this.transient.delete(`launch:${assignmentId}`) }
     catch (error) {
       // Shutdown or pause re-queues the launch for resume, and transient network/provider errors retry with backoff.
@@ -281,7 +299,7 @@ export class DshExecutor implements Executor {
       if (this.host.closing() || error instanceof Later) throw error
       if (!(error instanceof PrepareFailed) && this.retries(`launch:${assignmentId}`, error)) throw error
       this.launchFailed(ticketId, assignmentId, error)
-    } finally { this.slots.free(ticketId) }
+    } finally { this.freeWorker(ticketId) }
   }
   /**
    * Delivers queued inputs to a running assignment one by one, re-reading ticket state before each delivery so delivery
@@ -305,7 +323,7 @@ export class DshExecutor implements Executor {
         if (!woken && !this.running(ticket)) {
           // A person's message wakes its worker ahead of new launches, in the slot kept for it.
           const person = ticket.undelivered.some(id => fromPerson(ticket.inputs.find(item => item.id === id)))
-          this.slots.reserve(ticketId, person ? 'person' : 'wake')
+          this.reserveWorker(ticket, person ? 'person' : 'wake')
           woken = true
         }
         const input = ticket.inputs.find(item => item.id === inputId)
@@ -324,7 +342,7 @@ export class DshExecutor implements Executor {
         }
         this.host.engine.inputsDelivered(ticketId, assignment.id, [inputId])
       }
-    } finally { if (woken) this.slots.free(ticketId) }
+    } finally { if (woken) this.freeWorker(ticketId) }
   }
   private async deliverInput(ticket: Ticket, assignment: Assignment, input: TicketInput): Promise<void> {
     // Re-check right before session delivery because the ticket may have ended while awaiting `sourceLink`.
