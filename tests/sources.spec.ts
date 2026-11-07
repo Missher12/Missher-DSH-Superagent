@@ -1111,13 +1111,20 @@ describe('feishu event consumer', () => {
     controller.abort(); await running; store.close()
   }, 20_000)
   it('drops the events it reads once the Source is off', async () => {
+    // Stop polling is tested separately below. Keep its timer paused so the real
+    // child can print the late event even when the test machine is busy.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     writeFileSync(join(dir, 'events'), event('om_9', 'oc_group', 'group') + '\n')
     const { ctx, health, store, turnOff } = consumerSource(cli('late'))
     running = runFeishu(ctx, controller.signal)
     await vi.waitFor(() => expect(health.feishu).toMatchObject({ state: 'ready' }), until)
     turnOff()
-    // The CLI prints the event a second after it is ready, before the consumer stops for the Source being off.
-    await vi.waitFor(() => expect(existsSync(join(dir, 'printed'))).toBe(true), until)
+    // Poll with real time: vi.waitFor would also advance the paused intervals.
+    const deadline = Date.now() + until.timeout
+    while (!existsSync(join(dir, 'printed'))) {
+      expect(Date.now()).toBeLessThan(deadline)
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
     await new Promise(resolve => setTimeout(resolve, 300))
     expect(store.triggers.get(feishuTriggerId('om_9'))).toBeUndefined()
     controller.abort(); await running; store.close()
