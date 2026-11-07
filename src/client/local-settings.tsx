@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { LIMITS } from '../limits.ts'
 import { type ApiResponse } from '../app/api.ts'
-import { Input } from './controls.tsx'
+import { Button, Icon, Input } from './controls.tsx'
 import { SaveBar } from './draft.tsx'
 import { usePanel } from './provider.tsx'
 import { PromptsPage } from './prompts.tsx'
@@ -65,20 +65,16 @@ function SettingsForm() {
 
 export function LocalSettings() {
   const { t } = usePanel()
-  const [promptsOpen, setPromptsOpen] = useState(false)
-  const [sourcesOpen, setSourcesOpen] = useState(false), [policyOpen, setPolicyOpen] = useState(false)
-  return <SettingsProvider><div className="dt-form dt-local-settings-page"><SettingsForm /><McpSettings />
-    <details className="dt-local-details dt-local-prompt-settings" onToggle={event => setSourcesOpen(event.currentTarget.open)}>
-      <summary>{t('localExternalTitle')}</summary>
-      <div className="dt-local-details-body">{sourcesOpen && <SourceSettings include={['github', 'feishu']} />}</div>
-    </details>
-    <details className="dt-local-details dt-local-prompt-settings" onToggle={event => setPolicyOpen(event.currentTarget.open)}>
-      <summary>{t('localExternalPolicy')}</summary>
-      <div className="dt-local-details-body">{policyOpen && <EvalSettings include={['github', 'feishu']} />}</div>
-    </details>
-    <details className="dt-local-details dt-local-prompt-settings" onToggle={event => setPromptsOpen(event.currentTarget.open)}>
-      <summary>{t('settingsGroup.prompts')}</summary>
-      <div className="dt-local-details-body">{promptsOpen && <PromptsPage />}</div>
-    </details>
-  </div></SettingsProvider>
+  const [editor, setEditor] = useState<'sources' | 'policy' | 'prompts'>()
+  const entries = [{ id: 'sources' as const, title: t('localExternalTitle') },
+    { id: 'policy' as const, title: t('localExternalPolicy') }, { id: 'prompts' as const, title: t('settingsGroup.prompts') }]
+  return <SettingsProvider>{editor ? <section className="dt-local-settings-editor">
+    <header className="dt-local-editor-head"><Button variant="ghost" icon={<Icon name="chevron-left" />} onClick={() => setEditor(undefined)}>{t('localBackSettings')}</Button>
+      <h2>{entries.find(entry => entry.id === editor)!.title}</h2></header>
+    <div className="dt-local-settings-content">{editor === 'sources' ? <SourceSettings include={['github', 'feishu']} />
+      : editor === 'policy' ? <EvalSettings include={['github', 'feishu']} /> : <PromptsPage />}</div>
+  </section> : <div className="dt-form dt-local-settings-page"><SettingsForm /><McpSettings />
+    <div className="dt-local-setting-entries">{entries.map(entry => <div className="dt-local-setting-entry" key={entry.id}><h2>{entry.title}</h2>
+      <Button variant="outline" aria-label={entry.title} onClick={() => setEditor(entry.id)}>{t('localSettingsEdit')}</Button></div>)}</div>
+  </div>}</SettingsProvider>
 }

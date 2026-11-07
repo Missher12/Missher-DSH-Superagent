@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { expect, it } from 'vitest'
+import { beforeEach, expect, it } from 'vitest'
 import { zh } from '../src/client/locales.ts'
 import { usePanel, mount, remount, all, click, type, field, text, at } from './fixtures/panel.tsx'
 import { server, ticketSummary } from './fixtures/panel-server.ts'
 
 usePanel()
+beforeEach(() => at({ page: 'execution' }))
 it('shows every runtime error and does not claim to be ready while a problem needs attention', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   server.health = { models: { state: 'error', detail: '模型暂时不可用' }, reply: { state: 'error', detail: '结果投递失败' } }
@@ -31,7 +32,7 @@ it('edits, previews and saves upstream prompts from local settings without chang
   at({ page: 'settings' })
   await mount()
   expect(all('.dt-prompt-nav')).toHaveLength(0)
-  const entry = all('summary').find(item => item.textContent === zh['settingsGroup.prompts'])
+  const entry = all('button').find(item => item.getAttribute('aria-label') === zh['settingsGroup.prompts'])
   expect(entry, 'Local settings expose the upstream prompt editor').toBeDefined()
   await click(entry!)
   await type(field<HTMLTextAreaElement>(zh.promptBody), 'Keep local task results concise.')
@@ -54,7 +55,7 @@ it('resets the built-in work instructions to local defaults rather than GitHub w
   server.prompts.current.config = config
   at({ page: 'settings' })
   await mount()
-  const entry = all('summary').find(item => item.textContent === zh['settingsGroup.prompts'])
+  const entry = all('button').find(item => item.getAttribute('aria-label') === zh['settingsGroup.prompts'])
   expect(entry, 'Local settings expose the upstream prompt editor').toBeDefined()
   await click(entry!)
   const part = all('.dt-prompt-nav .dt-nav-item').find(item => item.querySelector('span')?.firstChild?.textContent === zh['promptPart.runtime/work'])
@@ -132,15 +133,30 @@ it('lets the user dispatch a local task and sends follow-up requirements to that
   expect(server.requests.find(item => item.path === 'local/tasks/local-test/followup')?.body).toMatchObject({ text: '保持现有配色' })
 })
 
-it('opens directly on tasks and keeps local navigation understandable', async () => {
+it('opens the workbench and keeps local navigation understandable', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
+  at({ page: 'overview' })
   await mount()
-  expect(all('[role="tab"]').map(tab => tab.textContent)).toEqual(['任务', '工作区', '设置', '帮助'])
+  expect(all('[role="tab"]').map(tab => tab.textContent)).toEqual(['工作台', '任务', '工作区', '设置', '帮助'])
   expect(text()).not.toContain('打开主 Session')
   await click('帮助')
   expect(text()).toContain('交给 Superagent 后台执行')
   expect(text()).toContain('DSH 关闭后')
   expect(text()).toContain('Git / MCP')
+})
+
+it('keeps prompt edits when returning from the bounded editor to settings', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  at({ page: 'settings' })
+  await mount()
+  await click(zh['settingsGroup.prompts'])
+  await type(field<HTMLTextAreaElement>(zh.promptBody), '保留尚未保存的提示词')
+  await click(zh.localBackSettings)
+  expect(all('.dt-prompt-nav')).toHaveLength(0)
+  expect(text()).toContain(zh.localTaskModel)
+  await click(zh['settingsGroup.prompts'])
+  expect(field<HTMLTextAreaElement>(zh.promptBody).value).toBe('保留尚未保存的提示词')
+  expect(server.requests.some(item => item.path === 'prompts' && item.method === 'PUT')).toBe(false)
 })
 
 it('preserves an unfinished task draft across panel navigation and generates a title when omitted', async () => {

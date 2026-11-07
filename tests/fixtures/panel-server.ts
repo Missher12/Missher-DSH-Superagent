@@ -85,6 +85,7 @@ export const MACHINE = { stateDir: '/srv/dsh-superagent', promptMaxChars: 100000
 
 type Settings = ReturnType<typeof SettingsSchema.parse>
 export interface PanelServer {
+  workbench: ApiResponse<'GET local/workbench'>
   joined?: Record<string, string>; joining?: Record<string, string>
   joinError?: string
   settings: Settings; revisions: Record<string, number>
@@ -250,6 +251,9 @@ function initial(): PanelServer {
     en: 'Feishu message' } }
   const defaults = { revision: 0, previousRevision: null, savedAt: '', source: 'defaults' }
   return {
+    workbench: { workspace: { id: 'superagent-space', title: 'Superagent', directory: '/srv/dsh-superagent' },
+      members: [{ id: 'master', role: 'orchestrator', title: '', directory: '/srv/dsh-superagent', state: 'idle', tools: [] }],
+      tasks: [], activity: [], sources: [] },
     health: {}, down: false, pending: 0, opened: [], openedWorkspaces: [], pickedDirectory: null, workspaceChoices: [{ id: 'workspace-test', title: '测试工作区', directory: '/tmp/work' }], requests: [], misuse: [], queued: new Set(), dropped: [], failing: [],
     setup: { mode: 'github', machine: MACHINE, problem: null, feishuProblem: null,
       accounts: { repository: 'acme/widgets', agent: 'agent-bot', feishu: { appId: 'cli_bot', brand: 'feishu', botId: 'ou_bot',
@@ -294,6 +298,7 @@ const ticketOf = (id: string) =>
 const SourceSave = z.object({ enabled: z.boolean(), config: z.unknown() })
 
 const ROUTES: { [K in keyof Api]: Route<K> } = {
+  'GET local/workbench': { answer: () => server.workbench },
   'GET mcp': { answer: () => ({ url: 'http://127.0.0.1:3082/superagent/mcp', enabled: false, clients: [] }) },
   'POST mcp/clients': { body: true, answer: () => refuse(400, 'Connect using the running DSH instance') },
   'PUT mcp/clients/:id': { body: true, answer: () => refuse(404, 'Connection not found') },

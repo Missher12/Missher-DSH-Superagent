@@ -304,6 +304,7 @@ Local desktop adaptation additions:
 | `src/source-api.ts` | Public Source adapter boundary reserved for Git/GitHub and MCP integrations |
 | `src/client/local.tsx` | Local task composer and follow-up form |
 | `src/client/local-app.tsx` | Local task list, everyday navigation, and usage help |
+| `src/client/local-workbench.tsx` | Dedicated control workspace, real session identities and live activity |
 | `src/client/local-ticket.tsx` | Local task results, continue/stop/retry controls, and folded task records |
 | `src/client/local-settings.tsx` | Local model selection and concurrency settings |
 
@@ -371,6 +372,7 @@ Local desktop adaptation additions:
 | `src/app/views/sources.ts` | The Source status: each Source instance's state, its last day's counts, and what it filtered and dropped in that day |
 | `src/app/views/settings.ts` | The settings page's view: each block with its revision, each Source's settings with its kind's form, and the execution environment |
 | `src/app/views/overview.ts` | The overview: Tickets that need a person, problems, the last day's flow and the Executor's load |
+| `src/app/views/workbench.ts` | Read-only control workspace, managed sessions and task / tool activity |
 | `src/executor/dsh.ts` | The DshExecutor, `WorkerSlots`, `ticketExecution`, `inputMessage` and `mandateInstructions` |
 | `src/executor/workspace.ts` | Canonical workspace validation and captured execution bindings for all local-mode sources |
 | `src/executor/background.ts` | A worker's background work in DeepSeek Harness, the shell jobs its Session owns (`ctx.jobs`) and its subagents (`ctx.subagents`): `runningJobs`, `untilQuiet`, `killJobs`, `collectJobs`, `stopSubagents`, `stopBackground`, `until`, and `cancelled`, the workers whose turn a stop of their subagents cancelled |
@@ -433,6 +435,8 @@ Local desktop adaptation checks:
 | `tests/local-setup.spec.ts` | Startup without external accounts or process environment changes |
 | `tests/local-tasks.spec.ts` | Task identity, selected workspace, permissions, follow-ups, stop, result delivery and restart persistence |
 | `tests/local-panel.spec.tsx` | User dispatch and task-specific follow-ups in the panel |
+| `tests/local-workbench.spec.ts` | Dedicated workspace and managed live activity without tool arguments or extra work |
+| `tests/panel-workbench.spec.tsx` | Member activity selection, native workspace and session navigation |
 | `tests/local-adapters.spec.ts` | GitHub and Feishu project binding, default permissions, missing projects and disconnected-source isolation |
 | `tests/directory-picker.spec.ts` | Native directory picker selection and cancellation |
 | `tests/workspace-sources.spec.ts` | Trusted workspace binding, captured permissions and cross-source serialization |

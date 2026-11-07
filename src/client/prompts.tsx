@@ -54,14 +54,15 @@ function PromptsEditor({ view, reload }: { view: PromptsView; reload: () => Prom
   const tabs = [{ value: 'edit' as const, label: t('promptViewEdit') }, { value: 'full' as const, label: t('promptViewFull') },
     { value: 'history' as const, label: t('promptViewHistory') }]
   const removed = view.defaultChanged.filter(item => item.removed).map(item => item.part)
-  return <div className="dt-form">
+  return <div className="dt-form dt-prompts-editor">
     <div className="dt-subtabs" role="tablist" aria-label={t('promptViews')}>{tabs.map(item => <button key={item.value} type="button"
       role="tab" className="dt-subtab" aria-selected={tab === item.value} onClick={() => setTab(item.value)}>{item.label}</button>)}</div>
-    {removed.length > 0 && <Hint>{t('promptRemovedParts', { parts: removed.join(t('listSeparator')) })}</Hint>}
+    <div className="dt-prompt-content">{removed.length > 0 && <Hint>{t('promptRemovedParts', { parts: removed.join(t('listSeparator')) })}</Hint>}
     {tab === 'edit' && <PromptSections config={config} view={view} changed={changed} selected={selected} onSelect={select} onEdit={edit} />}
     {tab === 'full' && <FullPrompt config={config} view={view} dirty={draft.dirty} revision={draft.revision} onEdit={open} />}
     {tab === 'history' && <PromptHistory key={view.revision} view={view} from={draft.meta?.from}
       onLoad={(next, from) => edit(withOverrides(next, view.parts), { from })} />}
+    </div>
     <SaveBar {...draft} words={words} onSave={() => { void draft.submit() }}
       onDiscard={() => { draft.discard(); reload().catch(failure => notify(errorText(failure))) }} />
   </div>

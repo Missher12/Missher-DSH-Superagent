@@ -30,8 +30,10 @@ import { executorLoad, localBoard, ticketDetail, ticketList } from './views/tick
 import { LocalRequestSchema, LocalTaskError, localMessages, type LocalTasks } from '../sources/local.ts'
 import { WorkspaceError, workspaceOf } from '../executor/workspace.ts'
 import { McpClientRequest, McpTaskError, type McpTasks } from '../sources/mcp.ts'
+import type { WorkbenchView } from './views/workbench.ts'
 
 export interface HttpHost {
+  workbench(): WorkbenchView
   readonly local?: LocalTasks | undefined
   readonly mcp?: McpTasks | undefined
   readonly store: Store
@@ -167,6 +169,7 @@ function routes(runtime: HttpHost): Routes {
   const ticket = (id: string) => { if (!store.tickets.get(id)) throw new RouteError(404, 'Ticket not found'); return id }
   const promptBody = (input: { body: (maxBytes?: number) => Promise<unknown> }) => input.body(4 * runtime.machine.promptMaxChars.get() + 4096)
   return {
+    'GET local/workbench': () => { if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled'); return runtime.workbench() },
     'GET mcp': () => mcp().view(),
     'POST mcp/clients': async ({ body }) => mcp().createClient(McpClientRequest.parse(await body())),
     'PUT mcp/clients/:id': async ({ params, body }) => mcp().updateClient(params.id, McpClientRequest.parse(await body())),

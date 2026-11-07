@@ -4,7 +4,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { MessageId } from '@deepseek-ai/dsh-llm'
 import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import { dirname } from 'node:path'
+import { basename, dirname } from 'node:path'
 import { z } from 'zod'
 import { key, liveTicket, type Ticket } from '../core/index.ts'
 import { mandateInstructions, ticketOfSession } from '../executor/dsh.ts'
@@ -45,6 +45,7 @@ export interface SessionsHost {
  * its skills are registered in, and the skills of one prompt revision; for a worker's subagent, only its tool limits.
  */
 interface SessionBinding { disposers: (() => void)[]; scope?: Context; skills?: { revision: number; dispose: () => void }; subagent?: true }
+export interface SessionToolActivity { id: string; name: string; at: string; state: 'running' | 'done' | 'error' | 'interrupted' }
 
 /** The agent presets Executor Sessions and the main Session are created with, which the bundle's patch defines. */
 export const WORKER_PRESET = 'dsh-superagent-worker', ROUTER_PRESET = 'dsh-superagent-router'
@@ -96,6 +97,7 @@ export class Sessions {
   private readonly agentDelivery: AgentDelivery
   /** Decorated agents mapped to their registered disposers and skill scope until the agent is disposed or `Sessions.dispose()` runs. */
   private readonly bindings = new Map<Agent, SessionBinding>()
+  private readonly recentTools = new Map<string, SessionToolActivity[]>()
   private readonly retryHealth = new RetryHealth()
   private readonly ctx: Context
   /** Registers ordered `relay` and `notice` effect handlers that deliver to the main Session. */
@@ -111,12 +113,21 @@ export class Sessions {
     const ctx = this.ctx
     ctx.on('agent/disposed', ({ agent }) => {
       this.release(agent)
+      this.recentTools.delete(agent.id)
       this.retryHealth.clear(agent.id); this.updateModelHealth()
     })
     ctx.on('session/event', (session, event) => {
       const agent = ctx.agents.get(session.id)
       const binding = agent && agent.session === session ? this.bindings.get(agent) : undefined
       if (!agent || !binding || binding.subagent) return
+      if (event.type === 'tool/call') {
+        const tools = this.recentTools.get(agent.id) ?? []
+        const started: SessionToolActivity = { id: event.data.callId, name: event.data.name, at: new Date(event.time).toISOString(), state: 'running' }
+        this.recentTools.set(agent.id, [...tools.filter(tool => tool.id !== started.id), started].slice(-24))
+      } else if (event.type === 'tool/result') {
+        const tool = this.recentTools.get(agent.id)?.find(tool => tool.id === event.data.message.toolCallId)
+        if (tool) tool.state = event.data.message.isError ? 'error' : 'done'
+      }
       this.retryHealth.observe(agent.id, event)
       this.updateModelHealth()
     })
@@ -133,12 +144,17 @@ export class Sessions {
       })
     })
     ctx.on('agent/status', ({ agent, status }) => {
+      if (status === 'idle') for (const tool of this.recentTools.get(agent.id) ?? []) if (tool.state === 'running') tool.state = 'interrupted'
       if (status === 'idle' && !this.host.closing()) { this.retryHealth.clear(agent.id); this.updateModelHealth() }
     })
   }
   /** Resolves or creates session `id` in workspace `cwd`, initializes its role model, decorates it with prompts/skills/tools, sets `danger-full-access` permissions, and renames it to `title`. */
   async ensure(id: string, cwd: string, title: string, role: 'orchestrator' | 'worker'): Promise<Agent> {
     const ctx = this.ctx
+    if (this.host.local && role === 'orchestrator') {
+      const workspace = await ctx.workspaceRegistry.create(cwd, 'Superagent')
+      if (workspace.title === basename(cwd)) await workspace.setTitle('Superagent')
+    }
     let created = false
     let result = await ctx.sessionController.resolveAgent(id as SessionId)
     if ('error' in result && result.error.code === 'session/not-found') {
@@ -202,6 +218,11 @@ export class Sessions {
       return this.ctx.agents.get(sessionId as SessionId) && revision !== undefined ? [{ sessionId, revision }] : []
     })
     return { revision: prompts.current().revision, sessions, notificationPending: effects.pending('notice', 'prompts') }
+  }
+  /** Read-only live activity of a managed session; tool arguments and outputs never enter the workbench. */
+  activity(sessionId: string) {
+    const agent = this.ctx.agents.get(sessionId as SessionId)
+    return { running: agent?.status === 'running', tools: this.recentTools.get(sessionId) ?? [] }
   }
   /** Returns the prompt version a Session runs under (the one bound on its latest model request, or the current version). */
   promptVersion(sessionId: string): PromptVersion {
@@ -358,5 +379,5 @@ export class Sessions {
     }
   }
   /** Releases prompt sections, skills, and tools registered by `Sessions` across all decorated agents. */
-  dispose(): void { for (const agent of [...this.bindings.keys()]) this.release(agent) }
+  dispose(): void { for (const agent of [...this.bindings.keys()]) this.release(agent); this.recentTools.clear() }
 }

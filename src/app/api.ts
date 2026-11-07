@@ -11,6 +11,7 @@ import type { SettingsView } from './views/settings.ts'
 import type { SourceStatusView } from './views/sources.ts'
 import type { DecisionListView, SearchView, ThreadDetailView, ThreadListView } from './views/threads.ts'
 import type { TicketListView } from './views/tickets.ts'
+import type { WorkbenchView } from './views/workbench.ts'
 
 export const TICKET_FILTERS = ['open', 'person', 'working', 'idle', 'ended'] as const
 export const THREAD_FILTERS = ['subscribed', 'evaluating', 'recent', 'all'] as const
@@ -23,6 +24,7 @@ interface Paged { offset?: number; limit?: number }
 type Delivery = 'injected' | 'pending'
 
 export interface Api {
+  'GET local/workbench': { response: WorkbenchView }
   'GET mcp': { response: ReturnType<McpTasks['view']> }
   'POST mcp/clients': { body: z.infer<typeof McpClientRequest>; response: Awaited<ReturnType<McpTasks['createClient']>> }
   'PUT mcp/clients/:id': { body: z.infer<typeof McpClientRequest>; response: Awaited<ReturnType<McpTasks['updateClient']>> }
