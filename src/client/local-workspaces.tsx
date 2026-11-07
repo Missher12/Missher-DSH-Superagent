@@ -26,7 +26,7 @@ export function LocalWorkspaces() {
     await reload()
   })
   return <section className="dt-local-workspaces" aria-label={t('localWorkspaces')}>
-    <div className="dt-local-workspace-tools"><h2>{t('localWorkspaces')}</h2><Button variant="primary" icon={<Icon name="plus" />}
+    <div className="dt-local-workspace-tools"><h2>{t('localWorkspaces')}{data && <span className="dt-count">{data.length}</span>}</h2><Button variant="primary" icon={<Icon name="plus" />}
       disabled={add.busy} onClick={() => { void add.run() }}>{t('localAddWorkspace')}</Button></div>
     <LoadState error={error} loading={!data} />
     {data && <ul className="dt-local-workspace-list">{data.map(workspace => <li key={workspace.id} className="dt-local-workspace-row">
@@ -36,7 +36,7 @@ export function LocalWorkspaces() {
         <div><h3>{workspace.title}</h3><p title={workspace.directory}>{workspace.directory}</p></div></div>
       <div className="dt-actions"><Button variant="ghost" icon={<Icon name="external" size={14} />} disabled={open.busy}
         onClick={() => { void open.run(workspace.id) }}>{t('localOpenWorkspace')}</Button>
-        <Button variant="outline" icon={<Icon name="plus" size={14} />} onClick={() => { selectLocalWorkspace(workspace.directory); navigate({ page: 'execution' }) }}>{t('localWorkspaceTask')}</Button></div>
+        <Button variant="primary" icon={<Icon name="plus" size={14} />} onClick={() => { selectLocalWorkspace(workspace.directory); navigate({ page: 'execution' }) }}>{t('localWorkspaceTask')}</Button></div>
     </li>)}</ul>}
     {data?.length === 0 && <p className="dt-hint">{t('localNoWorkspaces')}</p>}
   </section>

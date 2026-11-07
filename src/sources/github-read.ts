@@ -1,7 +1,7 @@
 /** Read-only GitHub repository, conversation, and CI check inspection for assessments and workers. */
 import { z } from 'zod'
 import type { ThreadFact } from '../core/index.ts'
-import { validItems, type Commands, type Tally } from '../infra/commands.ts'
+import { CliError, validItems, type Commands, type Tally } from '../infra/commands.ts'
 import { CommentSchema, IssueSchema, isHumanLogin, reviewPlace, type GithubComment } from './github-trigger.ts'
 import type { ContextMessage, ThreadContext } from './kind.ts'
 
@@ -10,14 +10,16 @@ const StatusSchema = z.looseObject({ context: z.string(), state: z.string() })
 type Check = Pick<z.infer<typeof CheckSchema>, 'name' | 'status' | 'conclusion'>
 type Status = Pick<z.infer<typeof StatusSchema>, 'context' | 'state'>
 
-export interface CiSnapshot { head: string; checks: Check[]; statuses: Status[] }
+export interface CiSnapshot { head: string; checks: Check[]; statuses: Status[]; coverage?: 'actions-and-statuses' }
 /** Check conclusions and status states that count as failures; `success`, `neutral`, `skipped`, and `stale` do not. */
 const FAILING = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'error'])
-export function ciCounts(snapshot: CiSnapshot): { failed: number; running: number } {
+export function ciCounts(snapshot: CiSnapshot): { failed: number; running: number; missing?: true; coverage?: CiSnapshot['coverage'] } {
   const statuses = snapshot.statuses ?? []
   return {
     failed: snapshot.checks.filter(check => FAILING.has(check.conclusion ?? '')).length + statuses.filter(status => FAILING.has(status.state)).length,
     running: snapshot.checks.filter(check => check.status !== 'completed').length + statuses.filter(status => status.state === 'pending').length,
+    ...!snapshot.checks.length && !statuses.length ? { missing: true as const } : {},
+    ...snapshot.coverage ? { coverage: snapshot.coverage } : {},
   }
 }
 export function ciSummary(snapshot: CiSnapshot, where: string, read: string): string {
@@ -29,19 +31,21 @@ export function ciSummary(snapshot: CiSnapshot, where: string, read: string): st
   const names = (list: string[]) => list.slice(0, 5).join(', ') + (list.length > 5 ? `, and ${list.length - 5} more` : '')
   const at = `on ${where} at ${snapshot.head.slice(0, 7)}`
   const still = running.length ? `; ${running.length} still running` : ''
-  const line = failed.length ? `CI failed ${failed.length}/${results.length} ${at}: ${names(failed)}${still}`
-    : running.length ? `CI running ${running.length}/${results.length} ${at}: ${names(running)}`
-      : `CI passed ${results.length}/${results.length} ${at}`
+  const label = snapshot.coverage ? 'CI (GitHub Actions and commit statuses only)' : 'CI'
+  const line = failed.length ? `${label} failed ${failed.length}/${results.length} ${at}: ${names(failed)}${still}`
+    : running.length ? `${label} running ${running.length}/${results.length} ${at}: ${names(running)}`
+      : results.length ? `${label} passed ${results.length}/${results.length} ${at}` : `${label} not reported ${at}`
   return `${line}\nRead ${read} for every check.`
 }
 export function ciFailures(snapshot: CiSnapshot): string[] {
   return [...snapshot.checks.filter(check => FAILING.has(check.conclusion ?? '')).map(check => check.name),
     ...(snapshot.statuses ?? []).filter(status => FAILING.has(status.state)).map(status => status.context)].sort()
 }
-export function ciFact(counts: { failed: number; running: number }): ThreadFact {
+export function ciFact(counts: { failed: number; running: number; missing?: true; coverage?: CiSnapshot['coverage'] }): ThreadFact {
   if (counts.failed) return { label: { zh: 'CI 失败', en: 'CI failed' }, value: String(counts.failed), problem: true }
   if (counts.running) return { label: { zh: 'CI 进行中', en: 'CI running' }, value: String(counts.running) }
-  return { label: 'CI', value: { zh: '通过', en: 'passed' } }
+  if (counts.missing) return { label: 'CI', value: { zh: '暂无结果', en: 'not reported' } }
+  return { label: counts.coverage ? { zh: 'Actions / 提交状态', en: 'Actions / commit statuses' } : 'CI', value: { zh: '通过', en: 'passed' } }
 }
 
 /** Reads a non-hidden file or directory listing from the repository's default branch via the GitHub API; hidden entries and `node_modules` are rejected. */
@@ -56,10 +60,38 @@ export async function readRepositoryPath(commands: Commands, path: string, kind:
   return entries.map(entry => entry.name).filter(name => !name.startsWith('.') && name !== 'node_modules').sort().join('\n')
 }
 
+/** Fine-grained tokens cannot read Checks, including their GraphQL objects. Read Actions and commit statuses with an explicit coverage limit. */
+async function pullActions(commands: Commands, head: string, tally?: Tally): Promise<CiSnapshot> {
+  const Run = z.looseObject({ id: z.number().int(), workflow_id: z.number().int(), name: z.string().nullable(), event: z.string(), status: z.string(), conclusion: z.string().nullable() })
+  const pages = await commands.api(z.array(z.looseObject({ workflow_runs: z.array(Run) })), `actions/runs?head_sha=${encodeURIComponent(head)}&per_page=100`, '--paginate', '--slurp')
+  const seen = new Set<string>(), checks: Check[] = []
+  for (const run of pages.flatMap(page => page.workflow_runs)) {
+    const key = `${run.workflow_id}:${run.event}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const pages = await commands.api(z.array(z.looseObject({ jobs: z.array(CheckSchema) })), `actions/runs/${run.id}/jobs?filter=latest&per_page=100`, '--paginate', '--slurp')
+    const jobs = pages.flatMap(page => page.jobs), name = run.name ?? `Workflow ${run.workflow_id}`
+    checks.push(...jobs.map(job => ({ name: `${name} / ${job.name}`, status: job.status, conclusion: job.conclusion })))
+    if (!jobs.length || run.status !== 'completed' && jobs.every(job => job.status === 'completed')
+      || FAILING.has(run.conclusion ?? '') && !jobs.some(job => FAILING.has(job.conclusion ?? ''))) {
+      checks.push({ name, status: run.status, conclusion: run.conclusion })
+    }
+  }
+  const statuses = await commands.pages(StatusSchema, `commits/${head}/statuses?per_page=100`, tally)
+  const latest = new Map<string, string>()
+  for (const status of statuses) if (!latest.has(status.context)) latest.set(status.context, status.state)
+  return { head, coverage: 'actions-and-statuses', checks: checks.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    statuses: [...latest].map(([context, state]) => ({ context, state })).sort((a, b) => a.context.localeCompare(b.context)) }
+}
+
 /** Reads check runs and commit statuses for a commit without emitting a trigger. */
 export async function pullChecks(commands: Commands, head: string, tally?: Tally): Promise<CiSnapshot> {
   const page = z.looseObject({ check_runs: z.array(z.unknown()) })
-  const pages = await commands.api(z.array(page), `commits/${head}/check-runs?per_page=100`, '--paginate', '--slurp')
+  const pages = await commands.api(z.array(page), `commits/${head}/check-runs?per_page=100`, '--paginate', '--slurp').catch((error: unknown) => {
+    if (!(error instanceof CliError) || error.code !== 403) throw error
+    return undefined
+  })
+  if (!pages) return pullActions(commands, head, tally)
   const runs = validItems(CheckSchema, pages.flatMap(page => page.check_runs), tally)
   const statuses = await commands.pages(StatusSchema, `commits/${head}/statuses?per_page=100`, tally)
   const latest = new Map<string, string>()

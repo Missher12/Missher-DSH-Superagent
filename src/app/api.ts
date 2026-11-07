@@ -1,5 +1,7 @@
 /** Type-only management API contract between the web panel and host routes, imported by the panel without bundling host code. */
 import type { LocalRequest, LocalTasks } from '../sources/local.ts'
+import type { McpClientRequest, McpTasks } from '../sources/mcp.ts'
+import type { z } from 'zod'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { PromptConfig, Prompts } from './prompts.ts'
 import type { PromptsView, StateView, TicketPageView } from './http.ts'
@@ -21,6 +23,12 @@ interface Paged { offset?: number; limit?: number }
 type Delivery = 'injected' | 'pending'
 
 export interface Api {
+  'GET mcp': { response: ReturnType<McpTasks['view']> }
+  'POST mcp/clients': { body: z.infer<typeof McpClientRequest>; response: Awaited<ReturnType<McpTasks['createClient']>> }
+  'PUT mcp/clients/:id': { body: z.infer<typeof McpClientRequest>; response: Awaited<ReturnType<McpTasks['updateClient']>> }
+  'POST mcp/clients/:id/token': { response: ReturnType<McpTasks['rotateToken']> }
+  'POST mcp/clients/:id/enabled': { body: { enabled: boolean }; response: Awaited<ReturnType<McpTasks['setEnabled']>> }
+  'DELETE mcp/clients/:id': { response: Awaited<ReturnType<McpTasks['removeClient']>> }
   'GET local/board': { query: Paged & { column: LocalBoardColumn; q?: string }; response: TicketListView }
   'GET local/workspaces': { response: { id: string; title: string; directory: string }[] }
   'POST local/workspaces': { body: { directory: string }; response: Awaited<ReturnType<LocalTasks['addWorkspace']>> }

@@ -9,6 +9,7 @@ import { SOURCE, feishuTriggerId } from './feishu-trigger.ts'
 import { sourceContext } from './host.ts'
 import type { Localized, SourceKind } from './kind.ts'
 import type { SourceRegistry } from './registry.ts'
+import { WorkspaceError } from '../executor/workspace.ts'
 
 export { SOURCE, feishuRef, feishuThreadId, feishuTime, feishuTrigger, feishuTriggerId, historyEvent, withMentionNames }
   from './feishu-trigger.ts'
@@ -19,6 +20,7 @@ const MembersSchema = z.looseObject({
   has_more: z.boolean(), truncations: z.array(z.unknown()).optional(),
 })
 const FeishuConfigSchema = FeishuBotSchema.extend({
+  workspaceDirectory: z.string().trim().max(4096).default(''),
   readPageSize: z.number().int().min(1).max(50).default(20),
   linkTimeoutMs: z.number().int().min(1).max(90000).default(5000),
   chats: z.array(z.object({ chatId: z.string().regex(/^oc_[a-zA-Z0-9]+$/), name: z.string().trim().max(60).optional(), listen: z.enum(['mentions', 'all']) }).strict())
@@ -35,6 +37,8 @@ export const feishuKind: SourceKind<FeishuConfig> = {
   description: { zh: '接收下列群和私聊中发给机器人的消息，补收群历史并轮询订阅的线程。', en: 'Receives messages to the bot in these chats and direct messages, recovers chat history and polls subscribed Threads.' },
   schema: FeishuConfigSchema,
   fields: [
+    { key: 'workspaceDirectory', type: 'text', label: { zh: '工作区', en: 'Workspace' },
+      hint: { zh: '本地模式填写飞书任务要操作的项目绝对路径。独立部署可留空。', en: 'In local mode, set the absolute project path for Feishu tasks. Optional for standalone deployment.' } },
     { key: 'cli', type: 'text', label: { zh: '机器人的 lark-cli', en: 'Bot lark-cli' },
       hint: { zh: '命令名或绝对路径，指向只允许机器人身份（strict mode bot）的 lark-cli 配置；执行器以 lark-cli 调用它。保存时读取应用和机器人，然后重启 dsh-superagent。', en: 'A command name or absolute path of a lark-cli configuration that allows only the bot identity (strict mode bot); the Executor calls it as lark-cli. Saving reads the app and the bot, then restarts dsh-superagent.' } },
     { key: 'chats', type: 'rows', label: { zh: '接收的群', en: 'Chats' },
@@ -51,6 +55,10 @@ export const feishuKind: SourceKind<FeishuConfig> = {
       hint: { zh: '查询原消息链接最多等待的时间；超时后智能体改为直接读取原消息。', en: 'How long to wait for an original message\'s link; after that, agents read the message itself.' } },
   ],
   health: ['feishu', 'history'],
+  workspace: (_trigger, config) => {
+    if (!config.workspaceDirectory) throw new WorkspaceError('请先为飞书来源选择工作区')
+    return { directory: config.workspaceDirectory }
+  },
   scope({ meta }, config) {
     if (meta.direct === true) return config.directMessages ? { listened: true, observed: false, row: 'direct' } : { listened: false, reason: 'direct_messages_not_allowed' }
     const chat = config.chats.find(item => item.chatId === meta.chatId)
@@ -118,9 +126,11 @@ export const feishuKind: SourceKind<FeishuConfig> = {
   environment: {
     variables: [
       { key: 'DSH_SUPERAGENT_FEISHU_BOT', description: { zh: '飞书机器人；lark-cli 以它行事', en: 'The Feishu bot; lark-cli acts as it' } },
+      { key: 'DSH_SUPERAGENT_FEISHU_CLI', description: { zh: '已配置的机器人 CLI 绝对路径', en: 'Absolute path of the configured bot CLI' } },
       { key: 'DSH_SUPERAGENT_FEISHU_CHAT', description: { zh: '接下工单的飞书群 chat_id；工单不是从飞书来的时为空', en: 'chat_id of the Feishu chat that started the ticket; empty when the ticket did not start on Feishu' } },
     ],
-    values: ({ deployment, trigger }) => ({ DSH_SUPERAGENT_FEISHU_BOT: deployment.feishu ? deployment.feishu.name || deployment.feishu.botId : '', DSH_SUPERAGENT_FEISHU_CHAT: trigger?.source === SOURCE ? String(trigger.meta.chatId ?? '') : '' }),
+    values: ({ deployment, trigger }) => ({ DSH_SUPERAGENT_FEISHU_BOT: deployment.feishu ? deployment.feishu.name || deployment.feishu.botId : '',
+      DSH_SUPERAGENT_FEISHU_CLI: deployment.feishu?.cli ?? '', DSH_SUPERAGENT_FEISHU_CHAT: trigger?.source === SOURCE ? String(trigger.meta.chatId ?? '') : '' }),
   },
   facts: (deployment): Record<string, Localized | string> => deployment?.feishu ? { cli: { zh: `当前机器人 ${deployment.feishu.name || deployment.feishu.botId}`, en: `Current bot ${deployment.feishu.name || deployment.feishu.botId}` } } : {},
 }

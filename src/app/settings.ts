@@ -54,7 +54,7 @@ const BLOCKS: Record<'policy' | 'eval' | 'executor' | 'source', Block> = {
 
 /** Host dependencies used by `Settings`. */
 export interface SettingsHost {
-  readonly store: Pick<Store, 'settings' | 'saveSettings' | 'blockRevision' | 'atomic' | 'tickets' | 'get'>
+  readonly store: Pick<Store, 'settings' | 'saveSettings' | 'blockRevision' | 'atomic' | 'tickets' | 'triggers' | 'get'>
   readonly sources: SourceRegistry
   /** Notified when a settings save changes the policy version. */
   readonly engine: EngineForSettings
@@ -68,7 +68,7 @@ export interface SettingsHost {
   /** Source host passed to source kinds' policy syncs and label refreshes. */
   readonly sourceHost: SourceHost
   /** Setup state, account/command checks, and restart trigger when setup-read fields change. */
-  readonly setup: Pick<Setup, 'configured' | 'checkAccounts' | 'blockCommands' | 'restart'>
+  readonly setup: Pick<Setup, 'configured' | 'checkAccounts' | 'blockCommands' | 'restart'> & Partial<Pick<Setup, 'local'>>
   /** Triggers an immediate pass so work newly allowed by a settings save runs right away. */
   requestPass(): void
 }
@@ -164,7 +164,14 @@ export class Settings {
       catch (error) { throw new UserError('modelUnavailable', { block, error: error instanceof Error ? error.message : String(error) }) }
     }
     rules.guard?.(current, candidate, origin)
-    if (setupChanged(current, candidate)) await this.host.setup.checkAccounts(block, candidate)
+    if (kind === 'source' && origin !== 'panel' && (
+      block === 'source:mcp' && JSON.stringify(current.sources.mcp) !== JSON.stringify(candidate.sources.mcp)
+      || setupChanged(current, candidate, !!this.host.setup.local)
+    )) throw new UserError('panelOnlyAccounts')
+    if (setupChanged(current, candidate, !!this.host.setup.local)) {
+      const hasGithubTasks = store.tickets.list().some(ticket => store.triggers.get(ticket.origin.triggerId)?.source === 'github')
+      await this.host.setup.checkAccounts(block, candidate, current, hasGithubTasks)
+    }
     if (stale()) throw new SettingsConflict('Settings changed during the checks. Reload before saving.')
     // Re-read current settings after async checks in case unrelated blocks were saved concurrently.
     const old = store.settings()
@@ -173,7 +180,7 @@ export class Settings {
       const delivery = await sessions.delivery(`settings:${block}`)
       return { saved: true, revision: store.blockRevision(block), policy_changed: false, restarting: false, context_delivery: delivery }
     }
-    const restarting = setupChanged(old, settings) || !this.host.setup.configured()
+    const restarting = setupChanged(old, settings, !!this.host.setup.local) || !this.host.setup.configured()
     const before = policyVersion(old), after = policyVersion(settings)
     const scope = (version: SettingsValue) => ({
       scope: (input: { source: string; meta: Record<string, unknown> }) => this.host.sources.scope(input, version) })

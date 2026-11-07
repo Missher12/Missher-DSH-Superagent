@@ -28,9 +28,12 @@ import { sourcesStatus, type SetupState } from './views/sources.ts'
 import { decisionList, search, threadDetail, threadList } from './views/threads.ts'
 import { executorLoad, localBoard, ticketDetail, ticketList } from './views/tickets.ts'
 import { LocalRequestSchema, LocalTaskError, localMessages, type LocalTasks } from '../sources/local.ts'
+import { WorkspaceError, workspaceOf } from '../executor/workspace.ts'
+import { McpClientRequest, McpTaskError, type McpTasks } from '../sources/mcp.ts'
 
 export interface HttpHost {
   readonly local?: LocalTasks | undefined
+  readonly mcp?: McpTasks | undefined
   readonly store: Store
   /** Feishu message links resolved since startup, used by search to match AppLink URLs. */
   readonly sourceLinks: Pick<TextCache, 'entries'>
@@ -49,6 +52,7 @@ export interface HttpHost {
   readonly deployment: Deployment
   readonly setupProblem?: SetupProblem | undefined
   readonly feishuProblem?: SetupProblem | undefined
+  readonly githubProblem?: SetupProblem | undefined
   configured(): boolean
   links(): LinkTarget
   ticketEnvironment(ticket: Ticket): Variable[]
@@ -81,7 +85,8 @@ export function sameOrigin(req: Pick<IncomingMessage, 'headers'>, port: number):
 }
 /** Maps errors to HTTP status codes and structured payloads that the panel localizes in the interface language. */
 function failure(error: unknown): [number, Record<string, unknown>] {
-  if (error instanceof LocalTaskError) return [400, { error: error.message }]
+  if (error instanceof McpTaskError) return [error.status, { error: error.message }]
+  if (error instanceof LocalTaskError || error instanceof WorkspaceError) return [400, { error: error.message }]
   if (error instanceof z.ZodError) {
     const issues = error.issues.map(issue => ({ path: issue.path.join('.'), message: issue.message }))
     return [400, { error: `Invalid settings: ${issues.map(issue => issue.path).join(', ')}`, issues }]
@@ -101,6 +106,7 @@ function setupView(runtime: HttpHost) {
   const resolved = runtime.configured() ? runtime.deployment : undefined
   return {
     machine: machineView(runtime.machine), problem: runtime.setupProblem ?? null, feishuProblem: runtime.feishuProblem ?? null,
+    ...(runtime.githubProblem ? { githubProblem: runtime.githubProblem } : {}),
     mode: runtime.machine.mode ?? 'github',
     accounts: resolved?.github ? { repository: resolved.repository, agent: resolved.github.login, feishu: resolved.feishu ? { appId: resolved.feishu.appId, brand: resolved.feishu.brand, botId: resolved.feishu.botId, name: resolved.feishu.name } : null } : null,
   }
@@ -114,13 +120,13 @@ export function stateView(runtime: HttpHost) {
 }
 const views = (runtime: HttpHost): ViewHost => ({ store: runtime.store, sources: runtime.sources, links: runtime.links() })
 const setupState = (runtime: HttpHost): SetupState => ({ deployment: runtime.configured() ? runtime.deployment : undefined,
-  problem: runtime.setupProblem, feishuProblem: runtime.feishuProblem })
+  problem: runtime.setupProblem, feishuProblem: runtime.feishuProblem, githubProblem: runtime.githubProblem })
 export type StateView = ReturnType<typeof stateView>
 /** Builds a ticket's detail view; `environment` is empty while waiting for setup because it requires the resolved deployment. */
 function ticketPage(runtime: HttpHost, id: string) {
   const detail = ticketDetail(views(runtime), id), ticket = runtime.store.tickets.get(id)
   if (!detail || !ticket) throw new RouteError(404, 'Ticket not found')
-  return { ...detail, local: runtime.store.triggers.get(ticket.origin.triggerId)?.source === 'local',
+  return { ...detail, local: !!workspaceOf(runtime.store, ticket),
     messages: localMessages(runtime, id), environment: runtime.configured() ? runtime.ticketEnvironment(ticket) : [] }
 }
 export type TicketPageView = ReturnType<typeof ticketPage>
@@ -157,9 +163,16 @@ const SaveRequest = z.object({ value: z.unknown(), revision: z.number().int().no
 
 function routes(runtime: HttpHost): Routes {
   const { store } = runtime
+  const mcp = () => { if (!runtime.mcp) throw new RouteError(404, 'MCP task intake is not enabled'); return runtime.mcp }
   const ticket = (id: string) => { if (!store.tickets.get(id)) throw new RouteError(404, 'Ticket not found'); return id }
   const promptBody = (input: { body: (maxBytes?: number) => Promise<unknown> }) => input.body(4 * runtime.machine.promptMaxChars.get() + 4096)
   return {
+    'GET mcp': () => mcp().view(),
+    'POST mcp/clients': async ({ body }) => mcp().createClient(McpClientRequest.parse(await body())),
+    'PUT mcp/clients/:id': async ({ params, body }) => mcp().updateClient(params.id, McpClientRequest.parse(await body())),
+    'POST mcp/clients/:id/token': ({ params }) => mcp().rotateToken(params.id),
+    'POST mcp/clients/:id/enabled': async ({ params, body }) => mcp().setEnabled(params.id, z.object({ enabled: z.boolean() }).strict().parse(await body()).enabled),
+    'DELETE mcp/clients/:id': ({ params }) => mcp().removeClient(params.id),
     'GET local/board': ({ query }) => {
       if (!runtime.local) throw new RouteError(404, 'Local task intake is not enabled')
       const { column, q, offset, limit } = LocalBoardQuery.parse(query)
@@ -185,7 +198,7 @@ function routes(runtime: HttpHost): Routes {
     },
     'GET state': () => stateView(runtime),
     'GET overview': () => overview(views(runtime), runtime.health, policyVersion(store.settings()),
-      executorLoad(store, runtime.executor.activeCount()), runtime.setupProblem ?? runtime.feishuProblem),
+      executorLoad(store, runtime.executor.activeCount()), runtime.setupProblem ?? runtime.githubProblem ?? runtime.feishuProblem),
     'GET search': ({ query }) => search(views(runtime), query.q ?? '', runtime.sourceLinks),
     'GET sources': () => sourcesStatus(views(runtime), runtime.health, setupState(runtime)),
     'GET settings': () => settingsView(store, runtime.sources, runtime.health, setupState(runtime), runtime.machine.stateDir),

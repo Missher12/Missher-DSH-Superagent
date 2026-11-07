@@ -166,7 +166,7 @@ export async function startRuntime(seed?: (store: Store) => void, machine: Parti
   const steps = new Map<string, () => void>(), claims = new Map<string, () => void>()
   const tools = new Map<string, Map<string, RegisteredTool>>()
   const deliveries = vi.fn<(request: Delivery) => void>()
-  let http!: HttpHandler
+  const httpRoutes = new Map<string, HttpHandler>()
   const resolveDefault = async (id: string) => agents.has(id) ? { agent: agents.get(id) } : { error: { code: 'session/not-found' } }
   const controller = {
     create: vi.fn(async ({ sessionId }: { sessionId: string }) => {
@@ -236,7 +236,10 @@ export async function startRuntime(seed?: (store: Store) => void, machine: Parti
   }
   const reader = { read: async () => ({ events: [] }), [Symbol.asyncDispose]: async () => {} }
   const persistence = { flush: vi.fn(async () => {}), open: vi.fn(async () => reader) }
-  const webServer = { host: '127.0.0.1', port: 3082, register: (route: { handler: HttpHandler }) => { http = route.handler; return () => {} } }
+  const webServer = { host: '127.0.0.1', port: 3082, register: (route: { path: string; handler: HttpHandler }) => {
+    httpRoutes.set(route.path, route.handler)
+    return () => { httpRoutes.delete(route.path) }
+  } }
   const jobs = jobRegistry(id => agents.get(id))
   const subagents = subagentRuntime(agents)
   const permission = new Map<string, string>()
@@ -294,7 +297,10 @@ export async function startRuntime(seed?: (store: Store) => void, machine: Parti
     let status = 0, text = ''
     const chunks = json === undefined ? [] : [Buffer.from(JSON.stringify(json))]
     const req = { method, url: `/orchestrator/api/${path}`, headers: { host: '127.0.0.1:3082', 'x-orchestrator-request': '1' }, async *[Symbol.asyncIterator]() { yield* chunks } }
-    await http(req, { writeHead: (code: number) => { status = code }, end: (data: string) => { text = data } })
+    const route = [...httpRoutes].filter(([prefix]) => req.url === prefix || req.url.startsWith(`${prefix}/`))
+      .sort(([a], [b]) => b.length - a.length)[0]
+    if (!route) throw new Error(`No registered HTTP route for ${req.url}`)
+    await route[1](req, { writeHead: (code: number) => { status = code }, end: (data: string) => { text = data } })
     return { status, body: JSON.parse(text) as Record<string, unknown> }
   }
   async function stop() { await runtime.stop(); vi.restoreAllMocks(); rmSync(directory, { recursive: true, force: true }) }

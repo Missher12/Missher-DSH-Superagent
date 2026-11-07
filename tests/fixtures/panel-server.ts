@@ -294,6 +294,12 @@ const ticketOf = (id: string) =>
 const SourceSave = z.object({ enabled: z.boolean(), config: z.unknown() })
 
 const ROUTES: { [K in keyof Api]: Route<K> } = {
+  'GET mcp': { answer: () => ({ url: 'http://127.0.0.1:3082/superagent/mcp', enabled: false, clients: [] }) },
+  'POST mcp/clients': { body: true, answer: () => refuse(400, 'Connect using the running DSH instance') },
+  'PUT mcp/clients/:id': { body: true, answer: () => refuse(404, 'Connection not found') },
+  'POST mcp/clients/:id/token': { answer: () => refuse(404, 'Connection not found') },
+  'POST mcp/clients/:id/enabled': { body: true, answer: () => refuse(404, 'Connection not found') },
+  'DELETE mcp/clients/:id': { answer: () => refuse(404, 'Connection not found') },
   'GET local/board': { query: ['column', 'q', 'offset', 'limit'], answer: ({ query }) => {
     const records = [...new Map([...server.tickets.open, ...server.person, ...server.tickets.ended].map(ticket => [ticket.id, ticket])).values()]
     const needle = (query.q ?? '').toLowerCase()

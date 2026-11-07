@@ -10,6 +10,8 @@ import { key, latestReport, ticketStage, type OutboundMessage, type Ticket, type
 import { workerSessionId, ticketOfSession } from '../executor/dsh.ts'
 import { family } from '../kv.ts'
 import type { SourceKind } from './kind.ts'
+import { taskMessages, rememberTaskMessage, type TaskMessage } from './task-messages.ts'
+import { workspaceOf } from '../executor/workspace.ts'
 
 export const LocalRequestSchema = z.object({
   requestId: z.string().trim().min(1).max(200), title: z.string().trim().min(1).max(160),
@@ -17,10 +19,9 @@ export const LocalRequestSchema = z.object({
   originSessionId: z.string().min(1).optional(),
 }).strict()
 export type LocalRequest = z.infer<typeof LocalRequestSchema>
-export interface LocalMessage { id: string; text: string; kind: OutboundMessage['kind']; at: string }
+export type LocalMessage = TaskMessage
 const requests = family<{ ticketId: string; request: string }>('local-request:')
-const messages = family<LocalMessage[]>('local-messages:')
-export const localMessages = (runtime: Pick<Runtime, 'store'>, id: string): LocalMessage[] => runtime.store.get(messages(id)) ?? []
+export const localMessages = taskMessages
 /** An actionable local intake or task-control error shown to the user. */
 export class LocalTaskError extends Error {}
 function projectDirectory(value: string): string {
@@ -61,7 +62,7 @@ export class LocalTasks {
   }
   private ticket(id: string): Ticket {
     const ticket = this.runtime.store.tickets.get(id)
-    if (!ticket || this.runtime.store.triggers.get(ticket.origin.triggerId)?.source !== 'local') throw new LocalTaskError('找不到这个本地任务')
+    if (!ticket || !workspaceOf(this.runtime.store, ticket)) throw new LocalTaskError('找不到这个工作区任务')
     return ticket
   }
   get(id: string) {
@@ -71,7 +72,7 @@ export class LocalTasks {
       messages: localMessages(this.runtime, id) }
   }
   list() {
-    return this.runtime.store.tickets.list().filter(ticket => this.runtime.store.triggers.get(ticket.origin.triggerId)?.source === 'local')
+    return this.runtime.store.tickets.list().filter(ticket => !!workspaceOf(this.runtime.store, ticket))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 50).map(ticket => this.get(ticket.id))
   }
   async create(value: LocalRequest) {
@@ -113,10 +114,17 @@ export class LocalTasks {
     if (ticket.ended?.by === 'human') throw new LocalTaskError('任务已被你停止；需要继续时请新建任务')
     const input = z.object({ requestId: z.string().min(1).max(200), text: z.string().trim().min(1).max(64000) }).parse({ requestId, text })
     const origin = this.runtime.store.triggers.get(ticket.origin.triggerId)!
-    const trigger = { ...origin, id: key('local-followup', id, input.requestId), text: input.text, at: new Date().toISOString() }
+    const trigger: Trigger = origin.source === 'local'
+      ? { ...origin, id: key('local-followup', id, input.requestId), text: input.text, at: new Date().toISOString() }
+      : { id: key('local-followup', id, input.requestId), source: 'local', threads: [{ source: 'local', id: `operator:${id}` }],
+        actor: { source: 'local', id: 'desktop-user' }, human: true, addressed: 'direct', at: new Date().toISOString(), text: input.text,
+        meta: {}, channel: { source: 'local', thread: `local:operator:${id}`, address: { sessionId: '' } } }
     const previous = this.runtime.store.triggers.get(trigger.id)
     if (previous && previous.text !== trigger.text) throw new LocalTaskError('同一个 requestId 不能用于不同的补充要求')
-    this.runtime.receive(trigger)
+    this.runtime.store.atomic(() => {
+      this.runtime.receive(trigger)
+      if (origin.source !== 'local' && !this.runtime.store.triggers.disposition(trigger.id)?.fanout?.includes(id)) this.runtime.engine.attach(id, trigger.id)
+    })
     return this.get(id)
   }
   stop(id: string) { this.ticket(id); this.runtime.engine.stopTicket(id); return this.get(id) }
@@ -155,11 +163,7 @@ export class LocalTasks {
     if (!id) return 'gone'
     const { store } = this.runtime
     const ctx = this.ctx
-    store.atomic(() => {
-      const previous = store.get(messages(id)) ?? []
-      if (!previous.some(item => item.id === message.id)) store.set(messages(id), [...previous,
-        { id: message.id, text: message.text, kind: message.kind, at: new Date().toISOString() }])
-    })
+    rememberTaskMessage(this.runtime, id, message)
     const sessionId = message.channel.address.sessionId
     if (sessionId && message.kind !== 'acknowledgement') {
       const resolved = await ctx.sessionController.resolveAgent(sessionId as SessionId)

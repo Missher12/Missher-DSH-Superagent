@@ -58,12 +58,15 @@ function SourceCard({ source }: { source: SourceView }) {
   </form>
 }
 
-export function SourceSettings({ focus }: { focus?: string }) {
+export function SourceSettings({ focus, include }: { focus?: string; include?: readonly string[] }) {
   const { sources } = useSettings().settings
+  const { t } = usePanel()
+  const shown = sources.filter(source => !include || include.includes(source.id))
   useEffect(() => { if (focus) document.getElementById(`dt-source-${focus}`)?.scrollIntoView?.({ block: 'start' }) }, [focus])
   return <div className="dt-form">
-    {sources.map(source => <SourceCard key={source.id} source={source} />)}
-    <ConfigHistory blocks={['source:']} />
+    {!shown.length && <Hint>{t('localExternalEnableHint')}</Hint>}
+    {shown.map(source => <SourceCard key={source.id} source={source} />)}
+    <ConfigHistory blocks={include ? include.map(id => `source:${id}`) : ['source:']} />
   </div>
 }
 

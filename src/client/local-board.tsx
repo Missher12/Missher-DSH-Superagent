@@ -50,7 +50,7 @@ function BoardColumn({ column, query }: { column: LocalBoardColumn; query: strin
     <LoadState error={error} loading={!data} />
     {data && (data.items.length ? <ul key={offset} className="dt-board-cards" id={`dt-board-${column}`}>
       {data.items.map(ticket => <TaskCard key={ticket.id} ticket={ticket} />)}
-    </ul> : <p className="dt-board-empty" aria-label={t(query ? 'localNoMatches' : `localBoardEmpty.${column}`)}>—</p>)}
+    </ul> : <p className="dt-board-empty">{t(query ? 'localNoMatches' : `localBoardEmpty.${column}`)}</p>)}
     {data && data.total > PAGE_SIZE && <nav className="dt-board-pagination" aria-label={t('localBoardPages', { column: label })}>
       <Button size="sm" icon={<Icon name="chevron-left" />} disabled={!offset}
         aria-label={t('localBoardPrevious', { column: label })} title={t('localBoardPrevious', { column: label })}

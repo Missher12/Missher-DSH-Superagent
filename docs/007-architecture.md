@@ -293,6 +293,14 @@ Local desktop adaptation additions:
 | Module | Purpose |
 | --- | --- |
 | `src/sources/local.ts` | Explicit local intake, idempotent requests, inherited permissions, task tools and result delivery |
+| `src/sources/mcp.ts` | Per-application credentials and workspace grants, idempotent external intake and owned task operations |
+| `src/sources/task-messages.ts` | Durable task replies shared by local and external intake, preserving existing storage keys |
+| `src/mcp-bridge.ts` | Executable stdio entry for desktop MCP applications |
+| `src/mcp/bridge.ts` | Official MCP client proxy with validated loopback discovery and lazy reconnection |
+| `src/mcp/contract.ts` | Public tool input schemas and endpoint names independent of the DSH runtime |
+| `src/mcp/server.ts` | Shared seven-tool MCP server contract |
+| `src/mcp/http.ts` | Authenticated Streamable HTTP transport and task operation mapping |
+| `src/mcp/mount.ts` | DSH route registration and current endpoint publication |
 | `src/source-api.ts` | Public Source adapter boundary reserved for Git/GitHub and MCP integrations |
 | `src/client/local.tsx` | Local task composer and follow-up form |
 | `src/client/local-app.tsx` | Local task list, everyday navigation, and usage help |
@@ -364,6 +372,7 @@ Local desktop adaptation additions:
 | `src/app/views/settings.ts` | The settings page's view: each block with its revision, each Source's settings with its kind's form, and the execution environment |
 | `src/app/views/overview.ts` | The overview: Tickets that need a person, problems, the last day's flow and the Executor's load |
 | `src/executor/dsh.ts` | The DshExecutor, `WorkerSlots`, `ticketExecution`, `inputMessage` and `mandateInstructions` |
+| `src/executor/workspace.ts` | Canonical workspace validation and captured execution bindings for all local-mode sources |
 | `src/executor/background.ts` | A worker's background work in DeepSeek Harness, the shell jobs its Session owns (`ctx.jobs`) and its subagents (`ctx.subagents`): `runningJobs`, `untilQuiet`, `killJobs`, `collectJobs`, `stopSubagents`, `stopBackground`, `until`, and `cancelled`, the workers whose turn a stop of their subagents cancelled |
 | `src/infra/commands.ts` | `Commands`, the CLI transport: `run`; `api` and `pages`, limited to the configured repository and validated; `lark` as the bot; `git`. `CliError` carries the code a command's output reports, such as a GitHub HTTP status, and a command that prints nothing fails with how it ended, never with its arguments; `validItems` skips and counts the malformed items of a list |
 | `src/infra/environment.ts` | The agent's process environment: command shims, the git configuration and credential helper, `runAsWorker`, and the checks of the environment and of a Ticket's directory |
@@ -390,6 +399,10 @@ Local desktop adaptation additions:
 | `src/client/app.tsx` | The panel: header, search, glossary, tabs and the page of the current route |
 | `src/client/provider.tsx` | What every page reads from its host: copy, calls, navigation, notices, the state poll, and `restart`, which reads the state quickly while dsh-superagent restarts |
 | `src/client/api.ts` | Calls and polls of the management API, typed by `src/app/api.ts`, and the Decision filters of the Eval status |
+| `src/client/local-board.tsx` | Local task board, lane paging and task cards |
+| `src/client/local-workspaces.tsx` | Registered workspace list, native navigation and scoped task drafts |
+| `src/client/local-mcp.tsx` | Native MCP connection settings and one-time configuration display |
+| `src/client/ticket-assignments.tsx` | Task assignment history and execution records |
 | `src/client/route.ts` | The tabs, the settings groups, the typed routes that `parseRoute` reads, and the route memory with the settings group opened last |
 | `src/client/overview.tsx` | The overview |
 | `src/client/source.tsx`, `trigger.tsx`, `eval.tsx`, `execution.tsx` | One file per stage: its status, and its settings where it has some |
@@ -420,6 +433,12 @@ Local desktop adaptation checks:
 | `tests/local-setup.spec.ts` | Startup without external accounts or process environment changes |
 | `tests/local-tasks.spec.ts` | Task identity, selected workspace, permissions, follow-ups, stop, result delivery and restart persistence |
 | `tests/local-panel.spec.tsx` | User dispatch and task-specific follow-ups in the panel |
+| `tests/local-adapters.spec.ts` | GitHub and Feishu project binding, default permissions, missing projects and disconnected-source isolation |
+| `tests/directory-picker.spec.ts` | Native directory picker selection and cancellation |
+| `tests/workspace-sources.spec.ts` | Trusted workspace binding, captured permissions and cross-source serialization |
+| `tests/mcp-intake.spec.ts` | Client grants, idempotency, result ownership, admin API and local operator follow-up |
+| `tests/mcp-http.spec.ts` | Real official MCP client discovery and task calls over HTTP |
+| `tests/mcp-bridge.spec.ts` | Real stdio process, HTTP forwarding, endpoint validation and port-change reconnection |
 
 
 | Test | Covers |

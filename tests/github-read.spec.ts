@@ -1,10 +1,38 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { Commands } from '../src/infra/commands.ts'
+import { Commands, CliError } from '../src/infra/commands.ts'
 import { testDeployment } from './fixtures/deployment.ts'
-import { readGithub, pullChecks } from '../src/sources/github-read.ts'
+import { readGithub, pullChecks, ciCounts, ciSummary, ciFact } from '../src/sources/github-read.ts'
 
 const commands = new Commands(() => testDeployment(), {}, new AbortController().signal)
 afterEach(() => vi.restoreAllMocks())
+
+it('reads paginated Actions jobs and statuses when a fine-grained token cannot use Checks', async () => {
+  const gh = vi.spyOn(commands, 'gh').mockRejectedValueOnce(new CliError('Checks API unavailable for this token', 403))
+    .mockResolvedValueOnce([{ workflow_runs: [
+      { id: 2, workflow_id: 9, name: 'test', event: 'push', status: 'completed', conclusion: 'failure' },
+      { id: 1, workflow_id: 9, name: 'old run', event: 'push', status: 'completed', conclusion: 'success' },
+    ] }]).mockResolvedValueOnce([{ jobs: [{ name: 'unit', status: 'completed', conclusion: 'failure' }] }])
+  vi.spyOn(commands, 'pages').mockResolvedValue([{ context: 'legacy-ci', state: 'pending' }])
+  const result = await pullChecks(commands, 'abc')
+  expect(result).toEqual({ head: 'abc', coverage: 'actions-and-statuses', checks: [{ name: 'test / unit', status: 'completed', conclusion: 'failure' }],
+    statuses: [{ context: 'legacy-ci', state: 'pending' }] })
+  expect(gh.mock.calls[1]![0][1]).toContain('head_sha=abc')
+  expect(gh.mock.calls[2]![0][1]).toBe('repos/acme/widgets/actions/runs/2/jobs?filter=latest&per_page=100')
+  expect(gh).toHaveBeenCalledTimes(3)
+  expect(ciCounts(result)).toMatchObject({ failed: 1, running: 1, coverage: 'actions-and-statuses' })
+  expect(ciSummary(result, 'main', 'checks')).toContain('GitHub Actions and commit statuses only')
+})
+
+it('does not call an empty CI result a passing check', () => {
+  const snapshot = { head: 'abc', checks: [], statuses: [] }
+  expect(ciSummary(snapshot, 'main', 'checks')).not.toContain('passed')
+  expect(ciFact(ciCounts(snapshot)).value).not.toEqual({ zh: '通过', en: 'passed' })
+})
+
+it('propagates an unavailable Actions fallback instead of calling CI successful', async () => {
+  vi.spyOn(commands, 'gh').mockRejectedValueOnce(new CliError('Checks unavailable', 403)).mockRejectedValueOnce(new CliError('Actions unavailable', 403))
+  await expect(pullChecks(commands, 'abc')).rejects.toThrow('Actions unavailable')
+})
 
 it('reads a bounded comment page and exposes the next page reference', async () => {
   const gh = vi.spyOn(commands, 'gh').mockResolvedValue(Array.from({ length: 20 }, (_, id) => ({ id, body: 'comment' })))

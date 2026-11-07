@@ -23,8 +23,8 @@ export function LocalTicketPage({ data, error, reload }: { data: TicketPageView;
   const copy = useAction(async () => { await navigator.clipboard.writeText(result); setCopied(true); notify(t('localCopied')) })
   const completed = !!data.ended
   const stopped = data.ended?.by === 'human'
-  return <>
-    <div className="dt-actions"><Button variant="ghost" icon={<Icon name="chevron-left" />} onClick={() => navigate({ page: 'execution' })}>{t('localBackToTasks')}</Button></div>
+  return <article className="dt-local-ticket">
+    <div className="dt-actions dt-local-ticket-nav"><Button variant="ghost" icon={<Icon name="chevron-left" />} onClick={() => navigate({ page: 'execution' })}>{t('localBackToTasks')}</Button></div>
     <div className="dt-local-task-head"><h2>{data.title}</h2><div className="dt-actions">
       {data.directory && <OpenWorkspaceButton directory={data.directory} />}
       {data.sessionId && <SessionButton variant="outline" sessionId={data.sessionId} label={t('localViewProcess')} />}
@@ -67,5 +67,5 @@ export function LocalTicketPage({ data, error, reload }: { data: TicketPageView;
       {data.messages?.filter(message => message.kind === 'reply' && message.id !== reply?.id).map(message => <div key={message.id} className="dt-local-record">
         <When at={message.at} /><MarkdownLite text={message.text} /></div>)}
     </div>}</details>
-  </>
+  </article>
 }

@@ -36,11 +36,14 @@ function LocalTasksPage({ state }: { state: StateView }) {
 }
 
 export function LocalHelp() {
-  const { t } = usePanel()
+  const { t, navigate } = usePanel()
   return <div className="dt-form dt-local-help">
     <Section title={t('localHelpStart')}><ol className="dt-local-steps">
-      <li>{t('localHelpStep1')}</li><li>{t('localHelpStep2')}</li><li>{t('localHelpStep3')}</li>
-    </ol></Section>
+      {([1, 2, 3] as const).map(step => <li key={step}><div><strong>{t(`localHelpStepTitle${step}`)}</strong><p>{t(`localHelpStep${step}`)}</p></div></li>)}
+    </ol><div className="dt-actions dt-local-help-actions">
+      <Button variant="primary" icon={<Icon name="folder" />} onClick={() => navigate({ page: 'source' })}>{t('localWorkspaces')}</Button>
+      <Button variant="outline" onClick={() => navigate({ page: 'execution' })}>{t('localTasks')}</Button>
+    </div></Section>
     <Section title={t('localHelpChat')}><MarkdownLite text={t('localChatExample')} /></Section>
     <details className="dt-local-details"><summary>{t('localHelpBoundaries')}</summary>
       <div className="dt-local-details-body"><MarkdownLite text={t('localBoundaries')} /></div>

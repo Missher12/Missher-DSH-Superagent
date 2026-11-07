@@ -24,6 +24,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const MEMBER = 'ou_alice'
+it('polls configured repository streams without requesting account notifications when disabled', async () => {
+  const h = host()
+  const settings = h.store.settings()
+  h.store.saveSettings({ ...settings, sources: { ...settings.sources,
+    github: { enabled: true, config: { notifications: false, observeIssues: true } } } })
+  const reads = github(h, { issues: [] })
+  try {
+    await pollRound(h)
+    expect(reads.some(path => path.startsWith('notifications'))).toBe(false)
+    expect(reads.some(path => path.startsWith('issues?'))).toBe(true)
+    expect(h.health.github?.state).toBe('ready')
+  } finally { h.store.close() }
+})
 function host(overrides: Partial<SourceContextDeps> = {}) {
   const store = new Store(join(mkdtempSync(join(tmpdir(), 'sources-')), 'db.sqlite'))
   const settings = SettingsSchema.parse({ policy: { sources: { feishu: { allowed: [{ id: 'ou_alice', name: 'Alice' }], syncChat: 'oc_team' }, github: { allowed: [{ id: 'alice' }] } } }, eval: { mode: 'auto' }, sources: { feishu: { enabled: true, config: { chats: [{ chatId: 'oc_team', listen: 'mentions' }, { chatId: 'oc_observed', listen: 'all' }], directMessages: true } } } })
@@ -1023,7 +1036,7 @@ it('reports GitHub as failing only after the configured number of consecutive fa
   expect(pollFailure(1, 3, eof)).toBeUndefined()
   expect(pollFailure(2, 3, eof)).toBeUndefined()
   expect(pollFailure(3, 3, eof)).toEqual({ state: 'error', detail: '3 consecutive failed polls; last: Error: Get "https://api.github.com/x": EOF', code: 'pollFailures', values: { count: '3', error: 'Error: Get "https://api.github.com/x": EOF' } })
-  expect(githubKind.schema.parse({})).toEqual({ repository: '', cli: '', pollSeconds: 60, failuresBeforeError: 3, observeIssues: false,
+  expect(githubKind.schema.parse({})).toEqual({ repository: '', cli: '', workspaceDirectory: '', notifications: true, pollSeconds: 60, failuresBeforeError: 3, observeIssues: false,
     observePulls: false, observeComments: false, observeCi: false })
 })
 describe('feishu event consumer', () => {

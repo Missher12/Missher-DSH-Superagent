@@ -16,7 +16,9 @@
 
 本地模式不要求 GitHub 或飞书账号，不修改进程级 PATH、Git 配置或账号凭据。不需要额外安装 DSH CLI、GitHub CLI 或 tmux。
 
-## 预留 Git / MCP 入口
+## MCP 与来源扩展
+
+其他应用派单已提供独立的 [MCP 接入教程](mcp.md)，在 Superagent 设置页管理每个应用的授权。
 
 `@missher/dsh-superagent/sources` 导出 `SourceKind`、`SourceHost`、`SourceContext`、`Trigger`、`OutboundMessage` 以及持久化键工具。其他 DSH 插件可以：
 
@@ -25,7 +27,7 @@
 3. 用 `ctx.orchestrator.context(kind).receive(trigger)` 投递事件，按原生来源身份配置授权，使用稳定事件 ID 防止重复派单。
 4. 实现 SourceKind 的 `channel.send` 回传结果，使用 `scope`、`policy` 和 `threadContext` 分别提供接收范围、授权及上下文。
 
-Git 仓库事件或 MCP 工具调用都可以转换为同一 Trigger。MCP 服务的连接、身份校验和工具暴露由其适配器负责；仅有正文不能授予执行权限。
+Git 仓库事件和 MCP 工具调用转换为同一 Trigger。来源通过 `workspace(trigger, config)` 返回从可信配置取得的目录和具名权限；执行器接单时固定绑定，并按目录串行。仅有事件正文不能授予执行权限。
 
 适配插件可直接导入公开入口；它同时声明 `ctx.orchestrator` 的服务类型：
 
@@ -39,7 +41,9 @@ export function registerSource(ctx: Context, source: SourceKind) {
 }
 ```
 
-上游 GitHub、飞书适配代码保留，默认禁用。启用完整上游 GitHub 部署需要切换插件 `mode` 为 `github` 并按上游文档配置独立运行环境。首版本地包没有启动外部 MCP 服务，也没有自动监听 Git 事件。
+GitHub、飞书是默认禁用的可选来源组件。本地模式可以直接启用组件，在「设置 → GitHub 与飞书」配置现有项目，无需切换 `mode`。GitHub 需要账号 CLI、仓库及其本地 checkout，origin 的读取与推送地址都须对应监听仓库；飞书需要已就绪的 bot CLI 和目标工作区。接收范围与允许派单的身份在「外部派单规则」配置。已有 GitHub 任务的实例不能直接改绑另一仓库，测试应使用独立实例。
+
+使用 GitHub 精细令牌时关闭高级设置中的「账号通知」，改用已配置仓库的 Issue、PR 和评论轮询。令牌应仅授权目标仓库所需的代码、Issue、PR 和 Actions 权限。精细令牌无法读取 Checks，CI 读取会改用完整分页的 Actions 运行、作业与提交状态，并标明仅覆盖这个范围；其他应用的 Checks 不因此被视为已验证。没有结果显示「暂无结果」，读取失败不会当作通过。账号与权限不完整时不能启用连接，其他来源不受影响。
 
 ## 开发与验证
 
@@ -60,8 +64,8 @@ export function registerSource(ctx: Context, source: SourceKind) {
 | 提示词与版本 | 复用上游编辑器、预览、历史与冲突处理；面板和代理读取资源使用同一套本地默认约定。 |
 | 来源与执行记录 | 任务详情折叠保留派单依据、策略版本、派工状态及输入送达记录；原生会话提供完整执行步骤。 |
 | 健康与结果回传 | 运行错误逐项显示，有错误时不显示“就绪”；沿用持久化结果投递与去重。 |
-| 插件扩展 | 保留上游 SourceKind 边界与 GitHub/飞书实现，公开 `sources` 类型入口；Git/MCP 外部自动接单未启用。 |
+| 插件扩展 | 保留上游 SourceKind 边界，公开 `sources` 类型入口；MCP 已完成真实派单验收，GitHub/飞书可选组件的实接状态见完成记录。 |
 
 保留的本地差异：在用户选择的已有工作区执行，按目录串行；沿用 DSH 的具名权限；日常面板保留“任务、工作区、设置、帮助”。原型默认准备独立工单目录并面向 GitHub 协作，本地版不会自动创建 Git worktree、接入外部账号或扩大权限。
 
-本轮 `0.3.2` 验收：223 项相关测试、类型检查、构建和独立来源适配的类型检查通过；没有运行全量测试。日用 DSH `0.2.1-rc.4` 已加载该版本，主组件处于运行状态，等待任务接口返回正常，原生看板及真实任务结果可查看。此前真实开发验收已跑通派单、写入文件、测试、结果回传和打开执行会话；本轮保留了这些任务及工作区。GitHub、飞书保持关闭，外部 MCP 尚未启用，也未声称完成这些入口的实接验收。
+实际安装版本与各来源的验收证据以 [完成记录](completion-plan.md) 为准。标准 Node 测试、宿主加载和真实外部来源验收分别记录，不能互相替代。

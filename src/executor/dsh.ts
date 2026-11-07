@@ -1,5 +1,7 @@
 /** DSH executor: manages one persistent worker session and workspace directory per ticket. */
 import type { Context } from '@deepseek-ai/cordis'
+import type { WorkspaceBinding } from '../sources/kind.ts'
+import { canonicalWorkspace, WorkspaceError, workspaceBindings, workspaceOf } from './workspace.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { mkdir, rmdir, stat } from 'node:fs/promises'
@@ -62,7 +64,7 @@ export interface ExecutorHost {
   /** Where the Executor reports what happened to Assignments and Inputs. */
   readonly engine: Pick<EngineForExecutor, 'assignmentStarted' | 'inputsDelivered' | 'inputsRead' | 'turnEnded' | 'deliveryFailed' | 'report'
     | 'assignmentInterrupted'>
-  readonly store: Pick<Store, 'tickets' | 'triggers' | 'set' | 'settings' | 'atomic' | 'afterCommit'>
+  readonly store: Pick<Store, 'tickets' | 'triggers' | 'get' | 'set' | 'settings' | 'atomic' | 'afterCommit'>
   /** Durable effect queue through which launches and input deliveries run. */
   readonly effects: Pick<Effects, 'enqueue' | 'handle'>
   /** The `worker` health entry, which reports whether background worker event handling failed. */
@@ -76,6 +78,8 @@ export interface ExecutorHost {
   paused(): boolean
   /** Execution environment variables for `ticket`, passed to its workspace prepare command. */
   environment(ticket: Ticket): Variable[]
+  /** Trusted existing-workspace binding for this Source, captured once when accepting a task. */
+  workspace?(trigger: Trigger): WorkspaceBinding | undefined
   sourceLink(trigger: Trigger, signal?: AbortSignal): Promise<{ source_url?: string; source_url_read?: string }>
   /** Stored Trigger of the message `trigger` replies to, when it replies to one. */
   repliedTo(trigger: Trigger): Trigger | undefined
@@ -224,21 +228,21 @@ export class DshExecutor implements Executor {
   private readonly personal = new Map<string, string>()
   /** The timers of workers that go on after a passing failure, which dispose clears. */
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
-  /** Local workspaces reserved while an asynchronous launch or wake has not reached its first step. */
-  private readonly localStarts = new Map<string, string>()
+  /** Existing workspaces reserved while an asynchronous launch or wake has not reached its first step. */
+  private readonly workspaceStarts = new Map<string, string>()
 
   private reserveWorker(ticket: Ticket, by: 'launch' | 'wake' | 'person'): void {
-    const directory = sourceTrigger(this.host, ticket)?.source === 'local' ? ticket.execution?.directory : undefined
+    const directory = workspaceOf(this.host.store, ticket)?.directory
     if (directory) {
-      const starting = [...this.localStarts].some(([id, path]) => id !== ticket.id && path === directory)
+      const starting = [...this.workspaceStarts].some(([id, path]) => id !== ticket.id && path === directory)
       const stopping = [...this.stopping.keys()].some(id => id !== ticket.id && this.host.store.tickets.get(id)?.execution?.directory === directory)
       const working = this.host.store.tickets.open().some(other => other.id !== ticket.id && other.execution?.directory === directory && this.running(other))
       if (starting || stopping || working) throw new Later('Another local task is using this workspace')
     }
     this.slots.reserve(ticket.id, by)
-    if (directory) this.localStarts.set(ticket.id, directory)
+    if (directory) this.workspaceStarts.set(ticket.id, directory)
   }
-  private freeWorker(id: string): void { this.localStarts.delete(id); this.slots.free(id) }
+  private freeWorker(id: string): void { this.workspaceStarts.delete(id); this.slots.free(id) }
   /** Registers the `launch` and `delivery` effect handlers; both are held (concurrency limit 0) while processing is paused. */
   constructor(private readonly host: ExecutorHost) {
     this.slots = new WorkerSlots(() => host.store.tickets.open().filter(ticket => this.running(ticket)).map(ticket => ticket.id),
@@ -253,7 +257,12 @@ export class DshExecutor implements Executor {
   prepare(ticket: Ticket, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>): Ticket {
     const execution = ticketExecution(ticket, outcome, this.host.store.settings(), this.host.machine.stateDir)
     const origin = sourceTrigger(this.host, ticket)
-    if (origin?.source === 'local' && typeof origin.meta.directory === 'string') execution.directory = origin.meta.directory
+    const binding = workspaceOf(this.host.store, ticket) ?? (origin && this.host.workspace?.(origin))
+    if (binding) {
+      const workspace = canonicalWorkspace(binding)
+      execution.directory = workspace.directory
+      this.host.store.set(workspaceBindings(ticket.id), workspace)
+    }
     return { ...ticket, execution }
   }
   /**
@@ -297,7 +306,7 @@ export class DshExecutor implements Executor {
       // would treat whatever a failed prepare command left behind in the directory as a prepared workspace; instead the
       // ticket is marked failed and waits until new human input or an explicit retry arrives.
       if (this.host.closing() || error instanceof Later) throw error
-      if (!(error instanceof PrepareFailed) && this.retries(`launch:${assignmentId}`, error)) throw error
+      if (!(error instanceof PrepareFailed) && !(error instanceof WorkspaceError) && this.retries(`launch:${assignmentId}`, error)) throw error
       this.launchFailed(ticketId, assignmentId, error)
     } finally { this.freeWorker(ticketId) }
   }
@@ -449,8 +458,10 @@ export class DshExecutor implements Executor {
     const source = sourceTrigger(this.host, ticket)
     const workspace = ticket.execution?.directory ?? ''
     if (!current()) return
+    const binding = workspaceOf(this.host.store, ticket)
+    if (binding && canonicalWorkspace(binding).directory !== binding.directory) throw new WorkspaceError('工作区位置已改变，请检查后重新派单')
     // Prepare the workspace directory once; an existing directory counts as already prepared, including worktrees created before `prepare` commands existed.
-    if (!await stat(workspace).then(() => true, () => false)) {
+    if (!binding && !await stat(workspace).then(() => true, () => false)) {
       await this.prepareDirectory(ticket)
       if (!current()) return
     }

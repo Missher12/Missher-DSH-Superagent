@@ -81,6 +81,8 @@ export interface TriggerContext {
   image(agent: Agent, commands: Commands, message: { id: string; text: string }, key: string, stateDir: string,
     signal: AbortSignal): Promise<unknown>
 }
+/** A trusted Source configuration binds work to an existing directory and a named DSH permission preset. */
+export interface WorkspaceBinding { directory: string; permissionPreset: string }
 /** Pluggable source kind descriptor registered with SourceRegistry. */
 export interface SourceKind<C extends Record<string, unknown> = Record<string, unknown>> {
   /** Stable ID; a default instance with the same ID exists when none is stored. */
@@ -96,6 +98,8 @@ export interface SourceKind<C extends Record<string, unknown> = Record<string, u
   health: string[]
   /** Listening rule for a trigger (or recorded Mandate basis) of this kind; kinds without `scope` listen to everything they produce and observe none of it. */
   scope?(input: { meta: Record<string, unknown> }, config: C): ScopeResult
+  /** Resolve from trusted configuration; incoming text or metadata cannot grant a workspace or broader permissions. */
+  workspace?(trigger: Trigger, config: C): { directory: string; permissionPreset?: string } | undefined
   /** Outbound reply adapter; kinds without `channel` produce no replies or channel checks. */
   channel?: SourceChannel<C>
   /** Bounded context reader for assessments; assessments of a kind without `threadContext` read none. */

@@ -41,6 +41,13 @@ export class SourceRegistry implements SourceScope {
     return new Map(names.flatMap(name => { const entry = this.health.get(name); return entry ? [[name, entry] as const] : [] }))
   }
   kind(id: string): SourceKind | undefined { return this.kinds.get(id) }
+  /** Workspace binding for a newly accepted task; uninstalled or disabled Sources cannot provide one. */
+  workspace(trigger: Trigger) {
+    const kind = this.kinds.get(trigger.source)
+    if (!kind?.workspace) return undefined
+    const instance = this.resolve(kind, this.settings().sources[trigger.source])
+    return instance.enabled ? kind.workspace(trigger, instance.config) : undefined
+  }
   /** Every registered kind's instance ordered by ID, followed by stored instances whose kind is not installed (with their config kept as stored). */
   instances(settings = this.settings()): (SourceInstance & { installed: boolean })[] {
     const installed = [...this.kinds.values()].sort((a, b) => a.kind.localeCompare(b.kind)).map(kind => ({ ...this.resolve(kind, settings.sources[kind.kind]), installed: true }))

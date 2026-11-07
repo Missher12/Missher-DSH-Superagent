@@ -9,6 +9,9 @@ import { PromptsPage } from './prompts.tsx'
 import { Field, Fields, SettingsProvider, numberOf, useBlockDraft, useSettings } from './settings-kit.tsx'
 import { errorText } from './text.ts'
 import { Hint, Section } from './widgets.tsx'
+import { McpSettings } from './local-mcp.tsx'
+import { SourceSettings } from './source.tsx'
+import { EvalSettings } from './eval.tsx'
 
 function SettingsForm() {
   const { t, call } = usePanel()
@@ -55,7 +58,6 @@ function SettingsForm() {
           onChange={event => draft.edit({ ...draft.value, maxWorkers: event.target.value })} /></Field>
       </Section>
       <Section title={t('localPermissionTitle')}><Hint>{t('localPermissionHint')}</Hint></Section>
-      <Section title={t('localAdaptersTitle')}><Hint>{t('localAdaptersHint')}</Hint></Section>
     </Fields>
     <SaveBar {...draft} onDiscard={draft.discard} />
   </form>
@@ -64,7 +66,16 @@ function SettingsForm() {
 export function LocalSettings() {
   const { t } = usePanel()
   const [promptsOpen, setPromptsOpen] = useState(false)
-  return <SettingsProvider><div className="dt-form"><SettingsForm />
+  const [sourcesOpen, setSourcesOpen] = useState(false), [policyOpen, setPolicyOpen] = useState(false)
+  return <SettingsProvider><div className="dt-form dt-local-settings-page"><SettingsForm /><McpSettings />
+    <details className="dt-local-details dt-local-prompt-settings" onToggle={event => setSourcesOpen(event.currentTarget.open)}>
+      <summary>{t('localExternalTitle')}</summary>
+      <div className="dt-local-details-body">{sourcesOpen && <SourceSettings include={['github', 'feishu']} />}</div>
+    </details>
+    <details className="dt-local-details dt-local-prompt-settings" onToggle={event => setPolicyOpen(event.currentTarget.open)}>
+      <summary>{t('localExternalPolicy')}</summary>
+      <div className="dt-local-details-body">{policyOpen && <EvalSettings include={['github', 'feishu']} />}</div>
+    </details>
     <details className="dt-local-details dt-local-prompt-settings" onToggle={event => setPromptsOpen(event.currentTarget.open)}>
       <summary>{t('settingsGroup.prompts')}</summary>
       <div className="dt-local-details-body">{promptsOpen && <PromptsPage />}</div>

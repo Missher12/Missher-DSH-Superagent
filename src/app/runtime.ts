@@ -46,6 +46,8 @@ import { sourceContextOf, type SourceContextDeps } from './source-context.ts'
 import type { ResourceHost } from './resources.ts'
 import { mainTools, type MainToolsHost } from './tools/main.ts'
 import { LocalTasks } from '../sources/local.ts'
+import { McpTasks } from '../sources/mcp.ts'
+import { mountMcp } from '../mcp/mount.ts'
 import { executorTools, type ExecutorToolsHost } from './tools/executor.ts'
 
 // Source plugins interact with dsh-superagent exclusively through the `SourceHost` service interface.
@@ -59,6 +61,7 @@ const now = (): string => new Date().toISOString()
  */
 export class Runtime extends Service implements SourceHost {
   readonly local?: LocalTasks
+  readonly mcp?: McpTasks
   readonly store: Store
   readonly setup: Setup
   readonly prompts: Prompts
@@ -129,6 +132,10 @@ export class Runtime extends Service implements SourceHost {
         sourceHost: this, setup, requestPass: () => { this.passes.request() } })
       this.executor = new DshExecutor({ context: ctx, get engine() { return runtime.engine }, store, effects, health: board.claim('worker'), machine,
         lifetime: this.lifetime, sessions, closing: () => this.closing(), paused: () => this.paused(), environment, sourceLink: link,
+        workspace: trigger => {
+          const selected = machine.mode === 'local' ? sources.workspace(trigger) : undefined
+          return selected ? { ...selected, permissionPreset: selected.permissionPreset ?? ctx.permissionPresets.defaultPreset } : undefined
+        },
         repliedTo: trigger => repliedTo({ store, sources }, trigger) })
       this.assessor = new MasterAssessor({ get engine() { return runtime.engine }, commands, get deployment() { return setup.deployment }, effects,
         settings: () => store.settings(), paused: () => this.paused(), threadContext: trigger => sources.threadContext(trigger),
@@ -160,7 +167,8 @@ export class Runtime extends Service implements SourceHost {
         health: this.runtimeHealth, lifetime: this.lifetime, configured: () => setup.configured(), closing: () => this.closing() })
       this.sourceDeps = { store, engine, outbox, commands, sources, get ready() { return runtime.ready },
         get deployment() { return setup.deployment }, configured: () => setup.configured(),
-        get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem }, receive: trigger => passes.receive(trigger) }
+        get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem },
+        get githubProblem() { return setup.githubProblem }, receive: trigger => passes.receive(trigger) }
       this.toolHost = { context: ctx, engine, store, prompts, sessions, settings: this.settings, assessor, resources,
         get github() { return runtime.context({ kind: 'github', health: ['github'] }) },
         requestPass: () => { passes.request() }, sendReplies: () => outbox.sent(),
@@ -168,6 +176,8 @@ export class Runtime extends Service implements SourceHost {
       if (machine.mode === 'local') {
         this.local = new LocalTasks(this, ctx)
         this.disposers.push(() => { this.local?.dispose() })
+        this.mcp = new McpTasks(this, ctx)
+        this.disposers.push(() => { this.mcp?.dispose() })
       }
       this.ready = this.initialize()
     } catch (error) {
@@ -186,6 +196,7 @@ export class Runtime extends Service implements SourceHost {
   get setupProblem(): SetupProblem | undefined { return this.setup.problem }
   /** Why the Feishu bot is unavailable even though the Feishu Source configures a CLI. */
   get feishuProblem(): SetupProblem | undefined { return this.setup.feishuProblem }
+  get githubProblem(): SetupProblem | undefined { return this.setup.githubProblem }
   links(): LinkTarget {
     const resolved = this.setup.configured() ? this.setup.deployment : undefined
     const links = resolved ? { repository: resolved.repository, ...(resolved.feishu ? { feishu: resolved.feishu } : {}) } : {}
@@ -207,6 +218,7 @@ export class Runtime extends Service implements SourceHost {
   private async initialize(): Promise<void> {
     // Register management HTTP routes before setup completes so operators can fix setup problems in the UI.
     this.disposers.push(registerHttp(this.ctx, this.httpHost()))
+    if (this.mcp) this.disposers.push(mountMcp(this.ctx, this.mcp, this.machine.stateDir))
     if (!await this.setup.run(this.store.settings())) {
       this.runtimeHealth.set({ ...health('paused', 'setupPending'), at: now() })
       return
@@ -226,9 +238,9 @@ export class Runtime extends Service implements SourceHost {
   private httpHost(): HttpHost {
     const runtime = this
     const { store, sources, prompts, sessions, settings, engine, executor, health, machine, masterId, ready, sourceLinks, setup, passes } = this
-    return { store, sources, prompts, sessions, settings, engine, executor, health, machine, masterId, ready, sourceLinks, local: this.local,
+    return { store, sources, prompts, sessions, settings, engine, executor, health, machine, masterId, ready, sourceLinks, local: this.local, mcp: this.mcp,
       get deployment() { return setup.deployment },
-      get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem },
+      get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem }, get githubProblem() { return setup.githubProblem },
       configured: () => setup.configured(), links: () => runtime.links(), ticketEnvironment: ticket => runtime.ticketEnvironment(ticket),
       checkSetup: () => { setup.check() }, requestPass: () => { passes.request() }, models: () => this.ctx.sessionController.modelCatalog() }
   }

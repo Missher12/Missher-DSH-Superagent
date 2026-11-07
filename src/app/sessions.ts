@@ -8,6 +8,7 @@ import { dirname } from 'node:path'
 import { z } from 'zod'
 import { key, liveTicket, type Ticket } from '../core/index.ts'
 import { mandateInstructions, ticketOfSession } from '../executor/dsh.ts'
+import { workspaceOf } from '../executor/workspace.ts'
 import type { HealthEntry } from '../infra/health.ts'
 import { AgentDelivery, messageId } from './delivery.ts'
 import type { Effects } from './effects.ts'
@@ -155,9 +156,8 @@ export class Sessions {
     if (this.host.local && created) {
       const ticketId = ticketOfSession(id)
       const ticket = ticketId && this.host.store.tickets.get(ticketId)
-      const origin = ticket && this.host.store.triggers.get(ticket.origin.triggerId)
-      const preset = origin && origin.source === 'local' && typeof origin.meta.permissionPreset === 'string'
-        ? origin.meta.permissionPreset : ctx.permissionPresets.defaultPreset
+      const workspace = ticket && workspaceOf(this.host.store, ticket)
+      const preset = workspace ? workspace.permissionPreset : ctx.permissionPresets.defaultPreset
       ctx.permissionPresets.set(result.agent.session, preset)
     } else if (!this.host.local) ctx.permissionPresets.set(result.agent.session, 'danger-full-access')
     await ctx.sessionController.rename({ sessionId: id as SessionId, title })

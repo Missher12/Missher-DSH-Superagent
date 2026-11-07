@@ -133,13 +133,13 @@ function AdmissionTable({ rows, labels, table, explicit, onChange }: {
   </Section>
 }
 
-function PolicyBlock() {
+function PolicyBlock({ include }: { include?: readonly string[] }) {
   const { t } = usePanel()
   const { settings: { blocks, sources, policyVersion }, reload } = useSettings()
   const draft = useBlockDraft('policy', blocks.policy.value, blocks.policy.revision)
   const policy = draft.value
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const parts = sources.filter(source => source.installed && source.policy)
+  const parts = sources.filter(source => source.installed && source.policy && (!include || include.includes(source.id)))
   const [tab, setTab] = useState<string>()
   const current = parts.find(source => source.id === tab) ?? parts[0]
   const edit = (next: Partial<typeof policy>) => draft.edit({ ...policy, ...next })
@@ -216,9 +216,9 @@ function EvalBlock() {
   </form>
 }
 
-export function EvalSettings({ version }: { version?: string | undefined }) {
+export function EvalSettings({ version, include }: { version?: string | undefined; include?: readonly string[] }) {
   return <div className="dt-form">
-    <PolicyBlock />
+    <PolicyBlock {...include ? { include } : {}} />
     <EvalBlock />
     <ConfigHistory blocks={['policy', 'eval']} versions {...version ? { focus: version } : {}} />
   </div>

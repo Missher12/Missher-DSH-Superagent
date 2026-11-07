@@ -15,6 +15,7 @@ import { KV } from '../kv.ts'
 import { cursorAt, pause, POLL_HORIZON_MS, pollThreads as pollEach } from './poll.ts'
 import type { Localized, SourceKind } from './kind.ts'
 import { z } from 'zod'
+import { WorkspaceError } from '../executor/workspace.ts'
 
 export { commentTrigger, type GithubComment } from './github-trigger.ts'
 /** A notification of the agent account; `subject.url` is the API address of its Issue or PR. */
@@ -23,6 +24,8 @@ const NotificationSchema = z.looseObject({
 })
 
 const GithubConfigSchema = GithubAccountsSchema.extend({ pollSeconds: z.number().int().min(60).max(3600).default(60),
+  workspaceDirectory: z.string().trim().max(4096).default(''),
+  notifications: z.boolean().default(true),
   failuresBeforeError: z.number().int().min(1).max(20).default(3),
   observeIssues: z.boolean().default(false), observePulls: z.boolean().default(false), observeComments: z.boolean().default(false),
   observeCi: z.boolean().default(false) }).strict()
@@ -41,11 +44,15 @@ export const githubKind: SourceKind<GithubConfig> = {
   description: { zh: '智能体的 GitHub 账号；接收仓库里发给它的通知、已订阅 Issue 与 PR 的讨论、CI 状态变化和 PR 合并关闭。', en: 'The agent\'s GitHub accounts; receives notifications to it in the repository, discussion on subscribed Issues and PRs, CI changes, and PR merge or close.' },
   schema: GithubConfigSchema,
   fields: [
+    { key: 'workspaceDirectory', type: 'text', label: { zh: '工作区', en: 'Workspace' },
+      hint: { zh: '本地模式填写对应仓库的项目绝对路径。独立部署可留空。', en: 'In local mode, select this repository’s existing project by its absolute path. Optional for standalone deployment.' } },
     { key: 'repository', type: 'text', pattern: '[A-Za-z0-9_.\\-]+/[A-Za-z0-9_.\\-]+', label: { zh: '监听的仓库', en: 'Repository' },
       hint: { zh: '写作 owner/name。这个来源接收这个仓库的通知和讨论；保存时检查智能体账号能否推送到它，然后重启 dsh-superagent。', en: 'Written owner/name. This Source receives the repository\'s notifications and discussion; saving checks that the agent account can push to it, then restarts dsh-superagent.' } },
     { key: 'cli', type: 'text', label: { zh: '智能体的 GitHub CLI', en: 'Agent GitHub CLI' },
       hint: { zh: '命令名或绝对路径，通常是用 GH_CONFIG_DIR 登录智能体账号的 gh 包装脚本。智能体以它登录的账号行事，执行器以 gh 调用它。保存时检查它登录的账号能否推送到仓库，然后重启 dsh-superagent。', en: 'A command name or absolute path, usually a gh wrapper signed in to the agent account through GH_CONFIG_DIR. The agent acts as the account it is signed in to, and the Executor calls it as gh. Saving checks that this account can push to the repository, then restarts dsh-superagent.' } },
     { key: 'pollSeconds', type: 'number', advanced: true, min: 60, max: 3600, label: { zh: '轮询间隔 / 秒', en: 'Polling interval / seconds' }, hint: { zh: 'GitHub 要求更长间隔时以 GitHub 为准。', en: 'A longer interval requested by GitHub wins.' } },
+    { key: 'notifications', type: 'switch', advanced: true, label: { zh: '账号通知', en: 'Account notifications' },
+      hint: { zh: '精细令牌不支持账号通知时，可关闭此项并开启下方需要的仓库事件。', en: 'If a fine-grained token cannot read account notifications, disable this and enable the repository event streams you need.' } },
     { key: 'failuresBeforeError', type: 'number', advanced: true, min: 1, max: 20, label: { zh: '连续失败几次后报告异常', en: 'Failed polls before reporting an error' }, hint: { zh: '单次网络中断会在下一次轮询时自动重试，不必报告。', en: 'A single network interruption is retried on the next poll and need not be reported.' } },
     { key: 'observeIssues', type: 'switch', label: { zh: '接收仓库里的新 Issue', en: 'Receive new Issues in the repository' },
       hint: { zh: '打开后，没有 @ 智能体的新 Issue 也会收到，由策略的接收表决定是否成为候选。从打开的时候开始，不读以前的。', en: 'New Issues that do not mention the agent are received too, and the Policy\'s admission table decides whether they become candidates. Starts when switched on; earlier ones are not read.' } },
@@ -61,6 +68,10 @@ export const githubKind: SourceKind<GithubConfig> = {
     return { listened: true, observed: row !== undefined && config[OBSERVED[row]], ...row ? { row } : {} }
   },
   health: ['github'],
+  workspace: (_trigger, config) => {
+    if (!config.workspaceDirectory) throw new WorkspaceError('请先为 GitHub 来源选择工作区')
+    return { directory: config.workspaceDirectory }
+  },
   channel: { send: sendGithub, link: githubLink },
   threadContext: githubThreadContext,
   // `#12`, `12`, or the page of an Issue or PR, of any repository, names Thread 12.
@@ -93,13 +104,16 @@ export const githubKind: SourceKind<GithubConfig> = {
     variables: [
       { key: 'DSH_SUPERAGENT_GITHUB_REPOSITORY', description: { zh: '这个来源监听的仓库，owner/name。智能体在这里开的 PR，分支最后一段是 DSH_SUPERAGENT_NAME 时（例如 agent/$DSH_SUPERAGENT_NAME）会关联到工单', en: 'The repository this Source watches, as owner/name. A PR the agent opens here from a branch whose last path segment is DSH_SUPERAGENT_NAME (for example agent/$DSH_SUPERAGENT_NAME) binds to the ticket' } },
       { key: 'DSH_SUPERAGENT_GITHUB_ACCOUNT', description: { zh: '智能体的 GitHub 账号；gh 以它登录，除自动合并外的 GitHub 操作都用 gh，不用其他账号或凭据', en: 'The agent\'s GitHub account. gh is signed in to it; use gh for every GitHub operation except auto-merge, and never another account or credential' } },
+      { key: 'DSH_SUPERAGENT_GITHUB_CLI', description: { zh: '已配置 GitHub CLI 的绝对路径，本地模式使用此路径执行 GitHub 操作', en: 'Absolute configured GitHub CLI path; use this executable for GitHub operations in local mode' } },
       { key: 'DSH_SUPERAGENT_GITHUB_COMMIT_EMAIL', description: { zh: '智能体账号的提交邮箱。这里的 git 没有身份：按提示词写明的作者提交，没有写明时用智能体账号和这个邮箱', en: 'Commit email of the agent\'s account. git has no identity here: commit as the author these instructions name, or as the agent\'s account with this email when they name none' } },
       { key: 'DSH_SUPERAGENT_GITHUB_NUMBER', description: { zh: '接下工单的 Issue 或 PR 编号；工单不是从 GitHub 来的时为空', en: 'Number of the Issue or PR that started the ticket; empty when the ticket did not start on GitHub' } },
       { key: 'DSH_SUPERAGENT_GITHUB_PR_HEAD', description: { zh: '接下工单的 PR 的 head 引用 refs/pull/<编号>/head；不是 PR 时为空', en: 'Head ref refs/pull/<number>/head of the PR that started the ticket; empty when it was not a PR' } },
     ],
-    values: ({ deployment, trigger }) => {
+    values: ({ deployment, trigger }): Record<string, string> => {
+      if (!deployment.github) return {}
       const number = trigger?.threads[0]?.source === SOURCE ? Number(trigger.meta.number) || 0 : 0
-      return { DSH_SUPERAGENT_GITHUB_REPOSITORY: deployment.repository, DSH_SUPERAGENT_GITHUB_ACCOUNT: githubAccount(deployment).login, DSH_SUPERAGENT_GITHUB_COMMIT_EMAIL: githubAccount(deployment).noreply, DSH_SUPERAGENT_GITHUB_NUMBER: number ? String(number) : '',
+      return { DSH_SUPERAGENT_GITHUB_REPOSITORY: deployment.repository, DSH_SUPERAGENT_GITHUB_ACCOUNT: githubAccount(deployment).login,
+        DSH_SUPERAGENT_GITHUB_CLI: githubAccount(deployment).cli, DSH_SUPERAGENT_GITHUB_COMMIT_EMAIL: githubAccount(deployment).noreply, DSH_SUPERAGENT_GITHUB_NUMBER: number ? String(number) : '',
         DSH_SUPERAGENT_GITHUB_PR_HEAD: number && trigger?.meta.isPr === true ? `refs/pull/${number}/head` : '' }
     },
   },
@@ -279,7 +293,10 @@ async function pollBranchCi(ctx: SourceContext, round: Round): Promise<void> {
  */
 export async function pollRound(ctx: SourceContext, signal?: AbortSignal): Promise<number> {
   const round = newRound(signal)
-  const notified = await pollNotifications(ctx, round).then(value => ({ value }), (error: unknown) => ({ error }))
+  const config = ctx.config<GithubConfig>(SOURCE)
+  const notified = config?.notifications === false
+    ? { value: { count: 0, interval: config.pollSeconds } }
+    : await pollNotifications(ctx, round).then(value => ({ value }), (error: unknown) => ({ error }))
   await pollRepository(ctx, round)
   await pollTicketPulls(ctx, signal, round)
   await pollThreads(ctx, signal, round)
