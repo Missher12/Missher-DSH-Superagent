@@ -2,6 +2,8 @@
 
 <h1>DSH Superagent · 项目任务</h1>
 
+<p><img src="../docs/images/overview.svg" alt="Superagent 功能示意" width="100%"></p>
+
 <p>派出项目任务，回来查看进度、执行过程与结果。</p>
 
 <p>
@@ -15,6 +17,10 @@
 </div>
 
 ---
+
+<!-- current-source -->
+当前开发源码：**1.2.2** · [分支 `main`](https://github.com/Missher12/Missher-DSH-Superagent/tree/main)。安装包以实际 Release 为准。
+<!-- /current-source -->
 
 ## 功能一览
 
