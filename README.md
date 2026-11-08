@@ -1,13 +1,13 @@
 # Missher DSH Superagent
 
-当前开发版 **1.3.1** · [已发布 1.0.0](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.0.0)
+当前版本 **1.3.2** · [下载安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.3.2)
 在 DSH 里派出项目任务，让它在独立会话中执行，回来查看进度和结果。
 
 适用场景：调研代码、定位问题、修改功能、运行相关检查。任务会在你选择的已有项目目录内工作，遵守该项目的 `AGENTS.md`。
 
 ## 安装
 
-要求：DeepSeek Harness `0.2.1-rc.4`，已配置可用模型。
+要求：DeepSeek Harness `0.2.1-rc.4` 或 `0.2.2-rc.1`，已配置可用模型。
 
 1. 在 DSH「插件 → 添加插件 → 安装第三方插件」填入本地 `.tgz` 的绝对路径。
 2. 安装完成后点击「立即启用」。

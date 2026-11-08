@@ -111,8 +111,9 @@ async function sourcePage(read: Read, source: string, fetch: () => Promise<unkno
 const THREAD_DECISIONS = 5
 const triggerLine = (trigger: Trigger) => ({ trigger_id: trigger.id, actor: trigger.actor.id, human: trigger.human, at: trigger.at,
   preview: preview(trigger.text), chars: trigger.text.length, read: `trigger/${trigger.id}` })
-async function transcript(host: ResourceHost, ticketId: string) {
-  return (await host.context.sessionController.inspect(workerSessionId(ticketId) as SessionId)).events
+async function transcript(host: ResourceHost, ticketId: string, signal?: AbortSignal) {
+  await using handle = await host.context.sessionPersistence.open(workerSessionId(ticketId) as SessionId, 'read', { signal })
+  return (await handle.read(0, undefined, { signal })).events
 }
 
 const ROUTES: readonly Route[] = [
@@ -269,7 +270,7 @@ const ROUTES: readonly Route[] = [
       if (message === undefined) throw new Error('Unknown ticket input')
       body = message
     } else if (section === 'message' && part && /^\d+$/.test(part)) {
-      const event = (await transcript(host, id))[Number(part)]
+      const event = (await transcript(host, id, signal))[Number(part)]
       const entry = event && transcriptEntry(event)
       if (!entry) throw new Error('Unknown transcript entry')
       body = JSON.stringify(entry)
@@ -281,7 +282,7 @@ const ROUTES: readonly Route[] = [
     else if (section === 'assignment') body = ticket.execution?.assignment ?? ''
     else if (section === 'result') body = latestReport(ticket)?.summary ?? ''
     else if (section === 'transcript') {
-      body = (await transcript(host, id)).flatMap((event, index) => {
+      body = (await transcript(host, id, signal)).flatMap((event, index) => {
         const entry = transcriptEntry(event)
         const said = entry?.message.content.map(block => block.type === 'text' ? block.text : `[${block.type}]`).join(' ') ?? ''
         return entry ? [{ type: entry.type, preview: preview(said).slice(0, 80), chars: JSON.stringify(entry).length,

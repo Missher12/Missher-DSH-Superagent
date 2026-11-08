@@ -1,7 +1,13 @@
-/** Resolves packaged asset paths from either the source tree or the compiled lib/ output. */
+/** Native directory validation and packaged asset paths from either source or compiled lib/ output. */
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join, parse, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+/** Match DSH workspace semantics: Windows roots must include a drive or UNC share, never the current drive. */
+export function absoluteDirectory(path: string): boolean {
+  const root = parse(path).root
+  return isAbsolute(path) && (sep !== '\\' || root !== '\\' && root !== '/')
+}
 
 let cached: string | undefined
 export function packageRoot(): string {

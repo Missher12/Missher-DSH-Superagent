@@ -7,10 +7,14 @@ import s from '@deepseek-ai/schemastery'
 import { z } from 'zod'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { runAsWorker, sameDirectory, withoutDirectory, workerBin } from './infra/environment.ts'
+import { absoluteDirectory } from './infra/paths.ts'
 import { SetupError } from './setup.ts'
 
 const reason = (error: unknown): string => error instanceof Error ? error.message : String(error)
-const absolute = (description: string) => s.string().pattern(/^\//).description(`${description} Absolute path.`)
+const absolute = (description: string) => s.transform(s.string(), (value, options) => {
+  if (!absoluteDirectory(value)) throw new s.ValidationError('expected a fully qualified absolute path on this host', options)
+  return value
+}).description(`${description} Absolute path on this host.`)
 /** Plugin configuration of the dsh-superagent entry. Volatile fields apply without a restart because dsh-superagent reads them on each use; changing `stateDir` remounts the plugin. */
 export const Config = s.object({
   mode: s.union(['local', 'github']).default('github').description('Local DSH tasks, or the upstream GitHub deployment.'),
