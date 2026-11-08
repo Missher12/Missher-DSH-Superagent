@@ -1555,6 +1555,22 @@ it('reads the main Session\'s preset from a registry with or without presetForSe
   expect(main(watch)).toMatch(/^This shell waits up to 60 seconds by default/)
 })
 
+it('applies the main Session waiting limits to PowerShell commands without restricting worker waits', async () => {
+  const pwsh = (command: string, timeoutMs?: number) => ({ name: 'pwsh', arguments: { command, timeoutMs } })
+  const main = guards.get(runtime.masterId)!
+  for (const command of ['Start-Sleep -Seconds 60', 'start-sleep -Milliseconds 50', 'sleep 10', 'Get-Date; Start-Sleep 30',
+    'while ($true) { Start-Sleep 10 }', 'Microsoft.PowerShell.Utility\\Start-Sleep -Seconds 10']) {
+    expect(main(pwsh(command)), command).toMatch(/^Reports/)
+  }
+  expect(main(pwsh('Get-ChildItem', 60_000))).toMatch(/^Reports/)
+  expect(main(pwsh('Get-ChildItem', 20_000))).toBeUndefined()
+  expect(main(pwsh('Write-Output "Start-Sleep"'))).toBeUndefined()
+  ;(agents.get(runtime.masterId) as unknown as { session: { header: { agentPreset: string } } }).session.header = { agentPreset: 'standard' }
+  expect(main(pwsh('Get-ChildItem'))).toMatch(/^This shell waits/)
+  const { sessionId } = await acceptedTicket()
+  expect(guards.get(sessionId)!(pwsh('Start-Sleep 60'))).toBeUndefined()
+})
+
 it('refuses an ended ticket\'s worker its tools, and restricts the main Session to the tools it may use', async () => {
   const { ticket, sessionId } = await acceptedTicket()
   expect(guards.get(sessionId)!()).toBeUndefined()
@@ -1564,6 +1580,31 @@ it('refuses an ended ticket\'s worker its tools, and restricts the main Session 
   // A worker keeps only the profile's work tools: none that ask a person, change the profile, schedule or start work outside
   // the worker slots, reach other Sessions or edit documents, whenever they were registered.
   expect(restricts.get(sessionId)).toEqual([{ allow: ['read', 'read_image', 'grep', 'bash', 'job_output', 'job_list', 'job_kill', 'web_search', 'skill'] }])
+})
+
+it('creates the main and worker Sessions when only pwsh and a subset of optional inherited tools exist', async () => {
+  const known = ['skill', 'pwsh', 'read', 'job_output', 'job_list', 'job_kill']
+  const configure = (sessionId: string) => {
+    const agent = agents.get(sessionId) as unknown as { ctx: Context }
+    vi.spyOn(agent.ctx.tools, 'get').mockImplementation(name => known.includes(name) ? { name } as never : undefined)
+    vi.spyOn(agent.ctx.tools, 'restrict').mockImplementation(rule => {
+      const unknown = rule.allow?.filter(name => !known.includes(name)) ?? []
+      if (unknown.length) throw new Error(`tools.restrict() names unknown global tool "${unknown.join(', ')}"`)
+      restricts.set(sessionId, [...restricts.get(sessionId) ?? [], rule])
+      return () => {}
+    })
+  }
+  const create = controller.create.getMockImplementation()! as (request: { sessionId: string }) => Promise<void>
+  controller.create.mockImplementation(async request => { await create(request); configure(request.sessionId) })
+  runtime.sessions.dispose()
+  agents.delete(runtime.masterId)
+  restricts.clear()
+  await runtime.sessions.ensure(runtime.masterId, directory, 'Test main', 'orchestrator')
+  const { ticket, sessionId } = await acceptedTicket()
+  expect(runtime.configured()).toBe(true)
+  expect(ticket.assignments.at(-1)?.state).toBe('running')
+  expect(restricts.get(runtime.masterId)?.at(-1)).toEqual({ allow: ['skill', 'pwsh', 'read', 'job_output', 'job_list', 'job_kill'] })
+  expect(restricts.get(sessionId)).toEqual([{ allow: ['read', 'pwsh', 'job_output', 'job_list', 'job_kill', 'skill'] }])
 })
 
 it('gives an explicit ticket\'s worker a prompt without the limits of an inferred Mandate', async () => {

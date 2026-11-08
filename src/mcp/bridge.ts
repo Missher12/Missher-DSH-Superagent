@@ -24,7 +24,7 @@ export function createTaskBridge(stateDir: string, token: string) {
     const url = endpointUrl(JSON.parse(readFileSync(join(stateDir, MCP_ENDPOINT_FILE), 'utf8')))
     if (current?.url === url.href) return current.client
     await current?.client.close(); current = undefined
-    const client = new Client({ name: 'dsh-superagent-desktop-bridge', version: '1.3.2' })
+    const client = new Client({ name: 'dsh-superagent-desktop-bridge', version: '1.3.3' })
     try {
       await client.connect(new StreamableHTTPClientTransport(url, { requestInit: {
         headers: { authorization: `Bearer ${token}` }, redirect: 'error',
