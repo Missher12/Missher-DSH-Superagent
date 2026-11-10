@@ -7,7 +7,7 @@ import { ModelSelect, ReasoningSelect } from './model-picker.tsx'
 import { TeamGraph } from './team-graph.tsx'
 import { TeamStatus, TeamText } from './team-ui.tsx'
 import { useAction, usePanel } from './provider.tsx'
-import { errorText } from './text.ts'
+import { errorText, shortText } from './text.ts'
 
 function AddTeamMember({ team, reload, select }: { team: TeamView; reload: () => Promise<void>; select: (id: string) => void }) {
   const { t, call } = usePanel(), form = useId()
@@ -73,7 +73,7 @@ export function TeamCollaboration({ team, selected, select, reload, delivery }: 
       {team.error && <div className="dt-team-issue" role="alert"><p>{team.error}</p><Button size="sm" disabled={retry.busy} onClick={() => { void retry.run() }}>{t('teamRetry')}</Button></div>}
       {tab === 'graph' ? <><div className="dt-team-count-line"><TeamStatus state={team.state} /><span>{t('teamCompletedCount', { done: team.completedMembers, total: team.memberCount })}</span></div>
         <TeamGraph team={team} selected={selected} select={select} /><section className="dt-team-selected-plan"><h3>{active.name} · {t('teamMemberWork')}</h3>
-          <TeamText text={active.instructions} />{active.role === 'coordinator' && active.state === 'waiting' && <p className="dt-hint">{t('teamPlanningRound')}</p>}</section>
+          <p className="dt-team-assignment-summary">{active.role === 'coordinator' ? t('teamCoordinatorWork') : shortText(active.instructions, 80)}</p>{active.role === 'coordinator' && active.state === 'waiting' && <p className="dt-hint">{t('teamPlanningRound')}</p>}</section>
         <details className="dt-team-goal-disclosure"><summary>{t('teamGoal')}</summary><TeamText text={team.instructions} /></details></>
         : tab === 'members' ? <ul className="dt-team-assignment-list">{team.members.map(member => <li key={member.id} data-selected={member.id === selected || undefined}>
           <button type="button" className="dt-team-assignment-open" onClick={() => select(member.id)}><span className="dt-team-avatar"><Icon name={member.role === 'coordinator' ? 'queue' : 'user'} /></span>
@@ -81,6 +81,6 @@ export function TeamCollaboration({ team, selected, select, reload, delivery }: 
           <TeamText text={member.instructions} /><div className="dt-team-assignment-meta"><span>{member.model?.model ?? t('teamModelInherit')}{member.model?.reasoningEffort ? ` · ${member.model.reasoningEffort}` : ''}</span>
             <Button size="sm" onClick={() => select(member.id)}>{t('teamOpenSession')}</Button></div>
         </li>)}</ul> : <TeamCompletion team={team} />}
-    </div><footer><Button size="sm" icon={<Icon name="review" />} onClick={delivery}>{t('teamDelivery')}</Button><p>{t('teamSharedDirectory')}</p></footer>
+    </div><footer><Button size="sm" icon={<Icon name="review" />} onClick={delivery}>{t('teamDelivery')}</Button></footer>
   </aside>
 }

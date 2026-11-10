@@ -43,13 +43,12 @@ export function TeamGraph({ team, selected, select }: { team: TeamView; selected
   const node = (member: TeamMemberView) => <button type="button" key={member.id} ref={element => {
     if (element) nodes.current.set(member.id, element); else nodes.current.delete(member.id)
   }} className="dt-team-node" data-state={member.state} data-running={member.running || undefined} data-coordinator={member.role === 'coordinator' || undefined} aria-pressed={selected === member.id}
-    aria-label={`${member.name} · ${t('teamDetails')}`} onClick={() => select(member.id)}>
+    aria-label={`${member.name} · ${t('teamDetails')}`} title={member.dependencies.length ? t('teamPrerequisite', { names: member.dependencies.map(id => team.members.find(item => item.id === id)?.name ?? id).join('、') }) : undefined} onClick={() => select(member.id)}>
     <span className="dt-team-node-head"><span className="dt-team-avatar"><Icon name={member.role === 'coordinator' ? 'queue' : 'user'} size={18} /></span>
       <strong>{member.name}</strong><Icon name="chevron-right" size={14} /></span>
     <TeamStatus state={member.state} member />
     <span className="dt-team-node-action">{member.tools.findLast(tool => tool.state === 'running')?.detail
       ?? (member.attention || member.summary || t('teamNoProgress'))}</span>
-    {member.dependencies.length > 0 && <span className="dt-team-node-deps">{t('teamPrerequisite', { names: member.dependencies.map(id => team.members.find(item => item.id === id)?.name ?? id).join('、') })}</span>}
     {member.model && <span className="dt-team-node-model">{member.model.model}</span>}
   </button>
   return <div className="dt-team-graph" ref={root} aria-label={t('teamGraph')}>

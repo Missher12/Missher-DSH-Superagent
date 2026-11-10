@@ -7,6 +7,18 @@ import type { Health } from '../sources/host.ts'
 import { reasonText, type Reason } from '../core/reasons.ts'
 
 export type T = Translate<DshSuperagentKey>
+/** A plain-text preview; the original report stays in its task and native session. */
+export function shortText(value: string, limit = 96): string {
+  const plain = value.replace(/```[\s\S]*?```/g, '').split(/\r?\n/).filter(line => !/^\s*#{1,6}\s/.test(line))
+    .join(' ').replace(/(?:\*\*|__|`)/g, '').replace(/\s+/g, ' ').trim()
+  const characters = Array.from(plain)
+  return characters.length > limit ? characters.slice(0, limit - 1).join('') + '…' : plain
+}
+const workbenchTools: Record<string, 'read' | 'write' | 'edit' | 'search' | 'shell' | 'job' | 'report' | 'reply' | 'dispatch'> = {
+  read: 'read', read_image: 'read', write: 'write', edit: 'edit', glob: 'search', grep: 'search', bash: 'shell', pwsh: 'shell',
+  job_output: 'job', job_list: 'job', orchestrator_report: 'report', orchestrator_reply: 'reply', orchestrator_decide: 'dispatch',
+}
+export const workbenchToolLabel = (t: T, name: string) => t(`workbenchTool.${workbenchTools[name] ?? 'other'}`, { name })
 export const errorText = (failure: unknown): string => failure instanceof Error ? failure.message : String(failure)
 export const localized = (t: T, text: Localized | string | undefined): string =>
   typeof text === 'string' ? text : text ? text[t('lang') === 'en' ? 'en' : 'zh'] : ''

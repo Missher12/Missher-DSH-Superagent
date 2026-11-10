@@ -61,6 +61,20 @@ it('opens new member fields immediately instead of hiding the required empty ass
   expect(member.hasAttribute('open')).toBe(true)
   expect(member.querySelector('textarea')?.value).toBe('')
 })
+it('keeps activity previews short while leaving full reports in the original task', async () => {
+  const view = server.teamViews['explicit-team']!, member = view.members[1]!
+  const report = '已完成格式化功能。' + '详细实现和逐项解释。'.repeat(35) + '完整记录末尾'
+  member.summary = report
+  member.events = [{ id: 'report-long', at: view.updatedAt, state: 'ready', summary: report }]
+  at({ page: 'overview', query: { team: view.id, member: member.id } })
+  await mount(); await click('活动')
+  const activity = all('.dt-team-member-activity')[0]!
+  expect(activity.textContent).toContain('已完成格式化功能')
+  expect(activity.textContent).not.toContain('完整记录末尾')
+  expect(activity.textContent!.length).toBeLessThan(320)
+  expect(member.summary).toBe(report)
+  expect(all('button').some(button => button.textContent === '在 DSH 中打开')).toBe(true)
+})
 it('closes all workspace views without stopping tasks and reopens the same member from its task card', async () => {
   at({ page: 'overview', query: { team: 'explicit-team', member: 'check' } })
   await mount()

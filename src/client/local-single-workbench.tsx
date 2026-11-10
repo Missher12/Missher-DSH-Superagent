@@ -6,17 +6,12 @@ import { Button, Dot, Icon, SegmentedTabs } from './controls.tsx'
 import { LocalFollowup, LocalTaskComposer } from './local.tsx'
 import { SessionModelPicker } from './model-picker.tsx'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
-import { actorName, valueLabel, type T } from './text.ts'
+import { actorName, valueLabel, shortText, workbenchToolLabel as toolLabel, type T } from './text.ts'
 import { LoadState, SessionButton, StageMark, When } from './widgets.tsx'
 
 type View = ApiResponse<'GET local/workbench'>
 type Member = View['members'][number]
 const dot = { running: 'ongoing', idle: 'idle', attention: 'warning', finished: 'idle' } as const
-const toolNames: Record<string, 'read' | 'write' | 'edit' | 'search' | 'shell' | 'job' | 'report' | 'reply' | 'dispatch'> = {
-  read: 'read', read_image: 'read', write: 'write', edit: 'edit', glob: 'search', grep: 'search', bash: 'shell', pwsh: 'shell',
-  job_output: 'job', job_list: 'job', orchestrator_report: 'report', orchestrator_reply: 'reply', orchestrator_decide: 'dispatch',
-}
-const toolLabel = (t: T, name: string) => t(`workbenchTool.${toolNames[name] ?? 'other'}`, { name })
 const memberName = (t: T, member: Member) => member.role === 'orchestrator' ? t('workbenchCoordinator') : member.title
 
 function CurrentTasks({ data, member }: { data: View; member: Member | undefined }) {
@@ -38,7 +33,7 @@ function ActivityFeed({ data, member }: { data: View; member: Member | undefined
   const activity = member ? data.activity.filter(item => item.memberId === member.id) : data.activity
   return <section className="dt-workbench-activity" aria-label={t('workbenchActivity')}>
     <div className="dt-workbench-section-head"><h3>{t('workbenchActivity')}</h3><span className="dt-workbench-live"><Dot state="ongoing" />{t('workbenchLive')}</span></div>
-    {activity.length ? <ol className="dt-workbench-feed">{activity.map(item => {
+    {activity.length ? <ol className="dt-workbench-feed">{activity.slice(0, 6).map(item => {
       const who = data.members.find(member => member.id === item.memberId)
       return <li key={item.id}>
         <span className="dt-workbench-event-icon" data-state={item.state === 'error' || item.state === 'failed' ? 'error' : undefined}>
@@ -50,7 +45,7 @@ function ActivityFeed({ data, member }: { data: View; member: Member | undefined
         {item.title && <button type="button" className="dt-open dt-workbench-event-title" disabled={!item.ticketId}
           onClick={() => { if (item.ticketId) navigate({ page: 'execution', id: item.ticketId }) }}>{item.title}</button>}
         {item.actor && <span className="dt-workbench-origin">{actorName(t, item.actor)}</span>}
-        {item.summary && <p className="dt-workbench-event-summary">{item.summary}</p>}
+        {item.summary && <p className="dt-workbench-event-summary">{shortText(item.summary)}</p>}
         {item.kind === 'tool' && item.state && <span className="dt-hint">{t(`workbenchToolState.${item.state as 'running' | 'done' | 'error' | 'interrupted'}`)}</span>}
         </div>
       </li>
