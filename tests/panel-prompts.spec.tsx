@@ -8,6 +8,18 @@ import { usePanel, mount, settle, all, tab, click, type, text, field, at } from 
 import { server, promptVersion } from './fixtures/panel-server.ts'
 
 usePanel()
+it('switches prompt sections with the compact picker while preserving each draft', async () => {
+  at({ page: 'settings', query: { group: 'prompts' } })
+  await mount()
+  await type(field<HTMLTextAreaElement>(zh.promptBody), 'Communication draft')
+  await type(field<HTMLSelectElement>(zh.promptSections), 'scope')
+  await type(field<HTMLTextAreaElement>(zh.promptBody), 'Scope draft')
+  await type(field<HTMLSelectElement>(zh.promptSections), 'communication')
+  expect(field<HTMLTextAreaElement>(zh.promptBody).value).toBe('Communication draft')
+  await click(zh.save)
+  expect(server.prompts.current.config).toMatchObject({ communication: 'Communication draft', scope: 'Scope draft' })
+})
+
 it('lists the team sections, then the built-in parts, edits and saves them separately from settings, and resets one section', async () => {
   at({ page: 'settings', query: { group: 'prompts' } })
   await mount()

@@ -96,3 +96,25 @@ it('moves the tab selection with arrow keys and wraps at the ends', async () => 
   expect(container.querySelector('[aria-selected="true"]')?.textContent).toBe('a')
   act(() => { root.unmount() })
 })
+
+it('dismisses only the top confirmation and restores focus inside the settings dialog', async () => {
+  function Harness() {
+    const [open, setOpen] = useState(true), [confirm, setConfirm] = useState(false)
+    return <><Modal open={open} onClose={() => setOpen(false)} title="Settings" closeLabel="Close settings">
+      <button onClick={() => setConfirm(true)}>confirm</button>
+      <Modal open={confirm} onClose={() => setConfirm(false)} title="Confirmation" closeLabel="Close confirmation"><button>action</button></Modal>
+    </Modal></>
+  }
+  const container = document.createElement('div'); document.body.append(container)
+  const root = createRoot(container)
+  await act(async () => { root.render(<Harness />) })
+  const opener = document.querySelector<HTMLButtonElement>('[aria-label="Settings"] .dt-modal-body > button')!
+  opener.focus()
+  await act(async () => { opener.click() })
+  expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(2)
+  await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })) })
+  expect(document.querySelector('[aria-label="Settings"]')).not.toBeNull()
+  expect(document.querySelector('[aria-label="Confirmation"]')).toBeNull()
+  expect(document.activeElement).toBe(opener)
+  act(() => { root.unmount() }); container.remove()
+})

@@ -1,5 +1,5 @@
 /** Local task drafts and follow-ups. Drafts stay in this browser session until dispatched or cleared. */
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Button, Icon, Input, Modal } from './controls.tsx'
 import { useAction, usePanel } from './provider.tsx'
 import { Field, Fields } from './settings-kit.tsx'
@@ -39,6 +39,7 @@ export function selectLocalWorkspace(directory: string) {
 
 export function LocalTaskComposer({ paused = false }: { paused?: boolean }) {
   const { t, call, navigate, renderSession } = usePanel()
+  const formId = useId()
   const [draft, setDraft] = useState(readDraft)
   const [failure, setFailure] = useState<string>()
   const [workspaces, setWorkspaces] = useState<{ title: string; directory: string }[]>([])
@@ -66,8 +67,16 @@ export function LocalTaskComposer({ paused = false }: { paused?: boolean }) {
         disabled={submit.busy || paused} onClick={() => edit({ open: true })}>{t('localNewTask')}</Button>
     </div>
     <Modal className="dt-local-task-modal" open={draft.open} title={t('localNewTask')} closeLabel={t('close')}
-      onClose={() => { if (!submit.busy) edit({ open: false }) }}>
-    <form className="dt-form dt-local-form" onSubmit={event => { event.preventDefault(); void submit.run() }}>
+      onClose={() => { if (!submit.busy) edit({ open: false }) }} footer={<div className="dt-local-form-footer">
+        <Hint>{t('localDispatchHint')}</Hint>
+        {failure && <p className="dt-error" role="alert">{failure}</p>}
+        <div className="dt-actions">
+          <Button variant="ghost" disabled={submit.busy} onClick={() => edit({ open: false })}>{t('cancel')}</Button>
+          <Button variant="ghost" disabled={submit.busy || paused} onClick={() => { setFailure(undefined); setDraft({ ...blank(), directory: draft.directory, existing: draft.existing, open: true }) }}>{t('localClearDraft')}</Button>
+          <Button type="submit" form={formId} variant="primary" disabled={submit.busy || paused || !draft.instructions.trim() || (draft.existing && !draft.directory.trim())}>{t(submit.busy ? 'localSubmitting' : 'localDispatch')}</Button>
+        </div>
+      </div>}>
+    <form id={formId} className="dt-form dt-local-form" onSubmit={event => { event.preventDefault(); void submit.run() }}>
       <Fields disabled={submit.busy || paused}>
         <div className="dt-local-request">
           <Field label={t('localInstructions')}><textarea required className="dt-textarea" rows={5}
@@ -94,15 +103,6 @@ export function LocalTaskComposer({ paused = false }: { paused?: boolean }) {
         <Field label={t('localTaskTitle')}><Input maxLength={160} value={draft.title}
           placeholder={t('localTitlePlaceholder')} onChange={event => edit({ title: event.target.value })} /></Field>
         <Field label={t('localTaskModel')}><ModelSelect value={draft.model} onChange={model => edit({ model })} /></Field>
-        <div className="dt-local-form-footer">
-          <Hint>{t('localDispatchHint')}</Hint>
-          {failure && <p className="dt-error" role="alert">{failure}</p>}
-          <div className="dt-actions">
-            <Button variant="ghost" onClick={() => edit({ open: false })}>{t('cancel')}</Button>
-            <Button variant="ghost" onClick={() => { setFailure(undefined); setDraft({ ...blank(), directory: draft.directory, existing: draft.existing, open: true }) }}>{t('localClearDraft')}</Button>
-            <Button type="submit" variant="primary" disabled={!draft.instructions.trim() || (draft.existing && !draft.directory.trim())}>{t(submit.busy ? 'localSubmitting' : 'localDispatch')}</Button>
-          </div>
-        </div>
       </Fields>
     </form></Modal>
   </div>

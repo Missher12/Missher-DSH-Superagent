@@ -88,6 +88,11 @@ function PromptSections({ config, view, changed, selected, onSelect, onEdit }: {
   const part = isPart(selected) ? view.parts.find(item => item.key === partKey(selected)) : undefined
   return <div className="dt-prompt">
     <nav className="dt-prompt-nav" aria-label={t('promptSections')}>
+      <select className="dt-select dt-prompt-select" aria-label={t('promptSections')} value={selected} onChange={event => onSelect(event.target.value)}>
+        <optgroup label={t('promptTeamGroup')}>{view.sections.map(section => <option key={section} value={section}>{sectionLabel(t, view, section)}</option>)}</optgroup>
+        <optgroup label={t('promptBuiltInGroup')}>{view.parts.map(entry => <option key={entry.key} value={`part/${entry.key}`}>{sectionLabel(t, view, `part/${entry.key}`)}</option>)}</optgroup>
+        <optgroup label={t('promptSkillsGroup')}>{Object.keys(config.skills).map(skill => <option key={skill} value={`skill/${skill}`}>{sectionLabel(t, view, `skill/${skill}`)}</option>)}</optgroup>
+      </select>
       <div className="dt-nav-group">{t('promptTeamGroup')}</div>
       {view.sections.map(section => item(section, <>
         <span>{sectionLabel(t, view, section)}{config[section] !== view.defaults[section] && <span
