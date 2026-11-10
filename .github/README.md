@@ -2,7 +2,7 @@
 
 <h1>DSH Superagent · 项目任务</h1>
 
-<p><img src="../docs/images/overview.svg" alt="Superagent 功能示意" width="100%"></p>
+<p><img src="../docs/images/cover-v2.png" alt="Superagent · 项目任务（品牌插画）" width="100%"></p>
 
 <p>派出项目任务，回来查看进度、执行过程与结果。</p>
 

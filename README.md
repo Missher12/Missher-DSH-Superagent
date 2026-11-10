@@ -1,5 +1,7 @@
 # Missher DSH Superagent
 
+![Superagent · 项目任务（品牌插画）](docs/images/cover-v2.png)
+
 当前版本 **1.3.3** · [下载安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.3.3)
 在 DSH 里派出项目任务，让它在独立会话中执行，回来查看进度和结果。
 
