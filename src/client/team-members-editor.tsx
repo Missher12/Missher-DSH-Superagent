@@ -1,4 +1,5 @@
 /** Editable, explicit member plans; no sessions exist until the task is dispatched. */
+import { useState } from 'react'
 import type { TeamMember } from '../teams/contracts.ts'
 import { Button, Icon, Input } from './controls.tsx'
 import { ModelSelect, ReasoningSelect } from './model-picker.tsx'
@@ -13,8 +14,11 @@ export function defaultMembers(t: T): TeamMember[] {
 }
 export function TeamMembersEditor({ members, onChange, disabled, model }: { members: TeamMember[]; onChange: (members: TeamMember[]) => void; disabled: boolean; model?: RoleModel }) {
   const { t } = usePanel()
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => Object.fromEntries(members.map((member, index) =>
+    [member.id, index === 0 || !member.instructions.trim()])))
   const edit = (id: string, patch: Partial<TeamMember>) => onChange(members.map(member => member.id === id ? { ...member, ...patch } : member))
-  return <div className="dt-team-members-editor">{members.map((member, index) => <details className="dt-team-plan-member" key={member.id} open={index === 0 || !member.instructions.trim() || undefined}>
+  return <div className="dt-team-members-editor">{members.map((member, index) => <details className="dt-team-plan-member" key={member.id} open={expanded[member.id] ?? false}
+    onToggle={event => { const open = event.currentTarget.open; setExpanded(current => current[member.id] === open ? current : { ...current, [member.id]: open }) }}>
     <summary><strong>{member.name || t('teamMemberNumber', { count: index + 1 })}</strong><span>{member.instructions}</span></summary>
     <div className="dt-team-plan-fields">
       <Field label={t('teamMemberName')}><Input required maxLength={60} value={member.name} onChange={event => edit(member.id, { name: event.target.value })} /></Field>
@@ -30,6 +34,9 @@ export function TeamMembersEditor({ members, onChange, disabled, model }: { memb
       <div className="dt-danger-zone"><Button size="sm" icon={<Icon name="trash" />} disabled={disabled || members.length <= 2} title={members.length <= 2 ? t('teamMinMembers') : undefined}
         onClick={() => onChange(members.filter(value => value.id !== member.id).map(value => ({ ...value, dependencies: value.dependencies.filter(id => id !== member.id) })))}>{t('teamRemoveMember')}</Button></div>
     </div>
-  </details>)}<div className="dt-actions"><Button size="sm" icon={<Icon name="plus" />} disabled={disabled || members.length >= 6} onClick={() => onChange([...members,
-    { id: `member-${crypto.randomUUID().slice(0, 12)}`, name: t('teamMemberNumber', { count: members.length + 1 }), instructions: '', dependencies: [members.at(-1)!.id] }])}>{t('teamAddMember')}</Button></div></div>
+  </details>)}<div className="dt-actions"><Button size="sm" icon={<Icon name="plus" />} disabled={disabled || members.length >= 6} onClick={() => {
+    const id = `member-${crypto.randomUUID().slice(0, 12)}`
+    setExpanded(current => ({ ...current, [id]: true }))
+    onChange([...members, { id, name: t('teamMemberNumber', { count: members.length + 1 }), instructions: '', dependencies: [members.at(-1)!.id] }])
+  }}>{t('teamAddMember')}</Button></div></div>
 }

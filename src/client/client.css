@@ -696,7 +696,7 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-session-model > span { flex: none; }
 .dt-session-model .dt-model-select { width: 260px; max-width: 100%; height: 32px; font-size: 12px; flex: 1; }
 .dt-workbench-history { display: flex; flex: 1; min-height: 180px; min-width: 0; overflow: auto; }
-.dt-modal.dt-local-task-modal { width: min(800px, 100%); }
+.dt-modal.dt-local-task-modal { width: min(800px, 100%); height: min(960px, 100%); }
 .dt-local-task-modal .dt-local-form { max-width: none; }
 .dt-local-task-modal .dt-local-form .dt-field { grid-template-columns: 104px minmax(0,1fr); }
 .dt-local-task-modal .dt-local-form .dt-fieldset { gap: 8px; }

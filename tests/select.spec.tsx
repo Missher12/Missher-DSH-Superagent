@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { expect, it, onTestFinished } from 'vitest'
+import { expect, it, onTestFinished, vi } from 'vitest'
 import { Select } from '../src/client/select.tsx'
 import { Modal } from '../src/client/controls.tsx'
 import { effortLabel } from '../src/client/model-labels.ts'
@@ -34,8 +34,14 @@ it('shows readable labels, skips disabled choices, and commits only the selected
       <option value="provider-b">服务商 B</option></Select></form>
   }
   const container = await mount(<Form />), trigger = container.querySelector('button')!
+  vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({ width: 240 } as DOMRect)
+  const resized = vi.fn()
+  window.addEventListener('resize', resized)
+  onTestFinished(() => window.removeEventListener('resize', resized))
   expect(trigger.textContent).toBe('服务商 A')
   trigger.focus(); await key('ArrowDown')
+  expect(document.querySelector<HTMLElement>('[role="menu"]')?.style.width).toBe('240px')
+  expect(resized).not.toHaveBeenCalled()
   expect(document.activeElement?.textContent).toBe('服务商 A')
   await key('ArrowDown')
   expect(document.activeElement?.textContent).toBe('服务商 B')

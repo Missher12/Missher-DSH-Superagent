@@ -7,8 +7,9 @@ export function Select({ id, className = '', value, children, disabled, title, o
   Omit<SelectHTMLAttributes<HTMLSelectElement>, 'multiple' | 'size'>) {
   const owner = useId(), native = useRef<HTMLSelectElement>(null), trigger = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false), [caption, setCaption] = useState(''), [items, setItems] = useState<MenuEntry[]>([])
+  const [, resizeMenu] = useState(0)
   const menu = () => document.querySelector<HTMLElement>(`[data-choice-owner=${JSON.stringify(owner)}]`)?.closest<HTMLElement>('[role="menu"]')
-  const close = (focus = false) => { setOpen(false); if (focus) trigger.current?.focus() }
+  const close = (focus = false) => { setOpen(false); if (focus) trigger.current?.focus({ preventScroll: true }) }
   useLayoutEffect(() => {
     const select = native.current
     if (!select) return
@@ -25,7 +26,7 @@ export function Select({ id, className = '', value, children, disabled, title, o
       const width = Math.min(trigger.current?.getBoundingClientRect().width ?? 0, window.innerWidth - 24)
       if (width > 0 && panel.style.width !== `${width}px`) {
         panel.style.width = `${width}px`; panel.style.minWidth = `${width}px`; panel.style.maxWidth = `${width}px`
-        window.dispatchEvent(new Event('resize'))
+        resizeMenu(revision => revision + 1)
       }
     }
     size()
@@ -33,7 +34,7 @@ export function Select({ id, className = '', value, children, disabled, title, o
     const enabled = items.filter(item => 'label' in item && !item.disabled)
     const index = enabled.findIndex(item => item.id === String(value ?? ''))
     let disposed = false
-    queueMicrotask(() => { if (!disposed) (rows[index] ?? rows[0])?.focus() })
+    queueMicrotask(() => { if (!disposed) (rows[index] ?? rows[0])?.focus({ preventScroll: true }) })
     const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(size)
     if (trigger.current) observer?.observe(trigger.current)
     return () => { disposed = true; observer?.disconnect() }

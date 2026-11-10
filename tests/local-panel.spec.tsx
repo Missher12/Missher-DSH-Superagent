@@ -258,6 +258,19 @@ it('offers local settings without external-account and watcher configuration', a
   expect(server.settings.executor.maxWorkers).toBe(2)
 })
 
+it('keeps the reasoning row mounted when switching between inherited and explicit task models', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  at({ page: 'settings' }); await mount()
+  const effort = field<HTMLSelectElement>(zh.modelEffort)
+  expect(effort.disabled).toBe(true)
+  await type(field<HTMLSelectElement>(zh.localTaskModel), JSON.stringify(['worker-provider', 'worker-model']))
+  expect(field<HTMLSelectElement>(zh.modelEffort)).toBe(effort)
+  expect(effort.disabled).toBe(false)
+  await type(field<HTMLSelectElement>(zh.localTaskModel), '')
+  expect(field<HTMLSelectElement>(zh.modelEffort)).toBe(effort)
+  expect(effort.disabled).toBe(true)
+})
+
 it('explains paused dispatch and restores task intake with one action', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   server.settings.paused = true

@@ -40,10 +40,10 @@ it('describes the management API in a module the panel can bundle, which imports
   expect([...source.matchAll(/^import (type )?/gm)].every(match => match[1])).toBe(true)
 })
 
-it('closes the dialog on Escape and returns focus to the opener', async () => {
+it('keeps the dialog open when Escape cancels IME composition, then restores focus on normal Escape', async () => {
   function Harness() {
     const [open, setOpen] = useState(false)
-    return <><button type="button" onClick={() => setOpen(true)}>open</button><Modal open={open} onClose={() => setOpen(false)} title="Title" closeLabel="Close">body</Modal></>
+    return <><button type="button" onClick={() => setOpen(true)}>open</button><Modal open={open} onClose={() => setOpen(false)} title="Title" closeLabel="Close"><textarea /></Modal></>
   }
   const container = document.createElement('div'); document.body.append(container)
   const root = createRoot(container)
@@ -52,6 +52,13 @@ it('closes the dialog on Escape and returns focus to the opener', async () => {
   opener.focus()
   await act(async () => { opener.click() })
   expect(document.activeElement?.getAttribute('role')).toBe('dialog')
+  const input = document.querySelector('textarea')!
+  input.focus()
+  await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true })) })
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+  expect(document.activeElement).toBe(input)
+  await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 229, bubbles: true })) })
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
   await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })) })
   expect(document.querySelector('[role="dialog"]')).toBeNull()
   expect(document.activeElement).toBe(opener)

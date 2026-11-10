@@ -58,12 +58,14 @@ function SettingsForm() {
             {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
           </Select>
         </Field>
-        {selection && reasoning && <Field label={t('modelEffort')}><Select className="dt-select" value={selection.reasoningEffort ?? ''}
+        <Field label={t('modelEffort')}><Select className="dt-select" value={selection?.reasoningEffort ?? ''} disabled={!selection || !reasoning?.efforts.length}
           onChange={event => {
+            if (!selection) return
             const { reasoningEffort: _old, ...model } = selection
             draft.edit({ ...draft.value, model: { ...model, ...event.target.value ? { reasoningEffort: event.target.value } : {} } })
-          }}><option value="">{t('modelEffortDefault')}</option>{reasoning.efforts.map(effort => <option key={effort.id} value={effort.id}>{effortLabel(effort.id, effort.name, t)}</option>)}
-        </Select></Field>}
+          }}><option value="">{t(!selection ? 'localInheritDefault' : reasoning?.efforts.length ? 'modelEffortDefault' : 'modelEffortUnavailable')}</option>
+          {reasoning?.efforts.map(effort => <option key={effort.id} value={effort.id}>{effortLabel(effort.id, effort.name, t)}</option>)}
+        </Select></Field>
         {error && <p className="dt-error" role="status">{error}</p>}
         <Field label={t('localMaxWorkers')} note={t('localConcurrencyHint')}><Input type="number" required
           min={LIMITS.maxWorkers.min} max={LIMITS.maxWorkers.max} value={draft.value.maxWorkers}

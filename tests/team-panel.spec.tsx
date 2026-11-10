@@ -77,6 +77,20 @@ it('opens new member fields immediately instead of hiding the required empty ass
   expect(member.hasAttribute('open')).toBe(true)
   expect(member.querySelector('textarea')?.value).toBe('')
 })
+it('keeps a new member expanded and focused while entering, clearing, and rewriting the assignment', async () => {
+  await mount(); await click('新建任务'); await click('添加成员')
+  const member = all('.dt-team-plan-member').at(-1)! as HTMLDetailsElement
+  const assignment = member.querySelector('textarea')!
+  assignment.focus()
+  for (const value of ['z', '整理接口文档并验证示例', '', '重新填写完整分工']) {
+    await type(assignment, value)
+    expect(member.open).toBe(true)
+    expect(document.activeElement).toBe(assignment)
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+  }
+  const draft = JSON.parse(sessionStorage.getItem('dsh-superagent/local-draft')!)
+  expect(draft.members[2].instructions).toBe('重新填写完整分工')
+})
 it('keeps activity previews short while leaving full reports in the original task', async () => {
   const view = server.teamViews['explicit-team']!, member = view.members[1]!
   const report = '已完成格式化功能。' + '详细实现和逐项解释。'.repeat(35) + '完整记录末尾'

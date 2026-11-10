@@ -196,6 +196,7 @@ export function Modal({ open, onClose, title, closeLabel, description, footer, c
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       // A confirmation can open over a settings dialog. Only the top dialog owns the keyboard.
       if (document.querySelectorAll('.dt-modal').item(document.querySelectorAll('.dt-modal').length - 1) !== dialog.current) return
+      if (event.isComposing || event.keyCode === 229) return
       if (event.key === 'Escape') { event.preventDefault(); close.current() }
       else if (event.key === 'Tab' && dialog.current) trapTab(event, dialog.current)
     }
