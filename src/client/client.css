@@ -398,10 +398,10 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-field-segmented { max-width: 240px; }
 
 /* Local pages keep native chrome; task and project cards carry the visual hierarchy. */
-.dt-local-page { padding: max(16px, var(--dsh-frame-top-clearance, 0px)) 24px 12px; overflow: hidden; }
-.dt-local-page > .dt-column { max-width: 980px; height: 100%; min-height: 0; padding-bottom: 0; gap: 16px; }
-.dt-local-page .dt-main { flex: 1; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding-bottom: 20px; }
-.dt-local-page .dt-head { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; padding: 0; flex: none; }
+.dt-local-page.dt-page { padding: max(16px, var(--dsh-frame-top-clearance, 0px)) 24px 12px; overflow: hidden; }
+.dt-local-page > .dt-column { max-width: none; height: 100%; min-height: 0; padding-bottom: 0; gap: 12px; }
+.dt-local-page .dt-main { flex: 1; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: auto; padding-bottom: 20px; }
+.dt-local-page .dt-head { display: grid; grid-template-columns: minmax(0,1fr); gap: 6px; padding: 0; flex: none; }
 .dt-local-brand { display: flex; align-items: center; gap: 10px; }
 .dt-local-brand-icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 1px solid var(--dsw-alias-border-l3); border-radius: 7px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
 .dt-local-title { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; }
@@ -668,14 +668,7 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 
 /* Shared sizing: pages own outer scrolling; dialogs own only their body scrolling. */
 .dt-local-page:has(.dt-local-settings-editor) .dt-main { display: flex; overflow: hidden; padding-bottom: 0; }
-.dt-workspace-page.dt-page { padding: max(16px, var(--dsh-frame-top-clearance, 0px)) 24px 12px; overflow: hidden; }
-.dt-workspace-page.dt-page > .dt-column { max-width: none; height: 100%; min-height: 0; padding-bottom: 0; gap: 12px; }
 .dt-workspace-page .dt-main { display: flex; overflow: hidden; padding-bottom: 0; scrollbar-gutter: auto; }
-.dt-workspace-page .dt-head { gap: 6px; }
-.dt-workspace-page .dt-local-title { font-size: 20px; line-height: 28px; }
-.dt-workspace-page .dt-local-brand-icon { width: 28px; height: 28px; }
-.dt-workspace-page .dt-head .dt-tabs { gap: 24px; }
-.dt-workspace-page .dt-head .dt-tab { padding-block: 8px; }
 .dt-workspace-page .dt-main, .dt-workspace-page .dt-workbench, .dt-local-page:has(.dt-local-settings-editor) .dt-main { flex: 1; min-height: 0; }
 .dt-workbench-toolbar, .dt-workbench-followup, .dt-workbench-session-bar { flex: none; }
 .dt-workbench-focus > div:first-child { flex: 1 1 280px; }
@@ -683,8 +676,8 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-workbench-directory { margin: 4px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dt-workbench-conversation { contain: size; flex: 1; min-height: 180px; min-width: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .dt-native-transcript { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.dt-workspace-page, .dt-workspace-page * { scrollbar-width: none; scrollbar-gutter: auto; }
-.dt-workspace-page::-webkit-scrollbar, .dt-workspace-page *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.dt-local-page, .dt-local-page * { scrollbar-width: none; scrollbar-gutter: auto; }
+.dt-local-page::-webkit-scrollbar, .dt-local-page *::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .dt-native-context { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; overflow: auto; }
 .dt-native-context [data-conversation-region='composer'] { display: none; }
 .dt-team-detail-content.dt-team-native-context { padding: 0; }
@@ -992,7 +985,6 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
   .dt-team-empty-workspace, .dt-team-single-space { padding-inline: 0; }
 }
 @container (max-width: 640px) {
-  .dt-workspace-page .dt-local-title { font-size: 20px; }
   .dt-team-focus-layout { grid-template-columns: minmax(0,1fr); }
   .dt-team-mobile-panels { display: flex; flex: none; }
   .dt-team-mobile-panels .dt-tabs { gap: 16px; }
