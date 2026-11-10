@@ -807,7 +807,7 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-team-files > li > svg { margin-top: 3px; flex: none; color: var(--dsw-alias-label-secondary); }
 .dt-team-files > li > div { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 4px; }
 .dt-team-workbench .dt-open { position: relative; text-align: left; }
-.dt-team-files .dt-open { font-size: 13px; line-height: 21px; }
+.dt-team-files .dt-open { position: relative; font-size: 13px; line-height: 21px; }
 .dt-team-files span { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
 .dt-team-files p { font-size: 12px; line-height: 20px; margin: 0; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
 .dt-team-checks > li { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 0; border-bottom: .5px solid var(--dsw-alias-border-l2); }

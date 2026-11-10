@@ -145,3 +145,48 @@ it('reviews actual reported files and commands without inventing approvals or pa
   expect(all('[role="dialog"]')).toHaveLength(1)
   expect(text()).toContain('export const actual = 1')
 })
+
+it('opens an embedded conversation file in its own team preview without invoking the unmounted native sidebar', async () => {
+  const view = server.teamViews['explicit-team']!, path = '/tmp/project/src/formatter.mjs'
+  view.deliveries = [{ memberId: 'build', name: '实施', record: { ticketId: 'build-task', assignmentId: 'run-build', sessionId: 'worker-build-task', at: view.updatedAt,
+    files: [{ path, summary: '实现', exists: true }, { path: '/tmp/project/test/formatter.mjs', summary: '测试', exists: true }], checks: [], unverified: [] } }]
+  server.teamFiles[path] = { path, relative: 'src/formatter.mjs', size: 22, text: 'export const actual = 1', binary: false, truncated: false }
+  at({ page: 'overview', query: { team: view.id, member: 'build' } }); await mount()
+  const native = document.createElement('button'), child = document.createElement('span'), opened: string[] = []
+  native.type = 'button'; native.title = 'src/formatter.mjs'; child.textContent = 'formatter.mjs'; native.append(child)
+  native.addEventListener('click', () => opened.push('native sidebar'))
+  all('[data-test-session]')[0]!.append(native); native.focus(); await click(child)
+  expect(all('[role="dialog"]')).toHaveLength(1)
+  expect(text()).toContain('export const actual = 1')
+  expect(opened).toEqual([])
+  expect(all('[data-test-session="worker-build-task"]')).toHaveLength(1)
+  await click('关闭')
+  expect(document.activeElement).toBe(native)
+})
+
+it('asks which reported file to preview when embedded links contain only a duplicated filename', async () => {
+  const view = server.teamViews['explicit-team']!, paths = ['/tmp/project/src/formatter.mjs', '/tmp/project/test/formatter.mjs']
+  view.deliveries = [{ memberId: 'build', name: '实施', record: { ticketId: 'build-task', assignmentId: 'run-build', sessionId: 'worker-build-task', at: view.updatedAt,
+    files: paths.map(path => ({ path, summary: '已交付', exists: true })), checks: [], unverified: [] } }]
+  server.teamFiles[paths[1]!] = { path: paths[1]!, relative: 'test/formatter.mjs', size: 12, text: 'test content', binary: false, truncated: false }
+  at({ page: 'overview', query: { team: view.id, member: 'build' } }); await mount()
+  const native = document.createElement('button'); native.type = 'button'; native.textContent = 'formatter.mjs'
+  all('[data-test-session]')[0]!.append(native); await click(native)
+  expect(all('[role="dialog"]')).toHaveLength(1)
+  expect(text()).toContain('src/formatter.mjs')
+  expect(text()).toContain('test/formatter.mjs')
+  await click('test/formatter.mjs')
+  expect(text()).toContain('test content')
+})
+
+it('leaves unrelated native controls and external links unchanged inside the conversation', async () => {
+  const view = server.teamViews['explicit-team']!
+  at({ page: 'overview', query: { team: view.id, member: 'build' } }); await mount()
+  const control = document.createElement('button'), link = document.createElement('a'), opened: string[] = []
+  control.textContent = '复制'; control.addEventListener('click', () => opened.push('copy'))
+  link.href = 'https://example.com/README.md'; link.textContent = 'README.md'
+  link.addEventListener('click', event => { event.preventDefault(); opened.push('external') })
+  all('[data-test-session]')[0]!.append(control, link); await click(control); await click(link)
+  expect(opened).toEqual(['copy', 'external'])
+  expect(all('[role="dialog"]')).toHaveLength(0)
+})

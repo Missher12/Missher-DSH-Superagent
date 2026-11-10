@@ -1,10 +1,10 @@
 /** Reported files and checks remain attributable to their actual task/session. */
 import { useState } from 'react'
-import type { ApiResponse } from '../app/api.ts'
 import type { TeamView } from '../teams/contracts.ts'
 import { Button, Icon, Modal } from './controls.tsx'
-import { useAction, usePanel } from './provider.tsx'
-import { LoadState, MarkdownLite, SessionButton, When } from './widgets.tsx'
+import { usePanel } from './provider.tsx'
+import { TeamFilePreview } from './team-file-preview.tsx'
+import { MarkdownLite, SessionButton, When } from './widgets.tsx'
 
 export function TeamFilesButton({ team }: { team: TeamView }) {
   const { t } = usePanel(), [open, setOpen] = useState(false)
@@ -14,14 +14,8 @@ export function TeamFilesButton({ team }: { team: TeamView }) {
 }
 
 export function TeamDelivery({ team, compact = false }: { team: TeamView; compact?: boolean }) {
-  const { t, call, notify } = usePanel()
-  const [path, setPath] = useState<string>(), [file, setFile] = useState<ApiResponse<'GET local/teams/:id/file'>>()
-  const [failure, setFailure] = useState<Error>()
-  const preview = useAction(async (next: string) => {
-    setPath(next); setFile(undefined); setFailure(undefined)
-    try { setFile(await call('GET local/teams/:id/file', { id: team.id, query: { path: next } })) }
-    catch (error) { setFailure(error instanceof Error ? error : new Error(String(error))) }
-  })
+  const { t } = usePanel()
+  const [path, setPath] = useState<string>()
   const deliveries = team.deliveries
   const files = [...new Map(deliveries.flatMap(delivery => delivery.record.files.map(file => [file.path, { ...file, name: delivery.name }] as const))).values()]
   const checks = deliveries.flatMap(delivery => delivery.record.checks.map((check, index) => ({ ...check, name: delivery.name, sessionId: delivery.record.sessionId, id: `${delivery.record.assignmentId}:${index}` })))
@@ -32,8 +26,8 @@ export function TeamDelivery({ team, compact = false }: { team: TeamView; compac
     {!compact && <details className="dt-team-result-summary"><summary>{t('teamProgress')}</summary><MarkdownLite text={team.summary || t('teamNoProgress')} /></details>}
     <section><h3>{t(compact ? 'teamSharedFiles' : 'teamFiles')}<span className="dt-count">{files.length}</span></h3>
       {files.length ? <ul className="dt-team-files">{files.map(file => <li key={file.path}>
-        <Icon name="folder" size={16} /><div><button className="dt-open" type="button" disabled={!file.exists || preview.busy} title={file.path}
-          onClick={() => { void preview.run(file.path) }}>{file.path.replace(`${team.directory}/`, '')}</button>
+        <Icon name="folder" size={16} /><div><button className="dt-open" type="button" disabled={!file.exists} title={file.path}
+          onClick={() => setPath(file.path)}>{file.path.replace(`${team.directory}/`, '')}</button>
           <span>{t('teamReportedBy', { name: file.name })}{!file.exists ? ` · ${t('teamFileMissing')}` : ''}</span>
           {!compact && file.summary && <p>{file.summary}</p>}</div>
       </li>)}</ul> : <p className="dt-hint">{t('teamNoFiles')}</p>}</section>
@@ -45,9 +39,6 @@ export function TeamDelivery({ team, compact = false }: { team: TeamView; compac
       <section><h3>{t('teamUnverified')}</h3>{unverified.length ? <ul className="dt-team-unverified">{unverified.map((item, index) => <li key={index}>{item.text}<span>{item.name}</span></li>)}</ul>
         : <p className="dt-hint">{t('teamNoUnverified')}</p>}</section>
       {deliveries.length > 0 && <div className="dt-team-attribution">{deliveries.map(delivery => <span key={delivery.memberId}>{delivery.name} <When at={delivery.record.at} /></span>)}</div>}</>}
-    <Modal open={!!path} onClose={() => setPath(undefined)} title={path?.split('/').at(-1) ?? t('teamFiles')} closeLabel={t('close')} className="dt-team-file-modal"
-      footer={<Button variant="outline" icon={<Icon name="copy" />} onClick={() => { if (path) void navigator.clipboard.writeText(path).then(() => notify(t('teamCopyPath')), error => notify(String(error))) }}>{t('teamCopyPath')}</Button>}>
-      <LoadState loading={!file} error={failure} />{file && (file.binary ? <p className="dt-hint">{t('teamBinaryFile')}</p> : <><pre className="dt-team-file-preview">{file.text}</pre>{file.truncated && <p className="dt-hint">{t('teamFileTruncated')}</p>}</>)}
-    </Modal>
+    {path && <TeamFilePreview key={path} team={team} paths={[path]} onClose={() => setPath(undefined)} />}
   </div>
 }
