@@ -1,5 +1,7 @@
 # Missher DSH Superagent
 
+![Superagent · 项目任务（品牌插画）](docs/images/cover-v2.png)
+
 当前版本 **1.4.2** · [下载安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.4.2)
 在 DSH 里派出任务，在 Superagent 的独立工作区中查看执行会话、文件目录、进度和结果。
 

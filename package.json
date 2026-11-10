@@ -33,7 +33,8 @@
     "skills",
     "docs/local-mode.md",
     "docs/mcp.md",
-    "docs/completion-plan.md"
+    "docs/completion-plan.md",
+    "docs/images/cover-v2.png"
   ],
   "dsh": {
     "bundle": {
