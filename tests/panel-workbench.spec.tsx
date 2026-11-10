@@ -14,6 +14,11 @@ it('changes the selected embedded session model without leaving the workspace', 
     .toEqual({ provider: 'worker-provider', model: 'worker-model' })
   expect(server.opened).toEqual([])
   expect(all('[data-test-session="master"]')).toHaveLength(1)
+  await click('上下文')
+  expect(all('[data-test-context="master"]')).toHaveLength(1)
+  expect(all('[data-test-session]')).toHaveLength(0)
+  await click('会话')
+  expect(all('[data-test-session="master"]')).toHaveLength(1)
 })
 
 it('opens the real dedicated workspace and coordinator session from the workbench', async () => {

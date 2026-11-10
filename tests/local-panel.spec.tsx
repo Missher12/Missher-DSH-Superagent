@@ -347,16 +347,11 @@ it('confirms workspace removal separately and disables removal for running and p
   expect(server.requests.find(request => request.method === 'DELETE')?.path).toBe('local/workspaces/old')
   expect(all('.dt-local-workspace-row')).toHaveLength(2)
 })
-it('distinguishes host plugin loading from member tool availability without invoking any tools', async () => {
+it('keeps plugin configuration in the host instead of duplicating it in local settings', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
-  await mount(); await click('设置'); await click('插件能力')
-  expect(text()).toContain('Project Ops')
-  expect(text()).toContain('已加载')
-  await click(all('.dt-plugin-tools summary')[0]!)
-  expect(text()).toContain('已向成员开放')
-  expect(text()).toContain('未向成员开放')
-  expect(server.requests.some(request => request.path === 'local/capabilities')).toBe(true)
-  expect(server.requests.some(request => request.method !== 'GET')).toBe(false)
+  await mount(); await click('设置')
+  expect(text()).not.toContain('插件能力')
+  expect(server.requests.some(request => request.path === 'local/capabilities')).toBe(false)
 })
 
 it('keeps full reports in task details while the board stays concise', async () => {

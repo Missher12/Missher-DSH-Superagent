@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, expect, it } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
 import type { TeamView } from '../src/teams/contracts.ts'
 import { usePanel, mount, all, click, type, field, text, at } from './fixtures/panel.tsx'
 import { server } from './fixtures/panel-server.ts'
@@ -33,13 +33,29 @@ it('opens the selected actual member session and sends its durable follow-up thr
   at({ page: 'overview', query: { team: 'explicit-team', member: 'check' } })
   await mount()
   expect(all('.dt-team-details')[0]!.textContent).toContain('请登录测试环境')
+  await click('上下文')
+  expect(all('.dt-team-detail-content [data-test-context="worker-check-task"]')).toHaveLength(1)
+  expect(all('[data-test-session]')).toHaveLength(0)
+  await click('打开执行会话')
+  expect(all('.dt-team-native-controls button[aria-label="打开执行会话"]')).toHaveLength(0)
   await click('活动'); expect(text()).toContain('formatter.mjs')
+  expect(all('.dt-team-native-controls button[aria-label="打开执行会话"]')).toHaveLength(1)
   await click('打开执行会话')
   expect(all('[data-test-session="worker-check-task"]')).toHaveLength(1)
+  expect(all('.dt-team-native-controls button[aria-label="打开执行会话"]')).toHaveLength(0)
   expect(field<HTMLSelectElement>(zh.sessionModelLabel)).toBeDefined()
   await type(field<HTMLTextAreaElement>('补充要求'), '已经登录，请继续验证')
   await click('发送')
   expect(server.requests.find(item => item.path === 'local/teams/explicit-team/followup')?.body).toMatchObject({ memberId: 'check', text: '已经登录，请继续验证' })
+})
+it('keeps the context plugin bound to the newly selected member', async () => {
+  at({ page: 'overview', query: { team: 'explicit-team', member: 'coordinator' } })
+  await mount(); await click('上下文')
+  expect(all('[data-test-context="worker-planner-task"]')).toHaveLength(1)
+  vi.spyOn(all('.dt-team-focus-workbench')[0]!, 'getBoundingClientRect').mockReturnValue({ width: 1000 } as DOMRect)
+  await click(all('.dt-team-node')[1]!)
+  expect(all('[data-test-context="worker-build-task"]')).toHaveLength(1)
+  expect(all('[data-test-context="worker-planner-task"]')).toHaveLength(0)
 })
 it('creates a real editable team plan including member models and explicit delivery dependencies', async () => {
   await mount(); await click('新建任务')

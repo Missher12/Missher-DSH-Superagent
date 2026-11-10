@@ -38,7 +38,7 @@ export function LocalWorkbench({ sessionId, teamId, memberId = 'coordinator' }: 
   const root = useRef<HTMLElement>(null)
   const { t, call, navigate, openWorkspace } = usePanel(), { state, restarts } = usePanelData()
   const { data, error, reload } = usePoll(() => call('GET local/workbench', { query: { team: teamId, session: sessionId } }), [call, restarts, teamId, sessionId], 2000)
-  const [views, setViews] = useState(openViews), [detail, setDetail] = useState<'activity' | 'conversation' | 'delivery'>('conversation')
+  const [views, setViews] = useState(openViews), [detail, setDetail] = useState<'activity' | 'conversation' | 'context' | 'delivery'>('conversation')
   const [pane, setPane] = useState<'conversation' | 'team'>('conversation')
   const current = teamId ? `team:${teamId}` : sessionId ? `session:${sessionId}` : undefined
   const team = data?.team && data.team.id === teamId ? data.team : undefined
@@ -56,15 +56,15 @@ export function LocalWorkbench({ sessionId, teamId, memberId = 'coordinator' }: 
     if (teamId) { try { sessionStorage.setItem(`dsh-superagent/team-member/${teamId}`, memberId) } catch { /* Optional view memory. */ } }
   }, [current, teamId, sessionId, title, memberId])
   useEffect(() => { try { sessionStorage.setItem(STORAGE, JSON.stringify(views)) } catch { /* Optional view memory. */ } }, [views])
-  const selectView = (view?: WorkspaceView) => {
-    setDetail('conversation'); setPane('conversation')
+  const selectView = (view?: WorkspaceView, nextDetail: 'conversation' | 'context' = 'conversation') => {
+    setDetail(nextDetail); setPane('conversation')
     navigate({ page: 'overview', query: view?.kind === 'team' ? { team: view.id, member: view.member ?? lastMember(view.id) }
       : view ? { session: view.id } : undefined }, true)
   }
   const selectTeam = (id: string) => selectView({ kind: 'team', id, title: data?.teams.find(team => team.id === id)?.name ?? id, member: lastMember(id) })
   const selectMember = (id: string) => {
     if (!team) return
-    selectView({ kind: 'team', id: team.id, title: team.name, member: id })
+    selectView({ kind: 'team', id: team.id, title: team.name, member: id }, detail === 'context' ? 'context' : 'conversation')
     if ((root.current?.getBoundingClientRect().width ?? 1000) <= 640) requestAnimationFrame(() => {
       const pane = root.current?.querySelector<HTMLElement>('.dt-team-details'); pane?.scrollIntoView({ block: 'start' }); pane?.focus({ preventScroll: true })
     })

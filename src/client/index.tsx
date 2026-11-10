@@ -11,7 +11,7 @@ import type { PluginConfigViewProps } from '@deepseek-ai/dsh-client-ui-plugin-ma
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PropsRenderSlots, PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { openKnownSession, retainKnownSession, pickWorkspaceDirectory, SessionNavigationError } from '../navigation.ts'
@@ -20,18 +20,26 @@ import { PluginConfig, usePageForm } from './deployment.tsx'
 import { en, zh } from './locales.ts'
 import type { T } from './text.ts'
 import { LoadState } from './widgets.tsx'
-import type { HostPlugin } from './provider.tsx'
 
 declare module '@deepseek-ai/dsh-api-session-controller/client' {
   interface SessionReferenceSourceMap { superagent: unknown }
 }
 declare module '@deepseek-ai/dsh-client-ui-slots' {
-  interface SlotMap { 'superagent.session': { kind: 'single'; scope: 'session' } }
+  interface SlotMap {
+    'superagent.session': { kind: 'single'; scope: 'session' }
+    'superagent.context': { kind: 'single'; scope: 'session' }
+  }
 }
-type ConversationSeat = PropsRenderSlots<'superagent.session'>
+type ConversationSeat = PropsRenderSlots<'superagent.session' | 'superagent.context'>
+
+/** Select the installed context plugin inside an independently scoped native Conversation factory. */
+function ContextPluginView({ renderSlot }: ConversationViewsProps) {
+  return renderSlot('conversation.session', { view: 'context-manager' })
+}
 
 /** Own a native Session reference only while this embedded transcript is mounted. Native input is adopted by the durable task intake. */
-function EmbeddedSession({ ctx, id, seat, t }: { ctx: ClientContext; id: string; seat: ConversationSeat; t: T }) {
+function EmbeddedSession({ ctx, id, seat, t, slot = 'superagent.session' }: { ctx: ClientContext; id: string; seat: ConversationSeat; t: T;
+  slot?: 'superagent.session' | 'superagent.context' }) {
   const [reference, setReference] = useState<SessionReference>()
   const [error, setError] = useState<Error>()
   useEffect(() => {
@@ -51,9 +59,9 @@ function EmbeddedSession({ ctx, id, seat, t }: { ctx: ClientContext; id: string;
   }, [ctx, id, t])
   if (!reference) return <LoadState loading={!error} error={error} />
   const { SessionProvider, renderSlot } = seat
-  return <SessionProvider session={reference}><div className="dt-native-transcript" data-superagent-session={id}>
-    {renderSlot('superagent.session', {})}
-  </div></SessionProvider>
+  return <SessionProvider session={reference}>{slot === 'superagent.context'
+    ? <div className="dt-native-context" data-superagent-context={id}>{renderSlot(slot, {})}</div>
+    : <div className="dt-native-transcript" data-superagent-session={id}>{renderSlot(slot, {})}</div>}</SessionProvider>
 }
 
 type ClientContext = Context & { sessions: ISessions }
@@ -85,29 +93,25 @@ function Mounted({ ctx, t, seat }: { ctx: ClientContext; t: T; seat: Conversatio
     await ctx.uiWorkspace.openWorkspace(id as Parameters<typeof ctx.uiWorkspace.openWorkspace>[0])
   }, [ctx])
   const pickDirectory = useCallback(() => pickWorkspaceDirectory(() => ctx.uiWorkspace.pickDirectory()), [ctx])
-  const inspectPlugins = useCallback(async (): Promise<HostPlugin[]> => {
-    const remote = (ctx as unknown as { remote?: { pluginManager?: { listPlugins(): Promise<{ ok: boolean; value?: (HostPlugin & { meta?: { title?: HostPlugin['title'] } })[] }> } } }).remote
-    if (!remote?.pluginManager) throw new Error(t('localPluginsUnavailable'))
-    const result = await remote.pluginManager.listPlugins()
-    if (!result.ok || !Array.isArray(result.value)) throw new Error(t('localPluginsUnavailable'))
-    return result.value.map(plugin => ({ entryId: plugin.entryId, moduleName: plugin.moduleName, enabled: plugin.enabled,
-      fiberPhase: plugin.fiberPhase, title: plugin.meta?.title }))
-  }, [ctx, t])
   const form = usePageForm(ctx.get('configForms')?.get<Record<string, unknown>>(ENTRY))
   const renderSession = useCallback((id: string) => <EmbeddedSession key={id} ctx={ctx} id={id} seat={seat} t={t} />, [ctx, seat, t])
-  return <App t={t} openSession={openSession} renderSession={renderSession} nativeSession inspectPlugins={inspectPlugins} openWorkspace={openWorkspace} pickDirectory={pickDirectory} deploymentForm={form} />
+  const renderContext = useCallback((id: string) => <EmbeddedSession key={id} ctx={ctx} id={id} seat={seat} t={t} slot="superagent.context" />, [ctx, seat, t])
+  return <App t={t} openSession={openSession} renderSession={renderSession} renderContext={renderContext} nativeSession openWorkspace={openWorkspace} pickDirectory={pickDirectory} deploymentForm={form} />
 }
 
-export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace', 'remote', 'remote.pluginManager']
+export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace']
 /** Registers the panel, sidebar icon, and Plugin Manager config view; `configForms` is optional (without it, machine settings are read-only). */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-superagent: dictionaries')
   const t = ctx.locale.bind(NS)
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS, inject: () => ({}),
-    children: { 'superagent.session': { kind: 'single', scope: 'session' } } },
+    children: { 'superagent.session': { kind: 'single', scope: 'session' }, 'superagent.context': { kind: 'single', scope: 'session' } } },
     (props: { t: T } & ConversationSeat) => <Mounted ctx={ctx} t={props.t} seat={props} />))
   ctx.slots.inject('superagent.session', () => ctx.slots.register({ name: 'superagent.session' },
     ({ renderFactorySlot }: PropsRenderFactories) => renderFactorySlot('conversation.content', { variant: 'embedded', phase: 'active', hero: false })))
+  ctx.slots.inject('superagent.context', () => ctx.slots.register({ name: 'superagent.context' },
+    ({ renderFactorySlot }: PropsRenderFactories) => renderFactorySlot('conversation.content', { variant: 'embedded', phase: 'active', hero: false },
+      { slots: { views: ContextPluginView } })))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 10, label: () => t('panel'), locale: NS }, HammerIcon))
   ctx.slots.inject('plugins.row.config', () => ctx.slots.register({ name: 'plugins.row.config', key: `${ENTRY}#${ENTRY}`, locale: NS },
     (props: PluginConfigViewProps & { t: T }) => <PluginConfig t={props.t} view={props.view} form={props.form} />))

@@ -17,7 +17,7 @@ export const translator = (dictionary: Record<string, string>): T => ((key: stri
 }) as T
 function Panel({ t }: { t: T }) {
   return <App t={t} renderSession={server.renderSessions ? id => <div data-test-session={id}>{id}</div> : undefined}
-    inspectPlugins={async () => [{ entryId: 'include:project-ops', moduleName: '@missher/dsh-project-ops', enabled: true, fiberPhase: 'active', title: { zh: 'Project Ops' } }]}
+    renderContext={server.renderSessions ? id => <span data-test-context={id}>上下文</span> : undefined}
     openSession={async id => { server.opened.push(id) }} openWorkspace={async id => { server.openedWorkspaces.push(id) }} pickDirectory={async () => server.pickedDirectory} deploymentForm={usePageForm(server.form)} />
 }
 let root: Root | undefined

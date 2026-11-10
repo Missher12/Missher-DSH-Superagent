@@ -54,7 +54,7 @@ function ActivityFeed({ data, member }: { data: View; member: Member | undefined
 }
 
 export function SingleWorkbench({ sessionId }: { sessionId?: string }) {
-  const { t, call, openWorkspace, renderSession, nativeSession, navigate } = usePanel()
+  const { t, call, openWorkspace, renderSession, renderContext, nativeSession, navigate } = usePanel()
   const { state, restarts } = usePanelData()
   const { data, error, reload } = usePoll(async () => {
     const value = await call('GET local/workbench', { query: { session: sessionId } })
@@ -62,8 +62,8 @@ export function SingleWorkbench({ sessionId }: { sessionId?: string }) {
     return { ...value, members: value.members.filter(member => !member.taskId || !teamTasks.has(member.taskId)),
       tasks: value.tasks.filter(task => !teamTasks.has(task.id)), activity: value.activity.filter(item => !item.ticketId || !teamTasks.has(item.ticketId)) }
   }, [call, restarts, sessionId], 2000)
-  const [view, setView] = useState<'conversation' | 'activity'>('conversation')
-  const select = (id?: string) => { setView('conversation'); navigate({ page: 'overview', ...(id ? { query: { session: id } } : {}) }, true) }
+  const [view, setView] = useState<'conversation' | 'context' | 'activity'>('conversation')
+  const select = (id?: string) => { setView(view => view === 'context' ? 'context' : 'conversation'); navigate({ page: 'overview', ...(id ? { query: { session: id } } : {}) }, true) }
   const member = data?.members.find(member => member.id === sessionId)
   const stopped = !!member?.taskId && data?.tasks.find(task => task.id === member.taskId)?.ended?.by === 'human'
   const open = useAction(async () => { if (data?.workspace) await openWorkspace(data.workspace.id) })
@@ -104,11 +104,12 @@ export function SingleWorkbench({ sessionId }: { sessionId?: string }) {
       {member && renderSession ? <>
         <div className="dt-workbench-session-bar">
           <SegmentedTabs className="dt-session-tabs" label={t('workbenchConversation')} value={view} onChange={setView}
-            items={(['conversation', 'activity'] as const).map(value => ({ value, label: t(value === 'conversation' ? 'workbenchConversation' : 'workbenchActivity'), id: `dt-session-${value}`, panelId: 'dt-session-content' }))} />
+            items={(['conversation', ...(renderContext ? ['context' as const] : []), 'activity'] as const).map(value => ({ value, label: t(value === 'conversation' ? 'workbenchConversation' : value === 'context' ? 'sessionContextTitle' : 'workbenchActivity'), id: `dt-session-${value}`, panelId: 'dt-session-content' }))} />
           {!nativeSession && <SessionModelPicker key={member.id} sessionId={member.id} running={member.state === 'running'} />}
         </div>
         {view === 'conversation' ? <><div id="dt-session-content" role="tabpanel" aria-labelledby="dt-session-conversation" className="dt-workbench-conversation" data-stopped={stopped || undefined}>{renderSession(member.id)}</div>
           {!nativeSession && !stopped && member.taskId && <div className="dt-workbench-followup"><LocalFollowup key={member.taskId} id={member.taskId} completed={member.state === 'finished'} onSent={reload} /></div>}</>
+          : view === 'context' && renderContext ? <div id="dt-session-content" role="tabpanel" aria-labelledby="dt-session-context" className="dt-workbench-conversation">{renderContext(member.id)}</div>
           : <div id="dt-session-content" role="tabpanel" aria-labelledby="dt-session-activity" className="dt-workbench-history"><ActivityFeed data={data} member={member} /></div>}
       </> : <><CurrentTasks data={data} member={member} /><ActivityFeed data={data} member={member} /></>}
     </div></div>}

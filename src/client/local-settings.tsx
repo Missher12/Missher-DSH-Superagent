@@ -12,7 +12,6 @@ import { Hint, Section } from './widgets.tsx'
 import { McpSettings } from './local-mcp.tsx'
 import { SourceSettings } from './source.tsx'
 import { EvalSettings } from './eval.tsx'
-import { LocalPlugins } from './local-plugins.tsx'
 
 function SettingsForm() {
   const { t, call } = usePanel()
@@ -66,17 +65,17 @@ function SettingsForm() {
 
 export function LocalSettings() {
   const { t } = usePanel()
-  const [editor, setEditor] = useState<'plugins' | 'mcp' | 'sources' | 'policy' | 'prompts'>()
-  const entries = [{ id: 'plugins' as const, title: t('localPluginsTitle') }, { id: 'mcp' as const, title: t('mcpTitle') }, { id: 'sources' as const, title: t('localExternalTitle') },
+  const [editor, setEditor] = useState<'mcp' | 'sources' | 'policy' | 'prompts'>()
+  const entries = [{ id: 'mcp' as const, title: t('mcpTitle') }, { id: 'sources' as const, title: t('localExternalTitle') },
     { id: 'policy' as const, title: t('localExternalPolicy') }, { id: 'prompts' as const, title: t('settingsGroup.prompts') }]
   return <SettingsProvider><div className="dt-local-settings-root"><h2 className="dt-local-management-title">{t('tab.settings')}</h2><div className="dt-local-settings-layout"><nav className="dt-local-settings-nav" aria-label={t('localSettingsGroups')}>
     <button type="button" className="dt-local-setting-entry" aria-current={!editor ? 'page' : undefined} onClick={() => setEditor(undefined)}><Icon name="settings" /><span>{t('localSettingsTitle')}</span></button>
     {entries.map(entry => <button type="button" className="dt-local-setting-entry" key={entry.id} aria-label={entry.title} aria-current={editor === entry.id ? 'page' : undefined}
-      onClick={() => setEditor(entry.id)}><Icon name={entry.id === 'plugins' ? 'session' : entry.id === 'prompts' ? 'message' : entry.id === 'policy' ? 'shield' : 'folder'} /><span>{entry.title}</span></button>)}
+      onClick={() => setEditor(entry.id)}><Icon name={entry.id === 'prompts' ? 'message' : entry.id === 'policy' ? 'shield' : 'folder'} /><span>{entry.title}</span></button>)}
   </nav>{editor ? <section className="dt-local-settings-editor">
     <header className="dt-local-editor-head"><Button variant="ghost" icon={<Icon name="chevron-left" />} onClick={() => setEditor(undefined)}>{t('localBackSettings')}</Button>
       {editor !== 'mcp' && <h2>{entries.find(entry => entry.id === editor)!.title}</h2>}</header>
-    <div className="dt-local-settings-content">{editor === 'plugins' ? <LocalPlugins /> : editor === 'mcp' ? <McpSettings /> : editor === 'sources' ? <SourceSettings include={['github', 'feishu']} />
+    <div className="dt-local-settings-content">{editor === 'mcp' ? <McpSettings /> : editor === 'sources' ? <SourceSettings include={['github', 'feishu']} />
       : editor === 'policy' ? <EvalSettings include={['github', 'feishu']} /> : <PromptsPage />}</div>
   </section> : <div className="dt-form dt-local-settings-page"><SettingsForm /></div>}</div></div></SettingsProvider>
 }
