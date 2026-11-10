@@ -244,9 +244,15 @@ export async function startRuntime(seed?: (store: Store) => void, machine: Parti
   const subagents = subagentRuntime(agents)
   const permission = new Map<string, string>()
   const rootTools = new Map<string, RegisteredTool>()
+  const workspaces = new Map<string, { id: string; path: string; title: string; setTitle: (title: string) => Promise<void> }>()
+  const workspace = (cwd: string, title: string) => ({ id: cwd, path: cwd, title,
+    setTitle: async (next: string) => { workspaces.get(cwd)!.title = next } })
+  workspaces.set(directory, workspace(directory, 'Test workspace'))
   const services = { agents, llm: { resolveCallConfig: vi.fn(async (value: unknown) => value) }, sessionController: controller,
-    sessionPersistence: persistence, workspaceRegistry: { create: async (cwd: string) => ({ id: cwd }), get: (id: string) => ({ id, path: directory }),
-      list: () => [{ id: directory, path: directory, title: 'Test workspace' }] },
+    sessionPersistence: persistence, workspaceRegistry: { create: async (cwd: string, title?: string) => {
+      if (!workspaces.has(cwd)) workspaces.set(cwd, workspace(cwd, title ?? cwd.split('/').at(-1)!))
+      return workspaces.get(cwd)!
+    }, get: (id: string) => workspaces.get(id), list: () => [...workspaces.values()] },
     permissionPresets: { defaultPreset: 'workspace-write', current: (session: { id: string }) => permission.get(session.id) ?? 'workspace-write',
       set: (session: { id: string }, preset: string) => { permission.set(session.id, preset) } },
     tools: { register: (tool: RegisteredTool) => { rootTools.set(tool.name, tool); return () => { rootTools.delete(tool.name) } } }, subprocess, webServer,

@@ -1,4 +1,5 @@
-import { mkdirSync, realpathSync } from 'node:fs'
+import { mkdirSync, realpathSync, existsSync, readdirSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { startRuntime, type Host } from './fixtures/host.ts'
 
@@ -6,6 +7,58 @@ let host: Host | undefined
 afterEach(async () => { await host?.stop(); host = undefined })
 
 describe('DSH local task source', () => {
+  it('keeps task and session model choices separate from global task defaults and restores them', async () => {
+    host = await startRuntime(undefined, { mode: 'local' })
+    const defaults = host.runtime.store.settings().executor.model
+    const task = await host.runtime.local!.create({ requestId: 'model-choice', title: '选择模型', instructions: '检查说明',
+      model: { provider: 'example', model: 'first' } })
+    await host.runtime.idle()
+    expect(host.runtime.sessions.model(task.sessionId)).toMatchObject({ provider: 'example', model: 'first' })
+    const changed = await host.api('PUT', `local/sessions/${task.sessionId}/model`, { provider: 'example', model: 'second' })
+    expect(changed).toMatchObject({ status: 200, body: { provider: 'example', model: 'second' } })
+    expect(host.ctx.agents.get(task.sessionId as import('@deepseek-ai/dsh-session').SessionId)!.session.append).toHaveBeenCalledWith('model/selection', expect.objectContaining({ model: 'second' }))
+    expect(host.runtime.store.settings().executor.model).toEqual(defaults)
+    const directory = host.directory
+    await host.runtime.stop()
+    const second = await startRuntime(undefined, { mode: 'local', stateDir: directory })
+    try {
+      expect(second.runtime.sessions.model(task.sessionId)).toMatchObject({ provider: 'example', model: 'second' })
+      expect((await second.runtime.local!.create({ requestId: 'model-default', title: '继承默认', instructions: '检查说明' })).ticketId).not.toBe(task.ticketId)
+      expect(second.runtime.store.settings().executor.model).toEqual(defaults)
+    } finally { await second.stop() }
+  })
+  it('keeps the real worker inbox and result relay live until a queued follow-up is consumed', async () => {
+    host = await startRuntime(undefined, { mode: 'local' })
+    const task = await host.runtime.local!.create({ requestId: 'finish-race', title: '完成边界', instructions: '执行原要求', directory: host.directory })
+    await host.runtime.idle()
+    await host.runtime.local!.followup(task.ticketId, 'extra', '还要新增测试')
+    await host.runtime.idle()
+    expect(host.runtime.store.tickets.get(task.ticketId)!.inputs).toContainEqual(expect.objectContaining({ human: true, readAt: null }))
+    await expect(host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: 'Old result' })).rejects.toThrow(/pending|unread/)
+    expect(host.runtime.store.tickets.get(task.ticketId)!.ended).toBeUndefined()
+    await expect(host.runTool(host.runtime.masterId, 'orchestrator_reply', { ticket_id: task.ticketId, purpose: 'result', text: 'Old result' })).rejects.toThrow(/not ready/)
+    host.step(task.sessionId)
+    await host.runtime.idle()
+    await host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '包含新增测试' })
+    await host.runtime.idle()
+    expect(host.runtime.store.tickets.get(task.ticketId)!.ended?.outcome).toBe('completed')
+    await host.runtime.local!.followup(task.ticketId, 'after', '完成后再补充')
+    await host.runtime.idle()
+    expect(host.runtime.store.tickets.get(task.ticketId)!.ended).toBeUndefined()
+    expect(host.runtime.store.tickets.get(task.ticketId)!.assignments).toHaveLength(2)
+  })
+  it('creates an independent content-named task directory once when no project is selected', async () => {
+    host = await startRuntime(undefined, { mode: 'local' })
+    const request = { requestId: 'standalone', title: '../整理研究笔记 / 新任务', instructions: '生成笔记和测试。' }
+    const task = await host.runtime.local!.create(request)
+    expect(dirname(task.directory!)).toBe(realpathSync(join(host.directory, 'work')))
+    expect(basename(task.directory!)).toMatch(/^task-整理研究笔记-新任务-/)
+    expect(existsSync(task.directory!)).toBe(true)
+    expect((await host.runtime.local!.create(request)).ticketId).toBe(task.ticketId)
+    expect(readdirSync(join(host.directory, 'work'))).toHaveLength(1)
+    await host.runtime.idle()
+    expect((await host.api('GET', 'local/workbench'))).toMatchObject({ body: { workspace: { directory: realpathSync(join(host.directory, 'work')) } } })
+  })
   it('serves the same local prompt defaults to the main session and panel after a custom version is saved', async () => {
     host = await startRuntime(undefined, { mode: 'local' })
     host.runtime.prompts.save({ ...host.runtime.prompts.current().config, communication: 'A saved custom notification rule.' }, 0, 'panel')

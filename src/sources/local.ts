@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 /** Explicit desktop intake. Git/GitHub and MCP adapters use the same SourceKind boundary. */
-import { realpathSync, statSync } from 'node:fs'
-import { basename, isAbsolute } from 'node:path'
+import { mkdirSync, realpathSync, statSync } from 'node:fs'
+import { basename, isAbsolute, join } from 'node:path'
 import { z } from 'zod'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { Runtime } from '../app/runtime.ts'
@@ -12,11 +12,15 @@ import { family } from '../kv.ts'
 import type { SourceKind } from './kind.ts'
 import { taskMessages, rememberTaskMessage, type TaskMessage } from './task-messages.ts'
 import { workspaceOf } from '../executor/workspace.ts'
+import { executionRoot } from '../app/execution-environment.ts'
+import { RoleModelSchema } from '../policy.ts'
+import { resolveRoleModel, sessionModels } from '../app/role-models.ts'
 
 export const LocalRequestSchema = z.object({
   requestId: z.string().trim().min(1).max(200), title: z.string().trim().min(1).max(160),
-  instructions: z.string().trim().min(1).max(64000), directory: z.string().min(1),
+  instructions: z.string().trim().min(1).max(64000), directory: z.string().min(1).optional(),
   originSessionId: z.string().min(1).optional(),
+  model: RoleModelSchema.optional(),
 }).strict()
 export type LocalRequest = z.infer<typeof LocalRequestSchema>
 export type LocalMessage = TaskMessage
@@ -54,6 +58,11 @@ export class LocalTasks {
     return this.ctx.workspaceRegistry.list().filter(workspace => workspace.path !== this.runtime.machine.stateDir)
       .map(workspace => ({ id: workspace.id, title: workspace.title, directory: workspace.path }))
   }
+  async ensureWorkspace(): Promise<void> {
+    const directory = executionRoot(this.runtime.store.settings(), this.runtime.machine.stateDir)
+    mkdirSync(directory, { recursive: true })
+    await this.ctx.workspaceRegistry.create(realpathSync(directory), 'Superagent 工作区')
+  }
   async addWorkspace(directory: string): Promise<{ id: string; title: string; directory: string }> {
     directory = projectDirectory(directory)
     if (directory === realpathSync(this.runtime.machine.stateDir)) throw new LocalTaskError('这是调度数据目录，请选择项目目录')
@@ -77,7 +86,11 @@ export class LocalTasks {
   }
   async create(value: LocalRequest) {
     const request = LocalRequestSchema.parse(value)
-    request.directory = projectDirectory(request.directory)
+    if (request.model) {
+      try { request.model = await resolveRoleModel(this.ctx, request.model) }
+      catch { throw new LocalTaskError('所选模型暂不可用，请选择其他模型后重试') }
+    }
+    if (request.directory) request.directory = projectDirectory(request.directory)
     const { store } = this.runtime
     const ctx = this.ctx
     let preset = ctx.permissionPresets.defaultPreset
@@ -88,6 +101,7 @@ export class LocalTasks {
       preset = ctx.permissionPresets.current(resolved.agent.session)
     }
     if (!preset || preset === 'custom') throw new LocalTaskError('请先在 DSH 选择一个具名权限预设，再派出任务；插件不会自行扩大权限')
+    if (!request.directory && !store.settings().paused) await this.ensureWorkspace()
     const requestKey = key('local', request.originSessionId ?? 'panel', request.requestId)
     const encoded = JSON.stringify(request)
     return store.atomic(() => {
@@ -97,14 +111,23 @@ export class LocalTasks {
         return this.get(old.ticketId)
       }
       if (store.settings().paused) throw new LocalTaskError('任务处理已暂停，请恢复后再派单')
+      let directory = request.directory
+      if (!directory) {
+        const root = executionRoot(store.settings(), this.runtime.machine.stateDir)
+        const name = request.title.normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'task'
+        directory = join(root, `task-${name}-${requestKey.slice(0, 8)}`)
+        mkdirSync(directory, { recursive: true })
+        directory = realpathSync(directory)
+      }
       const trigger: Trigger = { id: requestKey, source: 'local', threads: [{ source: 'local', id: requestKey }],
         actor: { source: 'local', id: 'desktop-user' }, human: true, addressed: 'direct', at: new Date().toISOString(),
-        text: request.instructions, meta: { directory: request.directory, originSessionId: request.originSessionId ?? '', permissionPreset: preset },
+        text: request.instructions, meta: { directory, originSessionId: request.originSessionId ?? '', permissionPreset: preset },
         channel: { source: 'local', thread: `local:${requestKey}`, address: { sessionId: request.originSessionId ?? '' } } }
       this.runtime.receive(trigger)
       const decision = this.runtime.engine.decide(trigger.id, { kind: 'accept', title: request.title, scope: request.instructions,
         name: 'local-task', reason: '由用户在 DSH 中明确派出的本地任务' })
       if (!decision.ticketId) throw new LocalTaskError('任务没有获得执行授权')
+      if (request.model) store.set(sessionModels(workerSessionId(decision.ticketId)), request.model)
       store.set(requests(requestKey), { ticketId: decision.ticketId, request: encoded })
       return this.get(decision.ticketId)
     })

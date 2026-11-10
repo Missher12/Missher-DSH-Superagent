@@ -198,6 +198,8 @@ async function drive(host: Host) {
   await run(master, 'orchestrator_ticket_note', { ticket_id: a, text: 'Ticket B changes the same settings page.' })
   await runtime.pump()
   await runtime.idle()
+  // This surface fixture finishes the simulated worker step; the real host records these reads through session events.
+  runtime.engine.inputsRead(a, runtime.store.tickets.get(a)!.inputs.map(input => input.id))
   await run(workerA, 'orchestrator_report', { state: 'ready', summary: 'Done.' })
   await runtime.receive(feishu('2', '再加一个按钮', { mentions: [], root_id: 'om_1' }))
   await vi.waitFor(async () => {

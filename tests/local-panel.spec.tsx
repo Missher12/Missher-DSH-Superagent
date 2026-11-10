@@ -6,6 +6,27 @@ import { server, ticketSummary } from './fixtures/panel-server.ts'
 
 usePanel()
 beforeEach(() => at({ page: 'execution' }))
+it('dispatches the selected task model from a bounded dialog', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  await mount(); await click('新建任务')
+  expect(all('[role="dialog"][aria-label="新建任务"]')).toHaveLength(1)
+  await type(field<HTMLSelectElement>(zh.localTaskModel), JSON.stringify(['worker-provider', 'worker-model']))
+  await type(field<HTMLTextAreaElement>('任务要求'), '按指定模型检查说明')
+  await click('派出任务')
+  expect(server.requests.find(item => item.path === 'local/tasks')?.body).toMatchObject({ model: { provider: 'worker-provider', model: 'worker-model' } })
+  expect(all('[role="dialog"][aria-label="新建任务"]')).toHaveLength(0)
+})
+it('defaults to an independent task without requiring an existing project directory', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  await mount(); await click('新建任务')
+  expect(field<HTMLSelectElement>('任务位置').value).toBe('independent')
+  expect(all('input').some(input => input.getAttribute('placeholder') === '/Users/.../project')).toBe(false)
+  await type(field<HTMLTextAreaElement>('任务要求'), '整理研究笔记')
+  await click('派出任务')
+  const body = server.requests.find(item => item.path === 'local/tasks')?.body
+  expect(body).toMatchObject({ title: '整理研究笔记', instructions: '整理研究笔记' })
+  expect(body).not.toHaveProperty('directory')
+})
 it('shows every runtime error and does not claim to be ready while a problem needs attention', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   server.health = { models: { state: 'error', detail: '模型暂时不可用' }, reply: { state: 'error', detail: '结果投递失败' } }
@@ -123,6 +144,7 @@ it('lets the user dispatch a local task and sends follow-up requirements to that
   await mount()
   await click('新建任务')
   await type(field<HTMLInputElement>('任务标题'), '检查设置页')
+  await type(field<HTMLSelectElement>('任务位置'), 'existing')
   await type(field<HTMLSelectElement>('选择工作区'), '/tmp/work')
   await type(field<HTMLTextAreaElement>('任务要求'), '检查并修复已有按钮的对齐问题')
   await click('派出任务')
@@ -163,11 +185,14 @@ it('preserves an unfinished task draft across panel navigation and generates a t
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   await mount()
   await click('新建任务')
+  await type(field<HTMLSelectElement>('任务位置'), 'existing')
   await type(field<HTMLInputElement>('工作区目录'), '/tmp/work')
   await type(field<HTMLTextAreaElement>('任务要求'), '分析登录失败的原因\n先分析，不改文件。')
+  await click('取消')
   await click('帮助')
   await remount()
   await click('任务')
+  await click('新建任务')
   expect(field<HTMLTextAreaElement>('任务要求').value).toContain('分析登录失败')
   await click('派出任务')
   expect(server.requests.find(item => item.path === 'local/tasks')?.body).toMatchObject({ title: '分析登录失败的原因' })
@@ -177,6 +202,7 @@ it('shows the latest usable result once and folds technical records away', async
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   await mount()
   await click('新建任务')
+  await type(field<HTMLSelectElement>('任务位置'), 'existing')
   await type(field<HTMLInputElement>('工作区目录'), '/tmp/work')
   await type(field<HTMLTextAreaElement>('任务要求'), '检查项目说明')
   await click('派出任务')
@@ -223,6 +249,7 @@ it('prepares a stopped task as a new draft without silently dispatching it', asy
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   await mount()
   await click('新建任务')
+  await type(field<HTMLSelectElement>('任务位置'), 'existing')
   await type(field<HTMLInputElement>('工作区目录'), '/tmp/work')
   await type(field<HTMLTextAreaElement>('任务要求'), '只读取说明')
   await click('派出任务')

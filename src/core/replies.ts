@@ -1,7 +1,7 @@
 /** The Engine's messages to Channels, each by the rule that allows it. */
 import { key } from './ids.ts'
 import { UserError } from './errors.ts'
-import { latestAssignment, liveTicket, ticketOutcome } from './model.ts'
+import { hasUnreadRequest, latestAssignment, liveTicket, ticketOutcome } from './model.ts'
 import type { ChannelRef, Ticket, Trigger } from './model.ts'
 import type { ReplyStatus } from './ports.ts'
 import { EnginePart } from './part.ts'
@@ -70,7 +70,7 @@ export class Replies extends EnginePart {
       const outcome = ticket && ticketOutcome(ticket)
       const reported = !!ticket && liveTicket(ticket) && latestAssignment(ticket)?.report?.state === 'ready'
       const ready = outcome === 'merged' || outcome === 'completed' || outcome === 'dropped' || reported
-      if (!ticket || !ready) throw new UserError('notReady')
+      if (!ticket || !ready || reported && hasUnreadRequest(ticket)) throw new UserError('notReady')
     }
     const attention = request.purpose === 'attention' ? ticket?.attention : undefined
     // Attention replies must match the ticket's currently open question text.

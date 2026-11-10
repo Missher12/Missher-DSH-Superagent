@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it } from 'vitest'
-import { usePanel, mount, click, text, all } from './fixtures/panel.tsx'
+import { usePanel, mount, click, text, all, type, at } from './fixtures/panel.tsx'
 import { server, ticketSummary } from './fixtures/panel-server.ts'
 
 usePanel()
 beforeEach(() => { server.setup = { ...server.setup, mode: 'local', accounts: null } })
+it('changes the selected embedded session model without leaving the workspace', async () => {
+  server.renderSessions = true
+  at({ page: 'overview', query: { session: 'master' } })
+  await mount()
+  await type(all('select[aria-label="会话模型"]')[0] as unknown as HTMLSelectElement, JSON.stringify(['worker-provider', 'worker-model']))
+  expect(server.requests.find(item => item.method === 'PUT' && item.path === 'local/sessions/master/model')?.body)
+    .toEqual({ provider: 'worker-provider', model: 'worker-model' })
+  expect(server.opened).toEqual([])
+  expect(all('[data-test-session="master"]')).toHaveLength(1)
+})
 
 it('opens the real dedicated workspace and coordinator session from the workbench', async () => {
   await mount()
@@ -12,7 +22,7 @@ it('opens the real dedicated workspace and coordinator session from the workbenc
   await click('打开专属工作区')
   expect(server.openedWorkspaces).toEqual(['superagent-space'])
   await click('调度')
-  await click('打开会话')
+  await click('在 DSH 中打开')
   expect(server.opened).toEqual(['master'])
   expect(text()).toContain('等待派单')
   expect(text()).not.toContain('审核员')
@@ -33,7 +43,7 @@ it('filters activity by actual executor identity and opens its task or conversat
   expect(text()).toContain('读取文件')
   expect(text()).toContain('测试应用')
   expect(text()).not.toContain('另一项派单')
-  await click('打开会话')
+  await click('在 DSH 中打开')
   expect(server.opened).toEqual(['worker-live'])
   server.ticketDetails['task-live'] = { ...server.ticketDetails.t1!, id: 'task-live', title: '检查路径', sessionId: 'worker-live', local: true }
   await click('查看任务')

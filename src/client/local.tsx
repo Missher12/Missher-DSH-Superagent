@@ -1,14 +1,16 @@
 /** Local task drafts and follow-ups. Drafts stay in this browser session until dispatched or cleared. */
 import { useEffect, useState } from 'react'
-import { Button, Icon, Input } from './controls.tsx'
+import { Button, Icon, Input, Modal } from './controls.tsx'
 import { useAction, usePanel } from './provider.tsx'
 import { Field, Fields } from './settings-kit.tsx'
 import { errorText } from './text.ts'
 import { Hint } from './widgets.tsx'
+import { ModelSelect } from './model-picker.tsx'
+import type { RoleModel } from '../policy.ts'
 
 const DRAFT = 'dsh-superagent/local-draft'
-interface TaskDraft { requestId: string; title: string; directory: string; instructions: string; open: boolean }
-const blank = (): TaskDraft => ({ requestId: crypto.randomUUID(), title: '', directory: '', instructions: '', open: false })
+interface TaskDraft { requestId: string; title: string; directory: string; instructions: string; open: boolean; existing: boolean; model?: RoleModel }
+const blank = (): TaskDraft => ({ requestId: crypto.randomUUID(), title: '', directory: '', instructions: '', open: false, existing: false })
 function readDraft() {
   const fallback = blank()
   try {
@@ -16,7 +18,11 @@ function readDraft() {
     if (!value) return fallback
     return { requestId: typeof value.requestId === 'string' && value.requestId ? value.requestId : fallback.requestId,
       title: typeof value.title === 'string' ? value.title : '', directory: typeof value.directory === 'string' ? value.directory : '',
-      instructions: typeof value.instructions === 'string' ? value.instructions : '', open: value.open === true }
+      instructions: typeof value.instructions === 'string' ? value.instructions : '', open: value.open === true,
+      existing: typeof value.existing === 'boolean' ? value.existing : !!value.directory,
+      model: value.model && typeof value.model === 'object' && 'provider' in value.model && 'model' in value.model
+        && typeof value.model.provider === 'string' && typeof value.model.model === 'string'
+        ? { provider: value.model.provider, model: value.model.model } : undefined }
   } catch { return fallback }
 }
 const rememberDraft = (draft: ReturnType<typeof blank>) => {
@@ -24,15 +30,15 @@ const rememberDraft = (draft: ReturnType<typeof blank>) => {
 }
 /** Prepare a fresh request without dispatching it, for an explicitly stopped task. */
 export function prepareLocalTask(directory: string, instructions: string, title: string) {
-  rememberDraft({ ...blank(), directory, instructions, title, open: true })
+  rememberDraft({ ...blank(), directory, instructions, title, open: true, existing: true })
 }
 /** Select a project while keeping an unfinished task's instructions and title. */
 export function selectLocalWorkspace(directory: string) {
-  rememberDraft({ ...readDraft(), directory, open: true })
+  rememberDraft({ ...readDraft(), directory, open: true, existing: true })
 }
 
 export function LocalTaskComposer({ paused = false }: { paused?: boolean }) {
-  const { t, call, navigate } = usePanel()
+  const { t, call, navigate, renderSession } = usePanel()
   const [draft, setDraft] = useState(readDraft)
   const [failure, setFailure] = useState<string>()
   const [workspaces, setWorkspaces] = useState<{ title: string; directory: string }[]>([])
@@ -48,19 +54,20 @@ export function LocalTaskComposer({ paused = false }: { paused?: boolean }) {
     try {
       const title = draft.title.trim() || draft.instructions.trim().split('\n')[0]!.slice(0, 80)
       const task = await call('POST local/tasks', { body: { requestId: draft.requestId, title,
-        directory: draft.directory.trim(), instructions: draft.instructions.trim() } })
-      const next = { ...blank(), directory: draft.directory }
+        ...(draft.existing ? { directory: draft.directory.trim() } : {}), ...(draft.model ? { model: draft.model } : {}), instructions: draft.instructions.trim() } })
+      const next = { ...blank(), directory: draft.directory, existing: draft.existing }
       rememberDraft(next); setDraft(next)
-      navigate({ page: 'execution', id: task.ticketId })
+      navigate(renderSession ? { page: 'overview', query: { session: task.sessionId } } : { page: 'execution', id: task.ticketId })
     } catch (error) { setFailure(errorText(error)); throw error }
   })
   return <div className="dt-local-composer">
     <div className="dt-actions dt-local-composer-head">
-      {draft.open && <h2 className="dt-local-compose-title">{t('localNewTask')}</h2>}
-      <Button variant={draft.open ? 'ghost' : 'primary'} icon={<Icon name={draft.open ? 'close' : 'plus'} />}
-        disabled={submit.busy || paused} onClick={() => edit({ open: !draft.open })}>{t(draft.open ? 'cancel' : 'localNewTask')}</Button>
+      <Button variant="primary" icon={<Icon name="plus" />}
+        disabled={submit.busy || paused} onClick={() => edit({ open: true })}>{t('localNewTask')}</Button>
     </div>
-    {draft.open && <form className="dt-form dt-local-form" onSubmit={event => { event.preventDefault(); void submit.run() }}>
+    <Modal className="dt-local-task-modal" open={draft.open} title={t('localNewTask')} closeLabel={t('close')}
+      onClose={() => { if (!submit.busy) edit({ open: false }) }}>
+    <form className="dt-form dt-local-form" onSubmit={event => { event.preventDefault(); void submit.run() }}>
       <Fields disabled={submit.busy || paused}>
         <div className="dt-local-request">
           <Field label={t('localInstructions')}><textarea required className="dt-textarea" rows={5}
@@ -69,8 +76,13 @@ export function LocalTaskComposer({ paused = false }: { paused?: boolean }) {
           <div className="dt-actions dt-local-examples">{(['research', 'diagnose', 'develop'] as const).map(kind => <Button key={kind} size="sm"
             onClick={() => edit({ instructions: t(`localExample.${kind}`) })}>{t(`localExampleLabel.${kind}`)}</Button>)}</div>
         </div>
+        <Field label={t('localWorkspaceMode')} note={draft.existing ? undefined : t('localIndependentHint')}>
+          <select className="dt-select" value={draft.existing ? 'existing' : 'independent'} onChange={event => edit({ existing: event.target.value === 'existing' })}>
+            <option value="independent">{t('localIndependent')}</option><option value="existing">{t('localExistingProject')}</option>
+          </select></Field>
+        {draft.existing && <>
         <div className="dt-local-project">
-          <Field label={t('localDirectory')} note={t('localDirectoryHint')}><Input required pattern="/.*" value={draft.directory}
+          <Field label={t('localDirectory')} note={t('localDirectoryHint')}><Input required value={draft.directory}
             placeholder="/Users/.../project" onChange={event => edit({ directory: event.target.value })} /></Field>
           {workspaces.length > 0 && <Field label={t('localChooseWorkspace')}><select className="dt-select" value=""
             onChange={event => { if (event.target.value) edit({ directory: event.target.value }) }}>
@@ -78,18 +90,21 @@ export function LocalTaskComposer({ paused = false }: { paused?: boolean }) {
             {workspaces.map(workspace => <option key={workspace.directory} value={workspace.directory}>{workspace.title} — {workspace.directory}</option>)}
           </select></Field>}
         </div>
+        </>}
         <Field label={t('localTaskTitle')}><Input maxLength={160} value={draft.title}
           placeholder={t('localTitlePlaceholder')} onChange={event => edit({ title: event.target.value })} /></Field>
+        <Field label={t('localTaskModel')}><ModelSelect value={draft.model} onChange={model => edit({ model })} /></Field>
         <div className="dt-local-form-footer">
           <Hint>{t('localDispatchHint')}</Hint>
           {failure && <p className="dt-error" role="alert">{failure}</p>}
           <div className="dt-actions">
-            <Button variant="ghost" onClick={() => { setFailure(undefined); setDraft({ ...blank(), directory: draft.directory, open: true }) }}>{t('localClearDraft')}</Button>
-            <Button type="submit" variant="primary" disabled={!draft.instructions.trim() || !draft.directory.trim()}>{t(submit.busy ? 'localSubmitting' : 'localDispatch')}</Button>
+            <Button variant="ghost" onClick={() => edit({ open: false })}>{t('cancel')}</Button>
+            <Button variant="ghost" onClick={() => { setFailure(undefined); setDraft({ ...blank(), directory: draft.directory, existing: draft.existing, open: true }) }}>{t('localClearDraft')}</Button>
+            <Button type="submit" variant="primary" disabled={!draft.instructions.trim() || (draft.existing && !draft.directory.trim())}>{t(submit.busy ? 'localSubmitting' : 'localDispatch')}</Button>
           </div>
         </div>
       </Fields>
-    </form>}
+    </form></Modal>
   </div>
 }
 

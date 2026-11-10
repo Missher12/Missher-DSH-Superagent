@@ -12,7 +12,7 @@ it('shows the dedicated control workspace and only real Superagent sessions with
   const sessions = host.agents.size
   const result = await host.api('GET', 'local/workbench')
   expect(result).toMatchObject({ status: 200, body: {
-    workspace: { directory: host.directory },
+    workspace: { directory: realpathSync(join(host.directory, 'work')) },
     members: [{ id: host.runtime.masterId, role: 'orchestrator', state: 'idle' }],
     tasks: [], activity: [],
   } })

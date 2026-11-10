@@ -1,12 +1,13 @@
 /** Lifecycle, prompt/tool/skill decoration, message delivery, and budget retry tracking for orchestrator and worker DSH sessions. */
 import type { Context } from '@deepseek-ai/cordis'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { Agent, ModelSelection } from '@deepseek-ai/dsh-agent'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { MessageId } from '@deepseek-ai/dsh-llm'
 import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { basename, dirname } from 'node:path'
 import { z } from 'zod'
-import { key, liveTicket, type Ticket } from '../core/index.ts'
+import { key, liveTicket, UserError, type Ticket } from '../core/index.ts'
 import { mandateInstructions, ticketOfSession } from '../executor/dsh.ts'
 import { workspaceOf } from '../executor/workspace.ts'
 import type { HealthEntry } from '../infra/health.ts'
@@ -14,7 +15,8 @@ import { AgentDelivery, messageId } from './delivery.ts'
 import type { Effects } from './effects.ts'
 import type { Variable } from './execution-environment.ts'
 import { RetryHealth } from './retry-health.ts'
-import { initializeRoleModel } from './role-models.ts'
+import { initializeRoleModel, resolveRoleModel, sessionModels } from './role-models.ts'
+import type { RoleModel } from '../policy.ts'
 import { bundledSkills } from './skill-files.ts'
 import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
 import type { Store } from './store.ts'
@@ -44,7 +46,7 @@ export interface SessionsHost {
  * What Sessions registered for an agent it decorated: the releases of its prompt section, tools and skill scope, the scope
  * its skills are registered in, and the skills of one prompt revision; for a worker's subagent, only its tool limits.
  */
-interface SessionBinding { disposers: (() => void)[]; scope?: Context; skills?: { revision: number; dispose: () => void }; subagent?: true }
+interface SessionBinding { disposers: (() => void)[]; scope?: Context; skills?: { revision: number; dispose: () => void }; subagent?: true; model?: { current: ModelSelection } }
 export interface SessionToolActivity { id: string; name: string; at: string; state: 'running' | 'done' | 'error' | 'interrupted' }
 
 /** The agent presets Executor Sessions and the main Session are created with, which the bundle's patch defines. */
@@ -121,6 +123,10 @@ export class Sessions {
       const agent = ctx.agents.get(session.id)
       const binding = agent && agent.session === session ? this.bindings.get(agent) : undefined
       if (!agent || !binding || binding.subagent) return
+      if (event.type === 'model/selection') {
+        this.host.store.set(sessionModels(agent.id), event.data)
+        this.bindModel(agent, binding, event.data)
+      }
       if (event.type === 'tool/call') {
         const tools = this.recentTools.get(agent.id) ?? []
         const started: SessionToolActivity = { id: event.data.callId, name: event.data.name, at: new Date(event.time).toISOString(), state: 'running' }
@@ -149,7 +155,63 @@ export class Sessions {
       if (status === 'idle' && !this.host.closing()) { this.retryHealth.clear(agent.id); this.updateModelHealth() }
     })
   }
-  /** Resolves or creates session `id` in workspace `cwd`, initializes its role model, decorates it with prompts/skills/tools, sets `danger-full-access` permissions, and renames it to `title`. */
+  /** Selected model for a managed Session; an absent choice inherits its role's default. */
+  model(id: string): RoleModel | null {
+    this.requireManaged(id)
+    const saved = this.host.store.get(sessionModels(id))
+    if (saved) return saved
+    const header = this.ctx.agents.get(id as SessionId)?.session.requestHeader()?.config
+    if (header) return { provider: header.provider, model: header.model, ...(header.reasoningEffort ? { reasoningEffort: header.reasoningEffort } : {}) }
+    const settings = this.host.store.settings()
+    return id === this.host.masterId ? settings.eval.model : settings.executor.model
+  }
+  private requireManaged(id: string): void {
+    const ticketId = ticketOfSession(id)
+    if (id !== this.host.masterId && (!ticketId || !this.host.store.tickets.get(ticketId))) throw new UserError('unknownAssignment')
+  }
+  /** Change only this Session; an already assembled request keeps its model until the next step. */
+  async selectModel(id: string, model: RoleModel | null): Promise<RoleModel> {
+    this.requireManaged(id)
+    const settings = this.host.store.settings()
+    const fallback = model ?? (id === this.host.masterId ? settings.eval.model : settings.executor.model) ?? (await this.ctx.sessionController.modelCatalog()).default
+    if (!fallback) throw new UserError('modelUnavailable', { block: 'executor', error: 'DSH 未配置默认模型' })
+    let selected: ModelSelection
+    try { selected = await resolveRoleModel(this.ctx, fallback) }
+    catch (error) { throw new UserError('modelUnavailable', { block: 'executor', error: String(error) }) }
+    const result = await this.ctx.sessionController.resolveAgent(id as SessionId)
+    if ('error' in result && result.error.code !== 'session/not-found') throw result.error
+    this.host.store.set(sessionModels(id), selected)
+    if (!('error' in result)) {
+      await this.decorate(result.agent)
+      this.bindModel(result.agent, this.bindings.get(result.agent)!, selected)
+      result.agent.session.append('model/selection', selected)
+      await this.ctx.sessionPersistence.flush()
+    }
+    return selected
+  }
+  private bindModel(agent: Agent, binding: SessionBinding, model: RoleModel): void {
+    const selected: ModelSelection = { provider: model.provider, model: model.model,
+      ...(model.reasoningEffort ? { reasoningEffort: ReasoningEffortId(model.reasoningEffort) } : {}) }
+    if (binding.model) binding.model.current = selected
+    else {
+      const selection = binding.model = { current: selected }
+      let assembled: ModelSelection | undefined
+      // Use the same prompt/request waterfall as role defaults on both supported SDK versions.
+      binding.disposers.push(agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
+        const snapshot = selection.current
+        const result = await next()
+        assembled = snapshot
+        return { ...result, variables: { ...result.variables, provider: snapshot.provider, model: snapshot.model } }
+      }, { prepend: true }), agent.ctx.on('agent/request', async (_payload, next) => {
+        const snapshot = assembled
+        const result = await next()
+        if (!snapshot) return result
+        const { reasoningEffort: _previous, ...rest } = result
+        return { ...rest, ...snapshot }
+      }, { prepend: true }))
+    }
+  }
+  /** Resolves or creates session `id` in workspace `cwd`, seeds its model, and decorates its tools and prompts. */
   async ensure(id: string, cwd: string, title: string, role: 'orchestrator' | 'worker'): Promise<Agent> {
     const ctx = this.ctx
     if (this.host.local && role === 'orchestrator') {
@@ -168,7 +230,7 @@ export class Sessions {
     }
     if ('error' in result) throw result.error
     const settings = this.host.store.settings()
-    await initializeRoleModel(ctx, result.agent, role === 'orchestrator' ? settings.eval.model : settings.executor.model)
+    await initializeRoleModel(ctx, result.agent, this.host.store.get(sessionModels(id)) ?? (role === 'orchestrator' ? settings.eval.model : settings.executor.model))
     await this.decorate(result.agent)
     if (this.host.local && created) {
       const ticketId = ticketOfSession(id)
@@ -269,6 +331,8 @@ export class Sessions {
     if (!master && !ticket) { this.limitSubagent(agent); return }
     const binding: SessionBinding = { disposers: [] }
     this.bindings.set(agent, binding)
+    const model = host.store.get(sessionModels(agent.id))
+    if (model) this.bindModel(agent, binding, model)
     this.retryHealth.restore(agent.id, agent.session.snapshotEvents())
     if (agent.status === 'idle') this.retryHealth.clear(agent.id)
     this.updateModelHealth()

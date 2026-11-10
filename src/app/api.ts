@@ -24,7 +24,9 @@ interface Paged { offset?: number; limit?: number }
 type Delivery = 'injected' | 'pending'
 
 export interface Api {
-  'GET local/workbench': { response: WorkbenchView }
+  'GET local/workbench': { query?: { session?: string }; response: WorkbenchView }
+  'GET local/sessions/:id/model': { response: import('../policy.ts').RoleModel | null }
+  'PUT local/sessions/:id/model': { body: import('../policy.ts').RoleModel | null; response: import('../policy.ts').RoleModel }
   'GET mcp': { response: ReturnType<McpTasks['view']> }
   'POST mcp/clients': { body: z.infer<typeof McpClientRequest>; response: Awaited<ReturnType<McpTasks['createClient']>> }
   'PUT mcp/clients/:id': { body: z.infer<typeof McpClientRequest>; response: Awaited<ReturnType<McpTasks['updateClient']>> }

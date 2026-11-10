@@ -8,7 +8,7 @@ import { sourceSkills } from './context.ts'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-session-controller/types'
 import { PromptConflict, SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, builtInParts, defaultPrompts, savePrompts, type Prompts }
   from './prompts.ts'
-import { policyVersion } from '../policy.ts'
+import { policyVersion, RoleModelSchema } from '../policy.ts'
 import { SettingsConflict, type Settings } from './settings.ts'
 import { SetupError, type SetupProblem } from '../setup.ts'
 import { UserError, type EngineForPeople, type Ticket } from '../core/index.ts'
@@ -33,7 +33,7 @@ import { McpClientRequest, McpTaskError, type McpTasks } from '../sources/mcp.ts
 import type { WorkbenchView } from './views/workbench.ts'
 
 export interface HttpHost {
-  workbench(): WorkbenchView
+  workbench(session?: string): WorkbenchView
   readonly local?: LocalTasks | undefined
   readonly mcp?: McpTasks | undefined
   readonly store: Store
@@ -41,7 +41,7 @@ export interface HttpHost {
   readonly sourceLinks: Pick<TextCache, 'entries'>
   readonly sources: SourceRegistry
   readonly prompts: Pick<Prompts, 'current' | 'version' | 'history' | 'preview' | 'save' | 'defaultChanged' | 'defaults'>
-  readonly sessions: Pick<Sessions, 'status' | 'notify' | 'delivery'>
+  readonly sessions: Pick<Sessions, 'status' | 'notify' | 'delivery' | 'model' | 'selectModel'>
   readonly settings: Pick<Settings, 'view' | 'save' | 'pause' | 'sync' | 'refreshLabels'>
   readonly engine: EngineForPeople
   readonly executor: Pick<DshExecutor, 'activeCount'>
@@ -169,7 +169,9 @@ function routes(runtime: HttpHost): Routes {
   const ticket = (id: string) => { if (!store.tickets.get(id)) throw new RouteError(404, 'Ticket not found'); return id }
   const promptBody = (input: { body: (maxBytes?: number) => Promise<unknown> }) => input.body(4 * runtime.machine.promptMaxChars.get() + 4096)
   return {
-    'GET local/workbench': () => { if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled'); return runtime.workbench() },
+    'GET local/workbench': ({ query }) => { if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled'); return runtime.workbench(query.session) },
+    'GET local/sessions/:id/model': ({ params }) => { if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled'); return runtime.sessions.model(params.id) },
+    'PUT local/sessions/:id/model': async ({ params, body }) => { if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled'); return runtime.sessions.selectModel(params.id, RoleModelSchema.nullable().parse(await body())) },
     'GET mcp': () => mcp().view(),
     'POST mcp/clients': async ({ body }) => mcp().createClient(McpClientRequest.parse(await body())),
     'PUT mcp/clients/:id': async ({ params, body }) => mcp().updateClient(params.id, McpClientRequest.parse(await body())),

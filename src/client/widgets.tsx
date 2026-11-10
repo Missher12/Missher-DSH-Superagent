@@ -88,11 +88,13 @@ export function ConfirmButton({ label, title, message, onConfirm, variant = 'gho
       </>} />
   </>
 }
-export function SessionButton({ sessionId, label,
-  variant = 'ghost' }: { sessionId: string; label?: string; variant?: 'ghost' | 'outline' }) {
-  const { t, openSession, notify } = usePanel()
+export function SessionButton({ sessionId, label, external = false,
+  variant = 'ghost' }: { sessionId: string; label?: string; variant?: 'ghost' | 'outline'; external?: boolean }) {
+  const { t, openSession, notify, renderSession, navigate } = usePanel()
+  const { setup } = usePanelData()
   return <Button variant={variant} size="sm" icon={<Icon name="session" size={14} />}
-    onClick={() => { openSession(sessionId).catch(error => notify(errorText(error))) }}>{label ?? t('openSession')}</Button>
+    onClick={() => { if (!external && renderSession && setup?.mode === 'local') navigate({ page: 'overview', query: { session: sessionId } })
+      else openSession(sessionId).catch(error => notify(errorText(error))) }}>{label ?? t('openSession')}</Button>
 }
 export function ExternalLink({ href, children, icon = 'external' }: { href: string; children: ReactNode; icon?: IconName }) {
   return <a className="dt-inline-link dt-icon-link" href={href} {...external}><Icon name={icon} size={13} />{children}</a>

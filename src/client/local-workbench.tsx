@@ -2,8 +2,9 @@
 import { useState } from 'react'
 import type { ApiResponse } from '../app/api.ts'
 import { usePoll } from './api.ts'
-import { Button, Dot, Icon } from './controls.tsx'
-import { LocalTaskComposer } from './local.tsx'
+import { Button, Dot, Icon, SegmentedTabs } from './controls.tsx'
+import { LocalFollowup, LocalTaskComposer } from './local.tsx'
+import { SessionModelPicker } from './model-picker.tsx'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
 import { actorName, valueLabel, type T } from './text.ts'
 import { LoadState, SessionButton, StageMark, When } from './widgets.tsx'
@@ -57,12 +58,13 @@ function ActivityFeed({ data, member }: { data: View; member: Member | undefined
   </section>
 }
 
-export function LocalWorkbench() {
-  const { t, call, openWorkspace } = usePanel()
+export function LocalWorkbench({ sessionId }: { sessionId?: string }) {
+  const { t, call, openWorkspace, renderSession, navigate } = usePanel()
   const { state, restarts } = usePanelData()
-  const { data, error } = usePoll(() => call('GET local/workbench'), [call, restarts], 2000)
-  const [selected, setSelected] = useState<string>()
-  const member = data?.members.find(member => member.id === selected)
+  const { data, error, reload } = usePoll(() => call('GET local/workbench', { query: { session: sessionId } }), [call, restarts, sessionId], 2000)
+  const [view, setView] = useState<'conversation' | 'activity'>('conversation')
+  const select = (id?: string) => { setView('conversation'); navigate({ page: 'overview', ...(id ? { query: { session: id } } : {}) }, true) }
+  const member = data?.members.find(member => member.id === sessionId)
   const open = useAction(async () => { if (data?.workspace) await openWorkspace(data.workspace.id) })
   const problems = Object.entries(state?.health ?? {}).filter(([, health]) => health.state === 'error')
   return <section className="dt-workbench" aria-label={t('localWorkbench')}>
@@ -77,10 +79,10 @@ export function LocalWorkbench() {
     <LoadState loading={!data} error={error} />
     {data && <div className="dt-workbench-layout"><aside className="dt-workbench-members" aria-label={t('workbenchMembers')}>
       <div className="dt-workbench-section-head"><h3>{t('workbenchMembers')}</h3><span className="dt-count">{data.members.length}</span></div>
-      <button className="dt-workbench-member dt-workbench-all" type="button" aria-pressed={!member} onClick={() => setSelected(undefined)}>
+      <button className="dt-workbench-member dt-workbench-all" type="button" aria-pressed={!member} onClick={() => select()}>
         <Icon name="history" size={18} /><strong>{t('workbenchAll')}</strong></button>
       <ul>{data.members.map(item => <li key={item.id}><button className="dt-workbench-member" type="button" aria-pressed={member?.id === item.id}
-        aria-label={item.role === 'orchestrator' ? t('workbenchCoordinator') : t('workbenchWorkerSelect', { title: item.title })} onClick={() => setSelected(item.id)}>
+        aria-label={item.role === 'orchestrator' ? t('workbenchCoordinator') : t('workbenchWorkerSelect', { title: item.title })} onClick={() => select(item.id)}>
         <span className="dt-workbench-member-icon"><Icon name={item.role === 'orchestrator' ? 'queue' : 'session'} size={18} /><Dot state={dot[item.state]} /></span>
         <span className="dt-workbench-member-copy"><strong>{memberName(t, item)}</strong><span>{item.role === 'orchestrator' ? t(item.state === 'idle' ? 'workbenchWaiting' : 'workbenchCoordinatorHint')
           : t(`workbenchState.${item.state}`)}</span></span>
@@ -92,10 +94,21 @@ export function LocalWorkbench() {
       {member && <header className="dt-workbench-focus"><div><h2>{memberName(t, member)}</h2><div className="dt-workbench-focus-meta">
         <StageMark state={dot[member.state]} icon={member.state === 'running' ? 'running' : member.state === 'attention' ? 'ask' : 'decision'} label={t(`workbenchState.${member.state}`)} />
         {member.actor && <span>{valueLabel(t, 'source', member.actor.source)} · {actorName(t, member.actor)}</span>}
-        </div></div><SessionButton sessionId={member.id} label={t('localViewProcess')} variant="outline" /></header>}
+        </div>{member.directory && <p className="dt-hint dt-workbench-directory" title={member.directory}>{member.directory}</p>}</div>
+        <div className="dt-actions">{member.taskId && <Button variant="ghost" size="sm" onClick={() => navigate({ page: 'execution', id: member.taskId! })}>{t('workbenchViewTask')}</Button>}
+          <SessionButton sessionId={member.id} label={t('workbenchExternalSession')} variant="outline" external /></div></header>}
       {member?.tools.some(tool => tool.state === 'running') && <div className="dt-workbench-now" role="status"><Dot state="ongoing" />
         {member.tools.filter(tool => tool.state === 'running').map(tool => toolLabel(t, tool.name)).join('、')}</div>}
-      <CurrentTasks data={data} member={member} /><ActivityFeed data={data} member={member} />
+      {member && renderSession ? <>
+        <div className="dt-workbench-session-bar">
+          <SegmentedTabs className="dt-session-tabs" label={t('workbenchConversation')} value={view} onChange={setView}
+            items={(['conversation', 'activity'] as const).map(value => ({ value, label: t(value === 'conversation' ? 'workbenchConversation' : 'workbenchActivity'), id: `dt-session-${value}`, panelId: 'dt-session-content' }))} />
+          <SessionModelPicker key={member.id} sessionId={member.id} running={member.state === 'running'} />
+        </div>
+        {view === 'conversation' ? <><div id="dt-session-content" role="tabpanel" aria-labelledby="dt-session-conversation" className="dt-workbench-conversation">{renderSession(member.id)}</div>
+          {member.taskId && <div className="dt-workbench-followup"><LocalFollowup key={member.taskId} id={member.taskId} completed={member.state === 'finished'} onSent={reload} /></div>}</>
+          : <div id="dt-session-content" role="tabpanel" aria-labelledby="dt-session-activity" className="dt-workbench-history"><ActivityFeed data={data} member={member} /></div>}
+      </> : <><CurrentTasks data={data} member={member} /><ActivityFeed data={data} member={member} /></>}
     </div></div>}
   </section>
 }

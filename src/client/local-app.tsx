@@ -57,7 +57,7 @@ export function LocalPages({ route, openTab }: { route: Route; openTab: (tab: Ta
   const { state, error } = usePanelData()
   const page = TABS.find(tab => tab === route.page) ?? 'overview'
   useEffect(() => { if (!TABS.some(tab => tab === route.page)) navigate({ page: 'overview' }, true) }, [route.page, navigate])
-  return <div className="dt-page dt-local-page"><div className="dt-column">
+  return <div className={`dt-page dt-local-page${page === 'overview' ? ' dt-workspace-page' : ''}`}><div className="dt-column">
     <header className="dt-head"><div className="dt-local-brand"><span className="dt-local-brand-icon"><Icon name="session" size={21} /></span>
       <h1 className="dt-local-title">{t('title')}</h1></div>
       <SegmentedTabs className="dt-tabs" label={t('pagesLabel')} value={page} onChange={openTab}
@@ -66,7 +66,7 @@ export function LocalPages({ route, openTab }: { route: Route; openTab: (tab: Ta
     </header>
     <main id="dt-page" role="tabpanel" aria-labelledby={`dt-tab-${page}`} className="dt-main">
       {error && <LoadState error={error} loading={false} />}
-      {page === 'overview' ? <LocalWorkbench /> : page === 'help' ? <LocalHelp /> : page === 'settings' ? <LocalSettings /> : page === 'source' ? <LocalWorkspaces />
+      {page === 'overview' ? <LocalWorkbench sessionId={route.page === 'overview' ? route.query?.session : undefined} /> : page === 'help' ? <LocalHelp /> : page === 'settings' ? <LocalSettings /> : page === 'source' ? <LocalWorkspaces />
         : route.page === 'execution' && route.id ? <TicketPage key={route.id} id={route.id} />
           : state ? <LocalTasksPage state={state} /> : <LoadState loading />}
     </main>

@@ -16,8 +16,9 @@ interface Member {
   title: string; directory: string; tools: ReturnType<Sessions['activity']>['tools']; taskId?: string; actor?: ActorView
 }
 export function workbench(host: ViewHost, context: Pick<Context, 'workspaceRegistry'>, sessions: Pick<Sessions, 'activity'>,
-  directory: string, masterId: string) {
-  const canonical = realpathSync(directory)
+  directory: string, masterId: string, masterDirectory = directory, selectedSession?: string) {
+  let canonical = directory
+  try { canonical = realpathSync(directory) } catch { /* A newly edited execution root is registered when a task is created. */ }
   const workspace = context.workspaceRegistry.list().find(workspace => workspace.path === directory || workspace.path === canonical)
   const view = snapshot(host)
   const clients = host.sources.instance<{ clients: { id: string; name: string }[] }>('mcp')?.config.clients ?? []
@@ -30,10 +31,12 @@ export function workbench(host: ViewHost, context: Pick<Context, 'workspaceRegis
   }
   const all = host.store.tickets.list().sort(newestFirst)
   const selected = [...all.filter(ticket => !ticket.ended).slice(0, 24), ...all.filter(ticket => ticket.ended).slice(0, 8)]
+  const focused = selectedSession && all.find(ticket => `worker-${ticket.id}` === selectedSession)
+  if (focused && !selected.some(ticket => ticket.id === focused.id)) selected.push(focused)
   const tasks = selected.map(ticket => ticketRow(view, ticket))
   const live = sessions.activity(masterId)
   const members: Member[] = [{ id: masterId, role: 'orchestrator', state: live.running ? 'running' : 'idle',
-    title: '', directory, tools: live.tools },
+    title: '', directory: masterDirectory, tools: live.tools },
   ...selected.flatMap<Member>((ticket, index) => {
     const row = tasks[index]!
     if (!row.sessionId || !ticket.assignments.some(assignment => assignment.startedAt)) return []

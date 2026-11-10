@@ -85,6 +85,8 @@ export const MACHINE = { stateDir: '/srv/dsh-superagent', promptMaxChars: 100000
 
 type Settings = ReturnType<typeof SettingsSchema.parse>
 export interface PanelServer {
+  renderSessions?: boolean
+  sessionModels: Record<string, ApiResponse<'GET local/sessions/:id/model'>>
   workbench: ApiResponse<'GET local/workbench'>
   joined?: Record<string, string>; joining?: Record<string, string>
   joinError?: string
@@ -251,6 +253,7 @@ function initial(): PanelServer {
     en: 'Feishu message' } }
   const defaults = { revision: 0, previousRevision: null, savedAt: '', source: 'defaults' }
   return {
+    sessionModels: {}, renderSessions: false,
     workbench: { workspace: { id: 'superagent-space', title: 'Superagent', directory: '/srv/dsh-superagent' },
       members: [{ id: 'master', role: 'orchestrator', title: '', directory: '/srv/dsh-superagent', state: 'idle', tools: [] }],
       tasks: [], activity: [], sources: [] },
@@ -298,7 +301,13 @@ const ticketOf = (id: string) =>
 const SourceSave = z.object({ enabled: z.boolean(), config: z.unknown() })
 
 const ROUTES: { [K in keyof Api]: Route<K> } = {
-  'GET local/workbench': { answer: () => server.workbench },
+  'GET local/workbench': { query: ['session'], answer: () => server.workbench },
+  'GET local/sessions/:id/model': { answer: ({ params }) => server.sessionModels[params.id] ?? null },
+  'PUT local/sessions/:id/model': { body: true, answer: ({ params, body }) => {
+    const model = body ?? { provider: 'host', model: 'default' }
+    server.sessionModels[params.id] = model
+    return model
+  } },
   'GET mcp': { answer: () => ({ url: 'http://127.0.0.1:3082/superagent/mcp', enabled: false, clients: [] }) },
   'POST mcp/clients': { body: true, answer: () => refuse(400, 'Connect using the running DSH instance') },
   'PUT mcp/clients/:id': { body: true, answer: () => refuse(404, 'Connection not found') },

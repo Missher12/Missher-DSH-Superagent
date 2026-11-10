@@ -8,6 +8,7 @@ export const USER_ERRORS = {
   unknownPromptRevision: ['missing', 'Unknown prompt revision {revision}'],
   unknownPromptPart: ['refused', 'Unknown built-in prompt part {part}'],
   ticketEnded: ['refused', 'Ticket has ended'],
+  unreadRequest: ['refused', 'A human follow-up is pending or unread. Keep this ticket open, finish this turn so the queued input can be consumed, address the follow-up, then verify and report ready again. Do not send the old result.'],
   assignmentEnded: ['refused', 'Assignment has ended; a newer assignment owns this ticket'],
   evalFinished: ['refused', 'Eval {eval} has finished or a later eval replaced it; decide the trigger\'s current eval'],
   notAdmissible: ['refused', 'Trigger is not admissible: {reason}'],
