@@ -66,7 +66,7 @@ export function LocalPages({ route, openTab }: { route: Route; openTab: (tab: Ta
     </header>
     <main id="dt-page" role="tabpanel" aria-labelledby={`dt-tab-${page}`} className="dt-main">
       {error && <LoadState error={error} loading={false} />}
-      {page === 'overview' ? <LocalWorkbench sessionId={route.page === 'overview' ? route.query?.session : undefined} /> : page === 'help' ? <LocalHelp /> : page === 'settings' ? <LocalSettings /> : page === 'source' ? <LocalWorkspaces />
+      {page === 'overview' ? <LocalWorkbench {...route.page === 'overview' ? { sessionId: route.query?.session, teamId: route.query?.team, memberId: route.query?.member } : {}} /> : page === 'help' ? <LocalHelp /> : page === 'settings' ? <LocalSettings /> : page === 'source' ? <LocalWorkspaces />
         : route.page === 'execution' && route.id ? <TicketPage key={route.id} id={route.id} />
           : state ? <LocalTasksPage state={state} /> : <LoadState loading />}
     </main>

@@ -4,8 +4,10 @@
 import { USER_ERRORS } from '../core/errors.ts'
 import { SETUP_PROBLEMS } from '../setup.ts'
 import { HEALTH_TEXT } from '../sources/host.ts'
+import { TEAM_TEXT } from './team-locales.ts'
 
 const TEXT = {
+  ...TEAM_TEXT,
   localWorkbench: ['工作台', 'Workbench'],
   workbenchWorkspace: ['Superagent 专属工作区', 'Superagent workspace'],
   workbenchOpenWorkspace: ['打开专属工作区', 'Open control workspace'],

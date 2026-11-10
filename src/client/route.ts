@@ -9,7 +9,7 @@ export type Tab = typeof TABS[number] | 'help'
 export const SETTINGS_GROUPS = ['source', 'eval', 'execution', 'prompts', 'deployment'] as const
 export type SettingsGroup = typeof SETTINGS_GROUPS[number]
 export type Route = { page: 'source' | 'help'; id?: undefined; query?: undefined }
-  | { page: 'overview'; id?: undefined; query?: { session?: string } }
+  | { page: 'overview'; id?: undefined; query?: { session?: string; team?: string; member?: string } }
   | { page: 'trigger'; id?: undefined; query?: { filter?: ThreadFilter } }
   | { page: 'trigger'; id: string; query?: { trigger?: string } }
   | { page: 'eval'; id?: undefined; query?: { filter?: DecisionFilter; window?: '24h' } }
@@ -35,7 +35,7 @@ export function parseRoute(value: unknown): Route | undefined {
   const text = (name: string) => typeof query?.[name] === 'string' ? query[name] as string : undefined
   const record = typeof id === 'string' && id ? id : undefined
   switch (page) {
-    case 'overview': return { page, ...(text('session') ? { query: { session: text('session') } } : {}) }
+    case 'overview': return { page, query: compact({ session: text('session'), team: text('team'), member: text('member') }) }
     case 'source': case 'help': return { page }
     case 'trigger': return record ? { page, id: record, query: compact({ trigger: text('trigger') }) }
       : { page, query: compact({ filter: pick(THREAD_FILTERS, query?.filter) }) }

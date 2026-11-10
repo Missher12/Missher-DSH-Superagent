@@ -31,11 +31,15 @@ import { LocalRequestSchema, LocalTaskError, localMessages, type LocalTasks } fr
 import { WorkspaceError, workspaceOf } from '../executor/workspace.ts'
 import { McpClientRequest, McpTaskError, type McpTasks } from '../sources/mcp.ts'
 import type { WorkbenchView } from './views/workbench.ts'
+import { TeamRequestSchema } from '../teams/contracts.ts'
+import type { LocalTeams } from '../teams/local.ts'
+import { latestDelivery } from '../teams/delivery.ts'
 
 export interface HttpHost {
-  workbench(session?: string): WorkbenchView
+  workbench(session?: string, team?: string): WorkbenchView
   readonly local?: LocalTasks | undefined
   readonly mcp?: McpTasks | undefined
+  readonly teams?: LocalTeams | undefined
   readonly store: Store
   /** Feishu message links resolved since startup, used by search to match AppLink URLs. */
   readonly sourceLinks: Pick<TextCache, 'entries'>
@@ -129,6 +133,7 @@ function ticketPage(runtime: HttpHost, id: string) {
   const detail = ticketDetail(views(runtime), id), ticket = runtime.store.tickets.get(id)
   if (!detail || !ticket) throw new RouteError(404, 'Ticket not found')
   return { ...detail, local: !!workspaceOf(runtime.store, ticket),
+    deliveryReport: latestDelivery(runtime.store, ticket),
     messages: localMessages(runtime, id), environment: runtime.configured() ? runtime.ticketEnvironment(ticket) : [] }
 }
 export type TicketPageView = ReturnType<typeof ticketPage>
@@ -166,10 +171,20 @@ const SaveRequest = z.object({ value: z.unknown(), revision: z.number().int().no
 function routes(runtime: HttpHost): Routes {
   const { store } = runtime
   const mcp = () => { if (!runtime.mcp) throw new RouteError(404, 'MCP task intake is not enabled'); return runtime.mcp }
+  const teams = () => { if (!runtime.teams) throw new RouteError(404, '团队任务尚未启用'); return runtime.teams }
   const ticket = (id: string) => { if (!store.tickets.get(id)) throw new RouteError(404, 'Ticket not found'); return id }
   const promptBody = (input: { body: (maxBytes?: number) => Promise<unknown> }) => input.body(4 * runtime.machine.promptMaxChars.get() + 4096)
   return {
-    'GET local/workbench': ({ query }) => { if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled'); return runtime.workbench(query.session) },
+    'GET local/workbench': ({ query }) => { if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled'); return runtime.workbench(query.session, query.team) },
+    'POST local/teams': async ({ body }) => teams().create(TeamRequestSchema.parse(await body(256 * 1024))),
+    'GET local/teams/:id': ({ params }) => teams().get(params.id),
+    'GET local/teams/:id/file': ({ params, query }) => teams().file(params.id, query.path ?? ''),
+    'POST local/teams/:id/stop': ({ params }) => teams().stopTeam(params.id),
+    'POST local/teams/:id/retry': ({ params }) => teams().retry(params.id),
+    'POST local/teams/:id/followup': async ({ params, body }) => {
+      const request = z.object({ memberId: z.string().min(1), requestId: z.string().min(1).max(200), text: z.string().trim().min(1).max(64000) }).strict().parse(await body(256 * 1024))
+      return teams().followup(params.id, request.memberId, request.requestId, request.text)
+    },
     'GET local/sessions/:id/model': ({ params }) => { if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled'); return runtime.sessions.model(params.id) },
     'PUT local/sessions/:id/model': async ({ params, body }) => { if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled'); return runtime.sessions.selectModel(params.id, RoleModelSchema.nullable().parse(await body())) },
     'GET mcp': () => mcp().view(),

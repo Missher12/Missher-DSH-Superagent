@@ -47,7 +47,7 @@ export interface SessionsHost {
  * its skills are registered in, and the skills of one prompt revision; for a worker's subagent, only its tool limits.
  */
 interface SessionBinding { disposers: (() => void)[]; scope?: Context; skills?: { revision: number; dispose: () => void }; subagent?: true; model?: { current: ModelSelection } }
-export interface SessionToolActivity { id: string; name: string; at: string; state: 'running' | 'done' | 'error' | 'interrupted' }
+export interface SessionToolActivity { id: string; name: string; at: string; state: 'running' | 'done' | 'error' | 'interrupted'; detail?: string }
 
 /** The agent presets Executor Sessions and the main Session are created with, which the bundle's patch defines. */
 export const WORKER_PRESET = 'dsh-superagent-worker', ROUTER_PRESET = 'dsh-superagent-router'
@@ -101,6 +101,7 @@ export class Sessions {
   /** Decorated agents mapped to their registered disposers and skill scope until the agent is disposed or `Sessions.dispose()` runs. */
   private readonly bindings = new Map<Agent, SessionBinding>()
   private readonly recentTools = new Map<string, SessionToolActivity[]>()
+  private readonly recentCommands = new Map<string, Map<string, string>>()
   private readonly retryHealth = new RetryHealth()
   private readonly ctx: Context
   /** Registers ordered `relay` and `notice` effect handlers that deliver to the main Session. */
@@ -117,6 +118,7 @@ export class Sessions {
     ctx.on('agent/disposed', ({ agent }) => {
       this.release(agent)
       this.recentTools.delete(agent.id)
+      this.recentCommands.delete(agent.id)
       this.retryHealth.clear(agent.id); this.updateModelHealth()
     })
     ctx.on('session/event', (session, event) => {
@@ -130,7 +132,19 @@ export class Sessions {
       if (event.type === 'tool/call') {
         const tools = this.recentTools.get(agent.id) ?? []
         const started: SessionToolActivity = { id: event.data.callId, name: event.data.name, at: new Date(event.time).toISOString(), state: 'running' }
-        this.recentTools.set(agent.id, [...tools.filter(tool => tool.id !== started.id), started].slice(-24))
+        try {
+          const args = JSON.parse(event.data.arguments) as Record<string, unknown>
+          const detail = [args.description, args.file_path, args.filePath, args.path].find(value => typeof value === 'string')
+          if (typeof detail === 'string') started.detail = detail.replace(/\s+/g, ' ').slice(0, 240)
+          const command = args.command ?? args.script
+          if (['bash', 'pwsh'].includes(started.name) && typeof command === 'string') {
+            const commands = this.recentCommands.get(agent.id) ?? new Map<string, string>()
+            commands.set(started.id, command.trim()); this.recentCommands.set(agent.id, commands)
+          }
+        } catch { /* Some tools have no JSON arguments; their real name and state remain visible. */ }
+        const recent = [...tools.filter(tool => tool.id !== started.id), started].slice(-24)
+        this.recentTools.set(agent.id, recent)
+        for (const id of this.recentCommands.get(agent.id)?.keys() ?? []) if (!recent.some(tool => tool.id === id)) this.recentCommands.get(agent.id)!.delete(id)
       } else if (event.type === 'tool/result') {
         const tool = this.recentTools.get(agent.id)?.find(tool => tool.id === event.data.message.toolCallId)
         if (tool) tool.state = event.data.message.isError ? 'error' : 'done'
@@ -247,11 +261,12 @@ export class Sessions {
     const result = await this.ctx.sessionController.resolveAgent(sessionId as SessionId)
     return !('error' in result) && await this.agentDelivery.holds(result.agent, key(requestId))
   }
-  /** Deliver a message once per request id: to the next turn, the current one, or `inject`ed with its label without waking the agent. */
+  /** Restore this runtime's tools/prompts before delivering once per request id to a retained DSH agent. */
   async prompt(sessionId: string, requestId: string, text: string, mode: 'queue' | 'steer' | { inject: string }, authorize?: () => void,
     accepted?: () => void): Promise<void> {
     const result = await this.ctx.sessionController.resolveAgent(sessionId as SessionId)
     if ('error' in result) throw result.error
+    await this.decorate(result.agent)
     await this.agentDelivery.send(result.agent, key(requestId), text, mode, this.host.lifetime, authorize, accepted)
   }
   /** The id of the message `prompt` delivers under `requestId`, which DSH's inbox events name it by. */
@@ -282,10 +297,14 @@ export class Sessions {
     })
     return { revision: prompts.current().revision, sessions, notificationPending: effects.pending('notice', 'prompts') }
   }
-  /** Read-only live activity of a managed session; tool arguments and outputs never enter the workbench. */
+  /** Read-only live activity; only a tool's brief description or file path is exposed, never commands or outputs. */
   activity(sessionId: string) {
     const agent = this.ctx.agents.get(sessionId as SessionId)
     return { running: agent?.status === 'running', tools: this.recentTools.get(sessionId) ?? [] }
+  }
+  /** Match a reported check to a real shell call from the current assignment without exposing raw commands in activity views. */
+  commandEvidence(sessionId: string, command: string, since: string) {
+    return this.recentTools.get(sessionId)?.findLast(tool => tool.at >= since && this.recentCommands.get(sessionId)?.get(tool.id) === command.trim())
   }
   /** Returns the prompt version a Session runs under (the one bound on its latest model request, or the current version). */
   promptVersion(sessionId: string): PromptVersion {
@@ -447,5 +466,5 @@ export class Sessions {
     }
   }
   /** Releases prompt sections, skills, and tools registered by `Sessions` across all decorated agents. */
-  dispose(): void { for (const agent of [...this.bindings.keys()]) this.release(agent); this.recentTools.clear() }
+  dispose(): void { for (const agent of [...this.bindings.keys()]) this.release(agent); this.recentTools.clear(); this.recentCommands.clear() }
 }

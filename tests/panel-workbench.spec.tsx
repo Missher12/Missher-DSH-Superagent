@@ -21,7 +21,7 @@ it('opens the real dedicated workspace and coordinator session from the workbenc
   expect(all('[role="tab"][aria-selected="true"]').map(tab => tab.textContent)).toEqual(['工作台'])
   await click('打开专属工作区')
   expect(server.openedWorkspaces).toEqual(['superagent-space'])
-  await click('调度')
+  await click('共享任务调度')
   await click('在 DSH 中打开')
   expect(server.opened).toEqual(['master'])
   expect(text()).toContain('等待派单')
@@ -37,6 +37,7 @@ it('filters activity by actual executor identity and opens its task or conversat
     { id: 'tool-1', kind: 'tool', at: '2026-11-08T00:00:00Z', memberId: 'worker-live', ticketId: 'task-live', title: '检查路径', tool: 'read', state: 'running' },
     { id: 'received-1', kind: 'received', at: '2026-11-07T23:59:00Z', memberId: 'master', title: '另一项派单' },
   ]
+  at({ page: 'overview', query: { session: 'all-single' } })
   await mount()
   expect(text()).toContain('另一项派单')
   await click('执行器：检查路径')

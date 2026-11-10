@@ -84,7 +84,7 @@ export class LocalTasks {
     return this.runtime.store.tickets.list().filter(ticket => !!workspaceOf(this.runtime.store, ticket))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 50).map(ticket => this.get(ticket.id))
   }
-  async create(value: LocalRequest) {
+  async create(value: LocalRequest, inherited?: { permissionPreset: string }) {
     const request = LocalRequestSchema.parse(value)
     if (request.model) {
       try { request.model = await resolveRoleModel(this.ctx, request.model) }
@@ -93,7 +93,7 @@ export class LocalTasks {
     if (request.directory) request.directory = projectDirectory(request.directory)
     const { store } = this.runtime
     const ctx = this.ctx
-    let preset = ctx.permissionPresets.defaultPreset
+    let preset = inherited?.permissionPreset ?? ctx.permissionPresets.defaultPreset
     if (request.originSessionId) {
       const resolved = await ctx.sessionController.resolveAgent(request.originSessionId as SessionId)
       if ('error' in resolved) throw new LocalTaskError('来源会话不存在，请重新从该会话派单')

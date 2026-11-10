@@ -7,6 +7,25 @@ let host: Host | undefined
 afterEach(async () => { await host?.stop(); host = undefined })
 
 describe('DSH local task source', () => {
+  it('restores report tools before a follow-up wakes an existing worker whose plugin bindings were released', async () => {
+    host = await startRuntime(undefined, { mode: 'local' })
+    const task = await host.runtime.local!.create({ requestId: 'rebind', title: '恢复待回复会话', instructions: '等待补充要求', directory: host.directory })
+    await host.runtime.idle(); host.step(task.sessionId)
+    await host.runTool(task.sessionId, 'orchestrator_report', { state: 'blocked', summary: '等待确认', human_action: '请确认继续' })
+    const agent = host.agents.get(task.sessionId)!
+    agent.status = 'idle'; host.ctx.emit('agent/status', { agent, status: 'idle' } as never)
+    await host.runtime.idle()
+    // Plugin reloads release registrations while DSH retains the same Agent and Session objects.
+    host.runtime.sessions.dispose()
+    expect(host.tools.get(task.sessionId)!.has('orchestrator_report')).toBe(false)
+    await host.runtime.local!.followup(task.ticketId, 'after-reload', '确认继续')
+    await host.runtime.idle(); host.step(task.sessionId); await host.runtime.idle()
+    expect(host.tools.get(task.sessionId)!.has('orchestrator_report')).toBe(true)
+    await host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '已处理补充要求', human_action: null })
+    await host.runtime.idle()
+    expect(host.runtime.store.tickets.get(task.ticketId)!.ended?.outcome).toBe('completed')
+    expect(host.runtime.store.tickets.list()).toHaveLength(1)
+  })
   it('keeps task and session model choices separate from global task defaults and restores them', async () => {
     host = await startRuntime(undefined, { mode: 'local' })
     const defaults = host.runtime.store.settings().executor.model

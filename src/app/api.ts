@@ -12,6 +12,8 @@ import type { SourceStatusView } from './views/sources.ts'
 import type { DecisionListView, SearchView, ThreadDetailView, ThreadListView } from './views/threads.ts'
 import type { TicketListView } from './views/tickets.ts'
 import type { WorkbenchView } from './views/workbench.ts'
+import type { LocalTeams } from '../teams/local.ts'
+import type { TeamRequest } from '../teams/contracts.ts'
 
 export const TICKET_FILTERS = ['open', 'person', 'working', 'idle', 'ended'] as const
 export const THREAD_FILTERS = ['subscribed', 'evaluating', 'recent', 'all'] as const
@@ -24,7 +26,13 @@ interface Paged { offset?: number; limit?: number }
 type Delivery = 'injected' | 'pending'
 
 export interface Api {
-  'GET local/workbench': { query?: { session?: string }; response: WorkbenchView }
+  'GET local/workbench': { query?: { session?: string; team?: string }; response: WorkbenchView }
+  'POST local/teams': { body: TeamRequest; response: Awaited<ReturnType<LocalTeams['create']>> }
+  'GET local/teams/:id': { response: ReturnType<LocalTeams['get']> }
+  'GET local/teams/:id/file': { query: { path: string }; response: ReturnType<LocalTeams['file']> }
+  'POST local/teams/:id/stop': { response: ReturnType<LocalTeams['stopTeam']> }
+  'POST local/teams/:id/retry': { response: Awaited<ReturnType<LocalTeams['retry']>> }
+  'POST local/teams/:id/followup': { body: { memberId: string; requestId: string; text: string }; response: Awaited<ReturnType<LocalTeams['followup']>> }
   'GET local/sessions/:id/model': { response: import('../policy.ts').RoleModel | null }
   'PUT local/sessions/:id/model': { body: import('../policy.ts').RoleModel | null; response: import('../policy.ts').RoleModel }
   'GET mcp': { response: ReturnType<McpTasks['view']> }

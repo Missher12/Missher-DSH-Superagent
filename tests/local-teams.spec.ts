@@ -1,0 +1,163 @@
+import { realpathSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { afterEach, expect, it, vi } from 'vitest'
+import { TeamRequestSchema } from '../src/teams/contracts.ts'
+import { previewDeliveryFile } from '../src/teams/delivery.ts'
+import { hasUnreadRequest } from '../src/core/index.ts'
+import { startRuntime, type Host } from './fixtures/host.ts'
+
+let host: Host | undefined
+afterEach(async () => { await host?.stop(); host = undefined })
+const request = () => TeamRequestSchema.parse({ requestId: 'team-one', title: '团队开发验收', instructions: '实现函数并验证结果。',
+  members: [{ id: 'build', name: '实施', instructions: '实现函数', dependencies: [] },
+    { id: 'check', name: '验证', instructions: '检查实现并运行测试', dependencies: ['build'] }] })
+async function settle() { await host!.runtime.idle(); await host!.runtime.teams!.reconcile(); await host!.runtime.idle() }
+async function readySession(ticketId: string) {
+  await settle(); const session = `worker-${ticketId}`
+  // A registered session can belong to an earlier round. Wait for this assignment and its durable input consumption.
+  await vi.waitFor(async () => {
+    await settle()
+    expect(host!.runtime.store.tickets.get(ticketId)!.assignments.at(-1)?.startedAt).toBeTruthy()
+    expect(host!.tools.get(session)).toBeDefined(); host!.step(session); await settle()
+    expect(hasUnreadRequest(host!.runtime.store.tickets.get(ticketId)!)).toBe(false)
+  }, { timeout: 8000, interval: 40 })
+  return session
+}
+async function complete(ticketId: string, summary = '本成员分工完成', delivery?: object) {
+  const session = await readySession(ticketId)
+  await host!.runTool(session, 'orchestrator_report', { state: 'ready', summary, ...delivery ? { delivery } : {} })
+  const agent = host!.agents.get(session)!
+  agent.status = 'idle'; host!.ctx.emit('agent/status', { agent, status: 'idle' } as never)
+  await settle()
+}
+
+it('creates an explicit plan once, starts a real coordinator, and does not call a planning round a completed goal', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  expect(team.state).toBe('planning')
+  expect(team.members.map(member => member.ticketId).filter(Boolean)).toHaveLength(1)
+  expect((await host.runtime.teams!.create({ ...request(), directory: host.directory })).id).toBe(team.id)
+  await expect(host.runtime.teams!.create({ ...request(), directory: host.directory, instructions: '另一项要求' })).rejects.toThrow('requestId')
+  await complete(team.coordinatorTicketId!, '分工与依赖已核对，等待成员执行')
+  const active = host.runtime.teams!.get(team.id)
+  expect(active.state).not.toBe('completed')
+  expect(active.members[0]!.state).toBe('waiting')
+  expect(active.members.find(member => member.id === 'build')!.ticketId).toBeTruthy()
+  expect(active.members.find(member => member.id === 'check')!.ticketId).toBeUndefined()
+  expect(host.runtime.store.tickets.list()).toHaveLength(2)
+  expect(host.runtime.store.tickets.get(active.members.find(member => member.id === 'build')!.ticketId!)!.mandate.scope).toContain('分工与依赖已核对，等待成员执行')
+}, 20_000)
+
+it('dispatches actual dependent work, delivers its predecessor report, and finishes only after a new coordinator summary', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  await complete(team.coordinatorTicketId!)
+  const build = host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!
+  writeFileSync(join(host.directory, 'result.txt'), 'actual-team-output')
+  await complete(build.ticketId!, '已生成真实文件 result.txt', { files: [{ path: 'result.txt', summary: '真实产出' }], unverified: ['尚未进行浏览器检查'] })
+  const handoff = host.runtime.teams!.get(team.id)
+  const check = handoff.members.find(member => member.id === 'check')!
+  expect(check.ticketId).toBeTruthy()
+  expect(handoff.handoffs).toEqual([expect.objectContaining({ from: 'build', to: 'check', ticketId: check.ticketId })])
+  expect(host.runtime.store.tickets.get(check.ticketId!)!.mandate.scope).toContain('已生成真实文件 result.txt')
+  const preset = (id: string) => host!.runtime.store.triggers.get(host!.runtime.store.tickets.get(id)!.origin.triggerId)!.meta.permissionPreset
+  expect(preset(check.ticketId!)).toBe(preset(build.ticketId!))
+  await complete(check.ticketId!, '已复核文件，检查仍未运行')
+  expect(host.runtime.teams!.get(team.id).state).not.toBe('completed')
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.assignments).toHaveLength(2)
+  await complete(team.coordinatorTicketId!, '目标已经复核，交付 result.txt；未验证浏览器')
+  const finished = host.runtime.teams!.get(team.id)
+  expect(finished.state).toBe('completed')
+  expect(finished.completedMembers).toBe(2)
+  const file = realpathSync(join(host.directory, 'result.txt'))
+  expect(finished.deliveries[0]!.record.files[0]).toMatchObject({ exists: true, path: file })
+  expect(host.runtime.teams!.file(team.id, file)).toMatchObject({ text: 'actual-team-output' })
+  writeFileSync(join(host.directory, 'large.txt'), '中文'.repeat(30_000))
+  const large = realpathSync(join(host.directory, 'large.txt'))
+  expect(previewDeliveryFile(host.directory, large, [large])).toMatchObject({ binary: false, truncated: true })
+  await expect(host.api('GET', `local/teams/${team.id}/file?path=${encodeURIComponent('../outside.txt')}`)).resolves.toMatchObject({ status: 400 })
+  await host.runtime.teams!.followup(team.id, 'build', 'later-change', '把产出改成第二版')
+  expect(host.runtime.teams!.get(team.id).state).not.toBe('completed')
+  await complete(build.ticketId!, '第二版已经完成')
+  const updated = host.runtime.teams!.get(team.id)
+  expect(host.runtime.store.tickets.get(check.ticketId!)!.ended).toBeUndefined()
+  expect(updated.handoffs).toHaveLength(2)
+  await complete(check.ticketId!, '已复核第二版')
+  expect(host.runtime.teams!.get(team.id).state).not.toBe('completed')
+  await complete(team.coordinatorTicketId!, '第二版目标复核完成')
+  expect(host.runtime.teams!.get(team.id).state).toBe('completed')
+  expect(host.runtime.store.tickets.list()).toHaveLength(3)
+}, 40_000)
+
+it('preserves finished work and shows the actual member needing a human instead of finishing the team', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const input = request(); input.members[1]!.dependencies = []
+  const team = await host.runtime.teams!.create({ ...input, directory: host.directory })
+  await complete(team.coordinatorTicketId!)
+  let view = host.runtime.teams!.get(team.id)
+  const first = view.members.find(member => member.id === 'build')!, second = view.members.find(member => member.id === 'check')!
+  await complete(first.ticketId!, '文件实现已经完成')
+  await readySession(second.ticketId!)
+  await host.runTool(`worker-${second.ticketId}`, 'orchestrator_report', { state: 'blocked', summary: '验证环境尚未登录', human_action: '请登录测试环境后补充说明' })
+  await settle(); view = host.runtime.teams!.get(team.id)
+  expect(view.state).toBe('attention')
+  expect(view.members.find(member => member.id === 'build')!.state).toBe('finished')
+  expect(view.members.find(member => member.id === 'check')).toMatchObject({ state: 'attention', attention: '请登录测试环境后补充说明' })
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.assignments).toHaveLength(1)
+}, 20_000)
+
+it('stops remaining team dispatch and never resumes manually stopped work through follow-ups', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  await complete(team.coordinatorTicketId!)
+  const stopped = host.runtime.teams!.stopTeam(team.id)
+  await settle()
+  expect(stopped.state).toBe('stopped')
+  expect(host.runtime.store.tickets.list()).toHaveLength(2)
+  expect(host.runtime.teams!.get(team.id).members.find(member => member.id === 'check')!.sessionId).toBeUndefined()
+  await expect(host.runtime.teams!.followup(team.id, 'build', 'late', '继续')).rejects.toThrow('停止')
+})
+
+it('does not accept invented files or commands as successful delivery evidence', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const task = await host.runtime.local!.create({ requestId: 'evidence', title: '核对证据', instructions: '实际检查', directory: host.directory })
+  await host.runtime.idle(); host.step(task.sessionId)
+  await expect(host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '完成', delivery: {
+    files: [{ path: 'missing.txt' }],
+  } })).rejects.toThrow('不存在')
+  await expect(host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '完成', delivery: {
+    checks: [{ command: 'node --test', outcome: 'passed' }],
+  } })).rejects.toThrow('真实执行')
+  expect(host.runtime.store.tickets.get(task.ticketId)!.ended).toBeUndefined()
+  const agent = host.ctx.agents.get(task.sessionId as never)!
+  host.ctx.emit('session/event', agent.session, { type: 'tool/call', time: Date.now(), data: {
+    callId: 'actual-check', name: 'pwsh', arguments: JSON.stringify({ command: 'node --test' }),
+  } } as never)
+  host.ctx.emit('session/event', agent.session, { type: 'tool/result', time: Date.now(), data: { message: { toolCallId: 'actual-check', isError: false } } } as never)
+  await host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '完成实际检查', delivery: {
+    checks: [{ command: 'node --test', outcome: 'passed', details: '成员报告检查通过' }],
+  } })
+  expect(await host.api('GET', `tickets/${task.ticketId}`)).toMatchObject({ body: { deliveryReport: { checks: [{ toolCallId: 'actual-check', outcome: 'passed' }] } } })
+  expect(await host.api('GET', 'local/workbench')).not.toHaveProperty('body.members.0.command')
+})
+
+it('rejects unknown members and cyclic delivery dependencies before creating any task', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const input = request(); input.members[0]!.dependencies = ['check']
+  await expect(host.runtime.teams!.create({ ...input, directory: host.directory })).rejects.toThrow('循环')
+  expect(host.runtime.store.tickets.list()).toHaveLength(0)
+})
+
+it('restores a persisted team without redispatching its completed planning round or duplicating members', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  await complete(team.coordinatorTicketId!)
+  const before = host.runtime.teams!.get(team.id), directory = host.directory
+  await host.runtime.stop()
+  host = await startRuntime(undefined, { mode: 'local', stateDir: directory })
+  await settle()
+  const restored = host.runtime.teams!.get(team.id)
+  expect(restored.members.map(member => member.ticketId)).toEqual(before.members.map(member => member.ticketId))
+  expect(restored.state).not.toBe('completed')
+  expect(host.runtime.store.tickets.list()).toHaveLength(2)
+}, 20_000)

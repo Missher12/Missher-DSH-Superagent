@@ -7,7 +7,7 @@
 <p>派出项目任务，回来查看进度、执行过程与结果。</p>
 
 <p>
-  <a href="https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.5.2"><img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.5.2-4D6BFE?style=flat-square" alt="版本: 1.5.2"></a>
+  <a href="https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.6.0"><img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.6.0-4D6BFE?style=flat-square" alt="版本: 1.6.0"></a>
   <a href="https://github.com/Missher12/Missher-DSH-Superagent"><img src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-%E4%B8%AD%E6%96%87-4D6BFE?style=flat-square" alt="文档: 中文"></a>
   <a href="https://github.com/Missher12/Missher-DSH-Superagent/blob/main/LICENSE"><img src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF-MIT-6B7280?style=flat-square" alt="许可: MIT"></a>
 </p>
@@ -19,14 +19,16 @@
 ---
 
 <!-- current-source -->
-当前版本：**1.5.2** · [分支 `main`](https://github.com/Missher12/Missher-DSH-Superagent/tree/main) · [Release 与安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.5.2)。
+当前版本：**1.6.0** · [分支 `main`](https://github.com/Missher12/Missher-DSH-Superagent/tree/main) · [Release 与安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.6.0)。
 <!-- /current-source -->
 
 ## 功能一览
 
 | 能做什么 | 说明 |
 | --- | --- |
-| **原生工作台** | 汇总调度、执行成员、真实工具活动和最近结果，可打开实际会话。 |
+| **团队协作工作台** | 团队列表、真实派发与依赖图、成员活动、内嵌会话和交付文件；窄窗口重排。 |
+| **明确分工与交付** | 编辑 2–6 名执行成员的分工、模型和交付依赖，协调核对后派发，成员交付后再次复核目标；同目录依次执行。 |
+| **真实交付记录** | 只预览实际报告的目录内文件，检查关联真实命令调用并标明成员报告，未验证事项单列。 |
 | **MCP 外部派单** | 按应用授权指定工作区，支持本机 stdio 和 Streamable HTTP。 |
 | **面板派单** | 写清任务要求，选择真实工作区或项目文件夹。 |
 | **聊天派单** | 明确要求交给 Superagent 后，在独立会话中执行。 |
@@ -35,7 +37,7 @@
 
 ## 快速开始
 
-1. 从 [Releases](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.5.2) 下载对应版本的 `.tgz` 安装包。
+1. 从 [Releases](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.6.0) 下载对应版本的 `.tgz` 安装包。
 2. 在 DSH **插件 → 添加插件** 中选择下载的文件，安装并启用；按宿主提示重新加载或正常重启。
 3. 打开侧栏 **Superagent → 任务 → 新建任务**，或在聊天中明确要求派单。
 

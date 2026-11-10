@@ -402,6 +402,15 @@ Local desktop adaptation additions:
 | `src/client/provider.tsx` | What every page reads from its host: copy, calls, navigation, notices, the state poll, and `restart`, which reads the state quickly while dsh-superagent restarts |
 | `src/client/api.ts` | Calls and polls of the management API, typed by `src/app/api.ts`, and the Decision filters of the Eval status |
 | `src/client/local-board.tsx` | Local task board, lane paging and task cards |
+| `src/client/local-single-workbench.tsx` | Existing single-member task activity and native sessions, separate from explicit teams |
+| `src/client/model-picker.tsx` | Task and session-local model choices |
+| `src/client/team-ui.tsx`, `team-locales.ts` | Team/member state labels, bounded text and bilingual copy |
+| `src/client/team-graph.tsx` | Real dispatch and explicit dependency connectors with responsive member nodes |
+| `src/client/team-details.tsx`, `team-delivery.tsx` | Member tools, embedded session, durable follow-up, reported files/checks and bounded text previews |
+| `src/client/team-members-editor.tsx` | Editable team roles, model choices and acyclic delivery dependencies |
+| `src/teams/contracts.ts` | Validated team plans, delivery reports and public state views |
+| `src/teams/local.ts` | Durable coordinator/member scheduling using existing local tasks; dependency refresh and final goal review |
+| `src/teams/delivery.ts` | Reported workspace-file validation and shell-call-linked delivery evidence |
 | `src/client/local-workspaces.tsx` | Registered workspace list, native navigation and scoped task drafts |
 | `src/client/local-mcp.tsx` | Native MCP connection settings and one-time configuration display |
 | `src/client/ticket-assignments.tsx` | Task assignment history and execution records |
@@ -435,6 +444,9 @@ Local desktop adaptation checks:
 | `tests/local-setup.spec.ts` | Startup without external accounts or process environment changes |
 | `tests/local-tasks.spec.ts` | Task identity, selected workspace, permissions, follow-ups, stop, result delivery and restart persistence |
 | `tests/local-panel.spec.tsx` | User dispatch and task-specific follow-ups in the panel |
+| `tests/local-teams.spec.ts` | Actual dependency dispatch, planning/final-review separation, follow-ups, evidence, stop and restart recovery |
+| `tests/team-panel.spec.tsx` | Explicit team overview, member selection, task creation, native sessions and delivery previews |
+| `tests/client-registration.spec.ts` | Host-owned conversation slot contract and cold session initialization |
 | `tests/local-workbench.spec.ts` | Dedicated workspace and managed live activity without tool arguments or extra work |
 | `tests/native-paths.spec.ts` | Windows drive/UNC and POSIX directory validation, rejecting relative paths without rewriting locations |
 | `tests/panel-workbench.spec.tsx` | Member activity selection, native workspace and session navigation |

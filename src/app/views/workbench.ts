@@ -5,6 +5,7 @@ import { ticketStage, type Trigger } from '../../core/index.ts'
 import type { Sessions } from '../sessions.ts'
 import { newestFirst, snapshot, type ActorView, type ViewHost } from './records.ts'
 import { ticketRow } from './tickets.ts'
+import type { LocalTeams } from '../../teams/local.ts'
 
 interface Activity {
   id: string; at: string; kind: 'received' | 'assigned' | 'report' | 'ended' | 'tool'
@@ -16,7 +17,7 @@ interface Member {
   title: string; directory: string; tools: ReturnType<Sessions['activity']>['tools']; taskId?: string; actor?: ActorView
 }
 export function workbench(host: ViewHost, context: Pick<Context, 'workspaceRegistry'>, sessions: Pick<Sessions, 'activity'>,
-  directory: string, masterId: string, masterDirectory = directory, selectedSession?: string) {
+  directory: string, masterId: string, masterDirectory = directory, selectedSession?: string, teams?: LocalTeams, selectedTeam?: string) {
   let canonical = directory
   try { canonical = realpathSync(directory) } catch { /* A newly edited execution root is registered when a task is created. */ }
   const workspace = context.workspaceRegistry.list().find(workspace => workspace.path === directory || workspace.path === canonical)
@@ -64,6 +65,7 @@ export function workbench(host: ViewHost, context: Pick<Context, 'workspaceRegis
   for (const member of members) for (const tool of member.tools) activity.push({ id: `tool:${member.id}:${tool.id}`,
     kind: 'tool', memberId: member.id, ticketId: member.taskId, title: member.title, at: tool.at, tool: tool.name, state: tool.state })
   return {
+    teams: teams?.list() ?? [], team: selectedTeam ? teams?.get(selectedTeam) : undefined, teamTicketIds: [...teams?.ticketIds() ?? []],
     workspace: workspace ? { id: String(workspace.id), title: workspace.title, directory: workspace.path } : undefined,
     members, tasks, activity: activity.sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id)).slice(0, 40),
     sources: host.sources.instances().filter(source => source.installed).map(source => ({ id: source.id,

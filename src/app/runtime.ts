@@ -51,6 +51,8 @@ import { LocalTasks } from '../sources/local.ts'
 import { McpTasks } from '../sources/mcp.ts'
 import { mountMcp } from '../mcp/mount.ts'
 import { executorTools, type ExecutorToolsHost } from './tools/executor.ts'
+import { LocalTeams } from '../teams/local.ts'
+import { recordDelivery } from '../teams/delivery.ts'
 
 // Source plugins interact with dsh-superagent exclusively through the `SourceHost` service interface.
 declare module '@deepseek-ai/cordis' { interface Context { orchestrator: SourceHost } }
@@ -64,6 +66,7 @@ const now = (): string => new Date().toISOString()
 export class Runtime extends Service implements SourceHost {
   readonly local?: LocalTasks
   readonly mcp?: McpTasks
+  readonly teams?: LocalTeams
   readonly store: Store
   readonly setup: Setup
   readonly prompts: Prompts
@@ -147,6 +150,7 @@ export class Runtime extends Service implements SourceHost {
       const policy = () => settingsPolicy(store.settings(), sources)
       const engine = this.engine = new Engine({ repo: store, scope: sources, policy, assessor, executor,
         outbox, prepareTicket: (ticket, outcome) => executor.prepare(ticket, outcome), emit: event => {
+          store.afterCommit(() => { this.teams?.request() })
           // Notify the main Session only about domain events it did not initiate itself.
           const notice = this.quiet ? undefined : eventNotice(event, id => store.tickets.get(id))
           if (notice) sessions.notify(...notice)
@@ -172,6 +176,8 @@ export class Runtime extends Service implements SourceHost {
         get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem },
         get githubProblem() { return setup.githubProblem }, receive: trigger => passes.receive(trigger) }
       this.toolHost = { context: ctx, engine, store, prompts, sessions, settings: this.settings, assessor, resources,
+        ...(machine.mode === 'local' ? { recordDelivery: (ticket: Ticket, input: import('../teams/contracts.ts').DeliveryInput, state: string) =>
+          recordDelivery(store, ticket, input, (session, command, since) => sessions.commandEvidence(session, command, since), state) } : {}),
         get github() { return runtime.context({ kind: 'github', health: ['github'] }) },
         requestPass: () => { passes.request() }, sendReplies: () => outbox.sent(),
         quietly: run => { this.quiet++; try { return run() } finally { this.quiet-- } } }
@@ -180,6 +186,7 @@ export class Runtime extends Service implements SourceHost {
         this.disposers.push(() => { this.local?.dispose() })
         this.mcp = new McpTasks(this, ctx)
         this.disposers.push(() => { this.mcp?.dispose() })
+        this.teams = new LocalTeams(this, ctx)
       }
       this.ready = this.initialize()
     } catch (error) {
@@ -236,14 +243,15 @@ export class Runtime extends Service implements SourceHost {
     this.executor.resume()
     this.passes.start()
     this.effects.start()
+    this.teams?.start()
     this.runtimeHealth.set({ state: 'ready', detail: 'Orchestrator is ready', at: now() })
   }
   private httpHost(): HttpHost {
     const runtime = this
     const { store, sources, prompts, sessions, settings, engine, executor, health, machine, masterId, ready, sourceLinks, setup, passes } = this
-    return { store, sources, prompts, sessions, settings, engine, executor, health, machine, masterId, ready, sourceLinks, local: this.local, mcp: this.mcp,
-      workbench: (session?: string) => workbench({ store, sources, links: this.links() }, this.ctx, sessions,
-        machine.mode === 'local' ? executionRoot(store.settings(), machine.stateDir) : machine.stateDir, masterId, machine.stateDir, session),
+    return { store, sources, prompts, sessions, settings, engine, executor, health, machine, masterId, ready, sourceLinks, local: this.local, mcp: this.mcp, teams: this.teams,
+      workbench: (session?: string, team?: string) => workbench({ store, sources, links: this.links() }, this.ctx, sessions,
+        machine.mode === 'local' ? executionRoot(store.settings(), machine.stateDir) : machine.stateDir, masterId, machine.stateDir, session, this.teams, team),
       get deployment() { return setup.deployment },
       get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem }, get githubProblem() { return setup.githubProblem },
       configured: () => setup.configured(), links: () => runtime.links(), ticketEnvironment: ticket => runtime.ticketEnvironment(ticket),
@@ -255,6 +263,7 @@ export class Runtime extends Service implements SourceHost {
     this.closingFlag = true; const passes = this.passes.stop(); this.stopped.abort()
     try {
       this.assessor.stop()
+      await this.teams?.stop()
       const ids = [this.masterId, ...this.store.tickets.list().map(ticket => workerSessionId(ticket.id))]
       const agents = ids.map(id => this.ctx.agents.get(id as SessionId)).filter((agent): agent is Agent => agent !== undefined)
       for (const agent of agents) agent.cancel({ kind: 'user' }, { keepInbox: true })

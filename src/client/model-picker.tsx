@@ -3,22 +3,22 @@ import type { RoleModel } from '../policy.ts'
 import { usePoll } from './api.ts'
 import { useAction, usePanel } from './provider.tsx'
 
-export function ModelSelect({ value, onChange, id, disabled, label }: {
-  value?: RoleModel | null; onChange: (model: RoleModel | undefined) => void; id?: string; disabled?: boolean; label?: string
+export function ModelSelect({ value, onChange, id, disabled, label, defaultLabel }: {
+  value?: RoleModel | null; onChange: (model: RoleModel | undefined) => void; id?: string; disabled?: boolean; label?: string; defaultLabel?: string
 }) {
   const { t, call } = usePanel()
   const { data, error } = usePoll(() => call('GET models'), [call], 60_000)
   const selected = value ? JSON.stringify([value.provider, value.model]) : ''
   const listed = data?.groups.some(group => group.id === value?.provider && group.models.some(model => model.id === value?.model))
   const group = data?.groups.find(group => group.id === value?.provider)
-  const selectedName = value ? `${group?.name ?? value.provider} · ${group?.models.find(model => model.id === value.model)?.name ?? value.model}` : t('taskModelDefault')
+  const selectedName = value ? `${group?.name ?? value.provider} · ${group?.models.find(model => model.id === value.model)?.name ?? value.model}` : defaultLabel ?? t('taskModelDefault')
   return <select id={id} className="dt-select dt-model-select" aria-label={label} disabled={disabled || !data}
     value={selected} title={error ? t('modelPickerError') : selectedName} onChange={event => {
       if (!event.target.value) { onChange(undefined); return }
       const [provider, model] = JSON.parse(event.target.value) as [string, string]
       onChange({ provider, model })
     }}>
-    <option value="">{t(error ? 'modelPickerError' : 'taskModelDefault')}</option>
+    <option value="">{error ? t('modelPickerError') : defaultLabel ?? t('taskModelDefault')}</option>
     {value && !listed && <option value={selected}>{value.provider} · {value.model}</option>}
     {data?.groups.map(group => <optgroup label={group.name} key={group.id}>
       {group.models.map(model => <option key={model.id} value={JSON.stringify([group.id, model.id])}>{group.name} · {model.name}</option>)}

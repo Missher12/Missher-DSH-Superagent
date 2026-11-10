@@ -88,6 +88,9 @@ export interface PanelServer {
   renderSessions?: boolean
   sessionModels: Record<string, ApiResponse<'GET local/sessions/:id/model'>>
   workbench: ApiResponse<'GET local/workbench'>
+  teamViews: Record<string, ApiResponse<'GET local/teams/:id'>>
+  teamFiles: Record<string, ApiResponse<'GET local/teams/:id/file'>>
+  nextTeamId?: string
   joined?: Record<string, string>; joining?: Record<string, string>
   joinError?: string
   settings: Settings; revisions: Record<string, number>
@@ -211,7 +214,7 @@ export const acceptDecision = (): NonNullable<TicketPageView['decision']> => ({ 
   reason: [{ code: 'explicitRouted' }], at: '2026-09-22T00:00:00Z', strength: 'explicit', ticketId: undefined,
   triggerIds: ['e1'], thread: 'feishu:oc_1:om_root', rules: [], preview: '@bot 修一下', ticketTitle: undefined })
 const ticketDetail = (): TicketPageView => ({
-  ...ticketSummary(), local: false, messages: [], paused: false, decision: acceptDecision(), threads: [threadSummary()],
+  ...ticketSummary(), local: false, deliveryReport: undefined, messages: [], paused: false, decision: acceptDecision(), threads: [threadSummary()],
   mandate: { strength: 'explicit', policyVersion: 'abcdef1234567890', basis: { via: 'addressed', sender: 'Alice', addressed: 'mention' },
     actor: actor('feishu', MEMBER), scope: '修复登录页回归' },
   basis: { facts: [{ name: 'sender', value: 'Alice' }, { name: 'addressed', value: 'mention' }], legacy: false },
@@ -253,8 +256,8 @@ function initial(): PanelServer {
     en: 'Feishu message' } }
   const defaults = { revision: 0, previousRevision: null, savedAt: '', source: 'defaults' }
   return {
-    sessionModels: {}, renderSessions: false,
-    workbench: { workspace: { id: 'superagent-space', title: 'Superagent', directory: '/srv/dsh-superagent' },
+    sessionModels: {}, renderSessions: false, teamViews: {}, teamFiles: {},
+    workbench: { teams: [], team: undefined, teamTicketIds: [], workspace: { id: 'superagent-space', title: 'Superagent', directory: '/srv/dsh-superagent' },
       members: [{ id: 'master', role: 'orchestrator', title: '', directory: '/srv/dsh-superagent', state: 'idle', tools: [] }],
       tasks: [], activity: [], sources: [] },
     health: {}, down: false, pending: 0, opened: [], openedWorkspaces: [], pickedDirectory: null, workspaceChoices: [{ id: 'workspace-test', title: '测试工作区', directory: '/tmp/work' }], requests: [], misuse: [], queued: new Set(), dropped: [], failing: [],
@@ -301,7 +304,15 @@ const ticketOf = (id: string) =>
 const SourceSave = z.object({ enabled: z.boolean(), config: z.unknown() })
 
 const ROUTES: { [K in keyof Api]: Route<K> } = {
-  'GET local/workbench': { query: ['session'], answer: () => server.workbench },
+  'GET local/workbench': { query: ['session', 'team'], answer: ({ query }) => ({ ...server.workbench,
+    teams: Object.values(server.teamViews).map(({ members: _members, handoffs: _handoffs, deliveries: _deliveries, error: _error, ...index }) => index),
+    team: query.team ? server.teamViews[query.team] : undefined }) },
+  'POST local/teams': { body: true, answer: () => server.nextTeamId && server.teamViews[server.nextTeamId] || refuse(400, 'No team fixture selected') },
+  'GET local/teams/:id': { answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },
+  'GET local/teams/:id/file': { query: ['path'], answer: ({ query }) => server.teamFiles[query.path ?? ''] ?? refuse(404, 'File not found') },
+  'POST local/teams/:id/stop': { answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },
+  'POST local/teams/:id/retry': { answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },
+  'POST local/teams/:id/followup': { body: true, answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },
   'GET local/sessions/:id/model': { answer: ({ params }) => server.sessionModels[params.id] ?? null },
   'PUT local/sessions/:id/model': { body: true, answer: ({ params, body }) => {
     const model = body ?? { provider: 'host', model: 'default' }
