@@ -351,6 +351,7 @@ Local desktop adaptation additions:
 | `src/app/context.ts` | The built-in prompt text, read from `prompts/`, and the transcript entries Sessions read |
 | `src/app/skill-files.ts` | Packaged text: `promptFile`, which joins a file's one-sentence lines into paragraphs, and the bundled skills |
 | `src/app/sessions.ts` | Sessions |
+| `src/app/plugin-tools.ts` | Explicit allowed and excluded Project Ops tool lists used by managed sessions |
 | `src/app/delivery.ts` | `AgentDelivery`: delivers a message to a DeepSeek Harness agent once per request id, also across a restored Session |
 | `src/app/retry-health.ts` | `RetryHealth`: which Sessions wait on a model budget retry, for the `models` health entry |
 | `src/app/role-models.ts` | Resolves the Eval and Executor models, and seeds a new Session with its role's model |
@@ -404,9 +405,13 @@ Local desktop adaptation additions:
 | `src/client/local-board.tsx` | Local task board, lane paging and task cards |
 | `src/client/local-single-workbench.tsx` | Existing single-member task activity and native sessions, separate from explicit teams |
 | `src/client/model-picker.tsx` | Task and session-local model choices |
+| `src/client/model-labels.ts` | Localized reasoning-effort labels while retaining provider-specific descriptions |
+| `src/client/select.tsx` | Native form values with the host's themed Menu, keyboard navigation and local sizing |
+| `src/client/density.ts` | Compact, standard and comfortable page density preferences |
 | `src/client/team-ui.tsx`, `team-locales.ts` | Team/member state labels, bounded text and bilingual copy |
 | `src/client/team-graph.tsx` | Real dispatch and explicit dependency connectors with responsive member nodes |
 | `src/client/team-details.tsx`, `team-delivery.tsx` | Member tools, embedded session, durable follow-up, reported files/checks and bounded text previews |
+| `src/client/team-file-preview.tsx` | Task-scoped artifact and diff-link matching, same-name file selection and bounded in-panel previews |
 | `src/client/team-collaboration.tsx` | Team graph/member/completion views and validated runtime member addition |
 | `src/client/team-members-editor.tsx` | Editable team roles, model choices and acyclic delivery dependencies |
 | `src/teams/contracts.ts` | Validated team plans, delivery reports and public state views |
@@ -448,6 +453,9 @@ Local desktop adaptation checks:
 | `tests/local-teams.spec.ts` | Actual dependency dispatch, planning/final-review separation, follow-ups, evidence, stop and restart recovery |
 | `tests/team-panel.spec.tsx` | Explicit team overview, member selection, task creation, native sessions and delivery previews |
 | `tests/client-registration.spec.ts` | Host-owned conversation slot contract and cold session initialization |
+| `tests/density.spec.tsx` | Immediate density changes and preference persistence |
+| `tests/select.spec.tsx` | Host menu selection, disabled choices, form validation, focus and local resize behavior |
+| `tests/plugin-tools.spec.ts` | Host tool enumeration and read-only Project Ops capability routing |
 | `tests/local-workbench.spec.ts` | Dedicated workspace and managed live activity without tool arguments or extra work |
 | `tests/native-paths.spec.ts` | Windows drive/UNC and POSIX directory validation, rejecting relative paths without rewriting locations |
 | `tests/panel-workbench.spec.tsx` | Member activity selection, native workspace and session navigation |

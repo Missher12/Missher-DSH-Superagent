@@ -49,6 +49,7 @@ export interface Api {
   'GET local/capabilities': { response: ReturnType<import('./sessions.ts').Sessions['capabilities']> }
   'POST local/tasks': { body: LocalRequest; response: Awaited<ReturnType<LocalTasks['create']>> }
   'GET local/tasks/:id/workbench': { response: { team?: string; member?: string; session?: string } }
+  'GET local/tasks/:id/file': { query: { path: string }; response: ReturnType<LocalTasks['file']> }
   'POST local/tasks/:id/followup': { body: { requestId: string; text: string }; response: Awaited<ReturnType<LocalTasks['followup']>> }
   'GET state': { response: StateView }
   'GET overview': { response: OverviewView }

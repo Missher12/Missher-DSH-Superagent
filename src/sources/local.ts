@@ -17,6 +17,7 @@ import { executionRoot } from '../app/execution-environment.ts'
 import { RoleModelSchema } from '../policy.ts'
 import { resolveRoleModel, sessionModels } from '../app/role-models.ts'
 import { toolParameters } from '../app/tools/tool.ts'
+import { latestDelivery, previewDeliveryFile } from '../teams/delivery.ts'
 
 export const LocalRequestSchema = z.object({
   requestId: z.string().trim().min(1).max(200), title: z.string().trim().min(1).max(160),
@@ -101,6 +102,12 @@ export class LocalTasks {
     return { ticketId: ticket.id, title: ticket.title, stage: ticketStage(ticket), directory: ticket.execution?.directory,
       sessionId: workerSessionId(id), summary: latestReport(ticket)?.summary ?? '', ...(ticket.attention ? { attention: ticket.attention } : {}),
       messages: localMessages(this.runtime, id) }
+  }
+  file(id: string, path: string) {
+    const ticket = this.ticket(id), directory = ticket.execution?.directory
+    if (!directory) throw new LocalTaskError('当前任务还没有可查看的执行目录')
+    try { return previewDeliveryFile(directory, path, latestDelivery(this.runtime.store, ticket)?.files.map(file => file.path) ?? []) }
+    catch (error) { throw new LocalTaskError(error instanceof Error ? error.message : String(error)) }
   }
   list() {
     return this.runtime.store.tickets.list().filter(ticket => !!workspaceOf(this.runtime.store, ticket))

@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest'
-import { mkdirSync, realpathSync } from 'node:fs'
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { startRuntime, type Host } from './fixtures/host.ts'
@@ -58,4 +58,24 @@ it('keeps a disabled MCP application’s readable identity on its past task acti
       actor: expect.objectContaining({ name: { zh: '编辑器测试应用', en: '编辑器测试应用' } }) })]),
   } })
   expect(JSON.stringify(result)).not.toContain(connection.token)
+})
+
+it('previews a single task’s reported files and rejects unreported or outside files', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const path = join(realpathSync(host.directory), 'result.txt')
+  writeFileSync(path, 'actual task output')
+  writeFileSync(join(host.directory, 'unreported.txt'), 'not delivered')
+  const task = await host.runtime.local!.create({ requestId: 'single-file', title: '交付文件', instructions: '交付 result.txt', directory: host.directory })
+  await host.runtime.idle()
+  expect((await host.api('GET', `local/tasks/${task.ticketId}/file?path=${encodeURIComponent(path)}`)).status).toBe(400)
+  await host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '文件已交付',
+    delivery: { files: [{ path }], checks: [], unverified: ['仅验证文件读取'] } })
+  expect(await host.api('GET', `local/tasks/${task.ticketId}/file?path=${encodeURIComponent(path)}`))
+    .toMatchObject({ status: 200, body: { text: 'actual task output' } })
+  expect((await host.api('GET', `local/tasks/${task.ticketId}/file?path=unreported.txt`)).status).toBe(400)
+  expect((await host.api('GET', `local/tasks/${task.ticketId}/file?path=../outside.txt`)).status).toBe(400)
+  expect((await host.api('GET', `local/tasks/unknown/file?path=result.txt`)).status).toBe(400)
+  expect(await host.api('GET', 'local/workbench')).toMatchObject({ body: {
+    members: expect.arrayContaining([expect.objectContaining({ id: task.sessionId, files: [{ path, summary: '', exists: true, size: 18 }] })]),
+  } })
 })

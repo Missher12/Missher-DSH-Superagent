@@ -23,7 +23,7 @@ export function Select({ id, className = '', value, children, disabled, title, o
     const panel = menu()
     if (!panel) return
     const size = () => {
-      const width = Math.min(trigger.current?.getBoundingClientRect().width ?? 0, window.innerWidth - 24)
+      const width = Math.min(Math.max(trigger.current?.getBoundingClientRect().width ?? 0, 240), window.innerWidth - 24)
       if (width > 0 && panel.style.width !== `${width}px`) {
         panel.style.width = `${width}px`; panel.style.minWidth = `${width}px`; panel.style.maxWidth = `${width}px`
         resizeMenu(revision => revision + 1)

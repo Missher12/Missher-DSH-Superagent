@@ -84,3 +84,16 @@ it('does not open or mutate values inside a disabled settings group', async () =
   expect(document.querySelector('[role="menu"]')).toBeNull()
   expect(container.querySelector('select')!.value).toBe('a')
 })
+
+it.each([[390, 240], [220, 196]])('gives narrow model choices room while staying within a %i px viewport', async (viewport, width) => {
+  vi.stubGlobal('innerWidth', viewport)
+  onTestFinished(() => { vi.unstubAllGlobals() })
+  const container = await mount(<Select aria-label="任务模型" value="a"><option value="a">DeepSeek Account · DeepSeek-V4.1-Flash</option></Select>)
+  const trigger = container.querySelector('button')!
+  vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({ width: 140 } as DOMRect)
+  trigger.focus(); await key('ArrowDown')
+  expect(document.querySelector<HTMLElement>('[role="menu"]')?.style.width).toBe(`${width}px`)
+  expect(document.activeElement?.textContent).toBe('DeepSeek Account · DeepSeek-V4.1-Flash')
+  await key('Escape')
+  expect(document.activeElement).toBe(trigger)
+})

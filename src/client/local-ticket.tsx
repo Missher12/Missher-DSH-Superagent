@@ -9,6 +9,7 @@ import { useAction, usePanel } from './provider.tsx'
 import { actorName, reasonLabel, valueLabel } from './text.ts'
 import { Assignments } from './ticket-assignments.tsx'
 import { ConfirmButton, Hint, KeyValues, LoadState, MarkdownLite, Section, SessionButton, StageMark, When } from './widgets.tsx'
+import { TaskFilesButton } from './team-file-preview.tsx'
 
 export function LocalTicketPage({ data, error, reload }: { data: TicketPageView; error?: Error | undefined; reload: () => Promise<void> }) {
   const { t, call, navigate, notify } = usePanel()
@@ -27,6 +28,8 @@ export function LocalTicketPage({ data, error, reload }: { data: TicketPageView;
     <div className="dt-actions dt-local-ticket-nav"><Button variant="ghost" icon={<Icon name="chevron-left" />} onClick={() => navigate({ page: 'execution' })}>{t('localBackToTasks')}</Button></div>
     <div className="dt-local-task-head"><h2>{data.title}</h2><div className="dt-actions">
       {data.directory && <OpenWorkspaceButton directory={data.directory} />}
+      {data.local && <TaskFilesButton key={data.id} scope={{ kind: 'task', id: data.id, directory: data.directory,
+        sessionId: data.sessionId, files: data.deliveryReport?.files.map(file => file.path) ?? [] }} />}
       {data.sessionId && <SessionButton variant="outline" sessionId={data.sessionId} label={t('localViewProcess')} />}
       {data.actions.retry && <Button variant="outline" disabled={retry.busy} icon={<Icon name="refresh" />}
         onClick={() => { void retry.run() }}>{t('localRetry')}</Button>}

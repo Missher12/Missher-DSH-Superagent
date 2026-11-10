@@ -55,3 +55,28 @@ it('filters activity by actual executor identity and opens its task or conversat
   await click('查看任务')
   expect(text()).toContain('返回任务')
 })
+
+it('opens single-task file links inside the workbench and keeps the task navigation in one sidebar', async () => {
+  server.renderSessions = true
+  const path = '/tmp/project/result.txt'
+  server.workbench.members.push({ id: 'worker-files', role: 'worker', state: 'finished', title: '交付文件', directory: '/tmp/project',
+    taskId: 'task-files', tools: [], files: [{ path, summary: '输出', exists: true }] })
+  server.teamFiles[path] = { path, relative: 'result.txt', size: 18, text: 'actual task output', binary: false, truncated: false }
+  at({ page: 'overview', query: { session: 'worker-files' } }); await mount()
+  const link = document.createElement('button'), opened: string[] = []
+  link.type = 'button'; link.title = 'result.txt'; link.textContent = 'result.txt'
+  link.addEventListener('click', () => opened.push('unmounted sidebar'))
+  all('[data-test-session="worker-files"]')[0]!.append(link); await click(link)
+  expect(text()).toContain('actual task output')
+  expect(opened).toEqual([])
+  expect(all('.dt-workbench-members')).toHaveLength(0)
+  expect(all('.dt-team-sidebar')).toHaveLength(1)
+})
+
+it('shows a pending session without mixing other tasks’ activity into its workspace', async () => {
+  server.renderSessions = true
+  server.workbench.activity = [{ id: 'unrelated', kind: 'report', at: '2026-11-11T01:00:00Z', memberId: 'master', title: '另一项任务', summary: '不属于选中任务的活动' }]
+  at({ page: 'overview', query: { session: 'worker-not-started' } }); await mount()
+  expect(text()).toContain('该成员尚未创建执行会话')
+  expect(text()).not.toContain('不属于选中任务的活动')
+})

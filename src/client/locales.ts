@@ -19,6 +19,8 @@ const TEXT = {
   workbenchWorkerSelect: ['执行器：{title}', 'Executor: {title}'],
   workbenchWaiting: ['等待派单', 'Waiting for tasks'],
   sessionContextTitle: ['上下文', 'Context'],
+  fileNotReported: ['该文件尚未记录为交付文件，可在原生会话中查看。', 'This file has not been recorded as a deliverable. View it in the original session.'],
+  fileCurrentContents: ['显示当前文件内容，历史差异可在原生会话中查看。', 'Showing the current file. Open the original session to view its historical diff.'],
   workbenchCurrentTasks: ['当前任务', 'Current tasks'],
   workbenchRelatedTask: ['关联任务', 'Related task'],
   workbenchViewTask: ['查看任务', 'View task'],

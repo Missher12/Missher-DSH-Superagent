@@ -90,7 +90,7 @@
 .dt-choice:has(.dt-choice-trigger:disabled) { color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-layer-2); }
 .dt-choice-trigger:disabled { cursor: default; }
 [role='menu']:has(.dt-choice-option) { box-sizing: border-box; font-family: inherit; font-size: 13px; max-height: min(300px, calc(100dvh - 24px)); }
-.dt-choice-option { display: block; overflow-wrap: anywhere; font-size: 13px; line-height: 20px; }
+.dt-choice-option { display: block; white-space: normal; overflow-wrap: anywhere; font-size: 13px; line-height: 20px; }
 .dt-model-custom { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .dt-model-custom > .dt-input { flex: 1; min-width: 0; }
 .dt-model-custom > .dt-btn { flex: none; }
@@ -561,6 +561,9 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-workbench-sources > div { display: flex; align-items: center; gap: 8px; font-size: 12px; min-height: 28px; }
 .dt-workbench-sources .dt-hint { margin-left: auto; font-size: 12px; }
 .dt-workbench-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: min-content; padding: 14px 0 0 24px; }
+.dt-workbench[data-focused] .dt-workbench-layout { grid-template-columns: minmax(0,1fr); min-height: 0; }
+.dt-workbench[data-focused] .dt-workbench-main { padding-inline-start: 0; min-height: 0; flex: 1; overflow: hidden; }
+.dt-workbench[data-focused] .dt-workbench-conversation { min-height: 0; flex: 1; height: auto; }
 .dt-workbench-focus { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 16px; flex: none; flex-wrap: wrap; }
 .dt-workbench-focus > div { min-width: 0; }
 .dt-workbench-focus h2 { margin: 0 0 4px; font-size: 16px; line-height: 24px; font-weight: 600; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -836,6 +839,9 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-team-dependencies label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; line-height: 22px; }
 .dt-team-plan-fields .dt-danger-zone { padding-top: 10px; margin-top: 12px; justify-content: flex-end; }
 @container (max-width: 700px) {
+  .dt-workbench[data-focused] .dt-workbench-directory { display: none; }
+  .dt-workbench[data-focused] .dt-workbench-focus h2 { display: block; white-space: nowrap; text-overflow: ellipsis; }
+  .dt-workbench[data-focused] .dt-workbench-focus > div { max-width: 100%; }
   .dt-workbench-layout { display: flex; flex-direction: column; min-height: 0; }
   .dt-workbench-members { contain: none; flex: none; border-right: 0; padding: 12px 0; display: grid; grid-template-columns: minmax(100px, auto) minmax(0,1fr); gap: 8px 12px; }
   .dt-workbench-members .dt-workbench-section-head { min-height: 28px; margin: 0; }

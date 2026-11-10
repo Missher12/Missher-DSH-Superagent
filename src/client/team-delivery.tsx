@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { TeamView } from '../teams/contracts.ts'
 import { Button, Icon, Modal } from './controls.tsx'
 import { usePanel } from './provider.tsx'
-import { TeamFilePreview } from './team-file-preview.tsx'
+import { FilePreview } from './team-file-preview.tsx'
 import { MarkdownLite, SessionButton, When } from './widgets.tsx'
 
 export function TeamFilesButton({ team }: { team: TeamView }) {
@@ -39,6 +39,7 @@ export function TeamDelivery({ team, compact = false }: { team: TeamView; compac
       <section><h3>{t('teamUnverified')}</h3>{unverified.length ? <ul className="dt-team-unverified">{unverified.map((item, index) => <li key={index}>{item.text}<span>{item.name}</span></li>)}</ul>
         : <p className="dt-hint">{t('teamNoUnverified')}</p>}</section>
       {deliveries.length > 0 && <div className="dt-team-attribution">{deliveries.map(delivery => <span key={delivery.memberId}>{delivery.name} <When at={delivery.record.at} /></span>)}</div>}</>}
-    {path && <TeamFilePreview key={path} team={team} paths={[path]} onClose={() => setPath(undefined)} />}
+    {path && <FilePreview key={path} scope={{ kind: 'team', id: team.id, directory: team.directory,
+      files: files.map(file => file.path), sessionId: team.members.find(member => member.role === 'coordinator')?.sessionId }} paths={[path]} onClose={() => setPath(undefined)} />}
   </div>
 }

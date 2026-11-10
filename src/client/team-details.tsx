@@ -6,7 +6,7 @@ import { LocalFollowup } from './local.tsx'
 import { SessionModelPicker } from './model-picker.tsx'
 import { useAction, usePanel } from './provider.tsx'
 import { TeamDelivery, TeamFilesButton } from './team-delivery.tsx'
-import { TeamSessionFiles } from './team-file-preview.tsx'
+import { SessionFiles } from './team-file-preview.tsx'
 import { OpenWorkspaceButton } from './local-workspaces.tsx'
 import { TeamStatus } from './team-ui.tsx'
 import { SessionButton, When } from './widgets.tsx'
@@ -58,7 +58,8 @@ export function TeamDetails({ team, member, reload, view: selectedView, onView }
     {view === 'conversation' && member.sessionId && !nativeSession && <div className="dt-team-model-bar"><SessionModelPicker key={member.sessionId} sessionId={member.sessionId} running={member.state === 'working'} /></div>}
     <div className={`dt-team-detail-content${view === 'conversation' ? ' dt-team-native-session' : view === 'context' ? ' dt-team-native-context' : ''}`} id="dt-member-content" role="region" aria-label={t(view === 'activity' ? 'teamActivity' : view === 'conversation' ? 'workbenchConversation' : view === 'context' ? 'sessionContextTitle' : 'teamDelivery')}>
       {view === 'context' && member.sessionId && renderContext ? renderContext(member.sessionId) : view === 'activity' ? <MemberActivity member={member} /> : view === 'delivery' ? <TeamDelivery team={team} />
-        : member.sessionId && renderSession ? <TeamSessionFiles team={team}>{renderSession(member.sessionId)}</TeamSessionFiles> : <p className="dt-hint">{t('teamNotStarted')}</p>}
+        : member.sessionId && renderSession ? <SessionFiles scope={{ kind: 'team', id: team.id, directory: team.directory, sessionId: member.sessionId,
+          files: team.deliveries.flatMap(delivery => delivery.record.files.map(file => file.path)) }}>{renderSession(member.sessionId)}</SessionFiles> : <p className="dt-hint">{t('teamNotStarted')}</p>}
     </div>
     {!nativeSession && view === 'conversation' && member.ticketId && team.state !== 'stopped' && member.state !== 'stopped' && <div className="dt-team-followup"><LocalFollowup key={member.ticketId} id={member.ticketId} teamId={team.id} memberId={member.id}
       completed={member.state === 'finished'} onSent={reload} /></div>}

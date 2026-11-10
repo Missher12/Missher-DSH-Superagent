@@ -8,6 +8,8 @@ import { SessionModelPicker } from './model-picker.tsx'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
 import { actorName, valueLabel, shortText, workbenchToolLabel as toolLabel, type T } from './text.ts'
 import { LoadState, SessionButton, StageMark, When } from './widgets.tsx'
+import { SessionFiles, TaskFilesButton, type FileScope } from './team-file-preview.tsx'
+import { OpenWorkspaceButton } from './local-workspaces.tsx'
 
 type View = ApiResponse<'GET local/workbench'>
 type Member = View['members'][number]
@@ -65,10 +67,12 @@ export function SingleWorkbench({ sessionId }: { sessionId?: string }) {
   const [view, setView] = useState<'conversation' | 'context' | 'activity'>('conversation')
   const select = (id?: string) => { setView(view => view === 'context' ? 'context' : 'conversation'); navigate({ page: 'overview', ...(id ? { query: { session: id } } : {}) }, true) }
   const member = data?.members.find(member => member.id === sessionId)
+  const files: FileScope | undefined = member && { kind: member.taskId ? 'task' : 'session', id: member.taskId ?? member.id,
+    sessionId: member.id, directory: member.directory, files: member.files?.map(file => file.path) ?? [] }
   const stopped = !!member?.taskId && data?.tasks.find(task => task.id === member.taskId)?.ended?.by === 'human'
   const open = useAction(async () => { if (data?.workspace) await openWorkspace(data.workspace.id) })
   const problems = Object.entries(state?.health ?? {}).filter(([, health]) => health.state === 'error')
-  return <section className="dt-workbench" aria-label={t('localWorkbench')}>
+  return <section className="dt-workbench" data-focused={!!sessionId || undefined} aria-label={t('localWorkbench')}>
     <header className="dt-workbench-toolbar"><div className="dt-workbench-workspace">
       <span className="dt-workbench-workspace-icon"><Icon name="folder" size={22} /></span><div><h2>{t('workbenchWorkspace')}</h2>
         {data?.workspace && <p title={data.workspace.directory}>{data.workspace.directory}</p>}</div></div>
@@ -78,7 +82,7 @@ export function SingleWorkbench({ sessionId }: { sessionId?: string }) {
     {state?.paused && <p className="dt-banner">{t('localPauseHint')}</p>}
     {problems.map(([name, health]) => <p className="dt-error" role="status" key={name}>{health.detail}</p>)}
     <LoadState loading={!data} error={error} />
-    {data && <div className="dt-workbench-layout"><aside className="dt-workbench-members" aria-label={t('workbenchMembers')}>
+    {data && <div className="dt-workbench-layout">{!sessionId && <aside className="dt-workbench-members" aria-label={t('workbenchMembers')}>
       <div className="dt-workbench-section-head"><h3>{t('workbenchMembers')}</h3><span className="dt-count">{data.members.length}</span></div>
       <button className="dt-workbench-member dt-workbench-all" type="button" aria-pressed={!member} onClick={() => select()}>
         <Icon name="history" size={18} /><strong>{t('workbenchAll')}</strong></button>
@@ -91,12 +95,15 @@ export function SingleWorkbench({ sessionId }: { sessionId?: string }) {
       <div className="dt-workbench-sources"><h3>{t('workbenchSources')}</h3>{data.sources.map(source => <div key={source.id}>
         <Dot state={source.enabled ? 'done' : 'idle'} /><span>{typeof source.title === 'string' ? source.title : source.title[t('lang').startsWith('zh') ? 'zh' : 'en']}</span>
         <span className="dt-hint">{t(source.enabled ? 'workbenchSourceEnabled' : 'workbenchSourceDisabled')}</span></div>)}</div>
-    </aside><div className="dt-workbench-main">
+    </aside>}<div className="dt-workbench-main">
       {member && <header className="dt-workbench-focus"><div><h2>{memberName(t, member)}</h2><div className="dt-workbench-focus-meta">
-        <StageMark state={dot[member.state]} icon={member.state === 'running' ? 'running' : member.state === 'attention' ? 'ask' : 'decision'} label={t(`workbenchState.${member.state}`)} />
+        <StageMark state={dot[member.state]} icon={member.state === 'running' ? 'running' : member.state === 'attention' ? 'ask' : 'decision'}
+          label={t(member.role === 'orchestrator' && member.state === 'idle' ? 'workbenchWaiting' : `workbenchState.${member.state}`)} />
         {member.actor && <span>{valueLabel(t, 'source', member.actor.source)} · {actorName(t, member.actor)}</span>}
         </div>{member.directory && <p className="dt-hint dt-workbench-directory" title={member.directory}>{member.directory}</p>}</div>
-        <div className="dt-actions">{member.taskId && <Button variant="ghost" size="sm" onClick={() => navigate({ page: 'execution', id: member.taskId! })}>{t('workbenchViewTask')}</Button>}
+        <div className="dt-actions">{member.directory && <OpenWorkspaceButton directory={member.directory} compact />}
+          {files && member.taskId && <TaskFilesButton key={member.id} scope={files} />}
+          {member.taskId && <Button variant="ghost" size="sm" onClick={() => navigate({ page: 'execution', id: member.taskId! })}>{t('workbenchViewTask')}</Button>}
           <SessionButton sessionId={member.id} label={t('workbenchExternalSession')} variant="outline" external /></div></header>}
       {member?.tools.some(tool => tool.state === 'running') && <div className="dt-workbench-now" role="status"><Dot state="ongoing" />
         {member.tools.filter(tool => tool.state === 'running').map(tool => toolLabel(t, tool.name)).join('、')}</div>}
@@ -107,11 +114,13 @@ export function SingleWorkbench({ sessionId }: { sessionId?: string }) {
             items={(['conversation', ...(renderContext ? ['context' as const] : []), 'activity'] as const).map(value => ({ value, label: t(value === 'conversation' ? 'workbenchConversation' : value === 'context' ? 'sessionContextTitle' : 'workbenchActivity'), id: `dt-session-${value}`, panelId: 'dt-session-content' }))} />
           {!nativeSession && <SessionModelPicker key={member.id} sessionId={member.id} running={member.state === 'running'} />}
         </div>
-        {view === 'conversation' ? <><div id="dt-session-content" role="tabpanel" aria-labelledby="dt-session-conversation" className="dt-workbench-conversation" data-stopped={stopped || undefined}>{renderSession(member.id)}</div>
+        {view === 'conversation' ? <><div id="dt-session-content" role="tabpanel" aria-labelledby="dt-session-conversation" className="dt-workbench-conversation" data-stopped={stopped || undefined}>
+          <SessionFiles key={member.id} scope={files!}>{renderSession(member.id)}</SessionFiles></div>
           {!nativeSession && !stopped && member.taskId && <div className="dt-workbench-followup"><LocalFollowup key={member.taskId} id={member.taskId} completed={member.state === 'finished'} onSent={reload} /></div>}</>
           : view === 'context' && renderContext ? <div id="dt-session-content" role="tabpanel" aria-labelledby="dt-session-context" className="dt-workbench-conversation">{renderContext(member.id)}</div>
           : <div id="dt-session-content" role="tabpanel" aria-labelledby="dt-session-activity" className="dt-workbench-history"><ActivityFeed data={data} member={member} /></div>}
-      </> : <><CurrentTasks data={data} member={member} /><ActivityFeed data={data} member={member} /></>}
+      </> : sessionId && !member ? <p className="dt-hint" role="status">{t('teamNotStarted')}</p>
+        : <><CurrentTasks data={data} member={member} /><ActivityFeed data={data} member={member} /></>}
     </div></div>}
   </section>
 }

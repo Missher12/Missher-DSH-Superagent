@@ -190,3 +190,51 @@ it('leaves unrelated native controls and external links unchanged inside the con
   expect(opened).toEqual(['copy', 'external'])
   expect(all('[role="dialog"]')).toHaveLength(0)
 })
+
+it('explains unreported native file links and offers the original session instead of calling an unmounted sidebar', async () => {
+  const view = server.teamViews['explicit-team']!
+  at({ page: 'overview', query: { team: view.id, member: 'build' } }); await mount()
+  const link = document.createElement('button'), opened: string[] = []
+  link.type = 'button'; link.className = '_fileMention_native_1 _fileLink_native_2'; link.title = 'draft.md'; link.textContent = 'draft.md'
+  link.addEventListener('click', () => opened.push('unmounted sidebar'))
+  all('[data-test-session]')[0]!.append(link); await click(link)
+  expect(all('[role="dialog"]')).toHaveLength(1)
+  expect(text()).toContain('尚未记录为交付文件')
+  expect(opened).toEqual([])
+  expect(server.requests.some(item => item.path.endsWith('/file'))).toBe(false)
+  await click(all('[role="dialog"] button').find(button => button.textContent?.includes('在 DSH 中打开'))!)
+  expect(server.opened).toEqual(['worker-build-task'])
+})
+
+it.each(['查看 formatter.mjs 的改动', 'View changes to formatter.mjs'])('handles the native diff action %s with a current-file preview and original-session access', async label => {
+  const view = server.teamViews['explicit-team']!, path = '/tmp/project/formatter.mjs'
+  view.deliveries = [{ memberId: 'build', name: '实施', record: { ticketId: 'build-task', assignmentId: 'run-build', sessionId: 'worker-build-task', at: view.updatedAt,
+    files: [{ path, summary: '实现', exists: true }], checks: [], unverified: [] } }]
+  server.teamFiles[path] = { path, relative: 'formatter.mjs', size: 12, text: 'current file', binary: false, truncated: false }
+  at({ page: 'overview', query: { team: view.id, member: 'build' } }); await mount()
+  const link = document.createElement('button'), opened: string[] = []
+  link.type = 'button'; link.setAttribute('aria-label', label); link.textContent = 'formatter.mjs+12-0'
+  link.addEventListener('click', () => opened.push('unmounted sidebar'))
+  all('[data-test-session]')[0]!.append(link); await click(link)
+  expect(all('[role="dialog"]')).toHaveLength(1)
+  expect(text()).toContain('current file')
+  expect(text()).toContain('当前文件内容')
+  expect(opened).toEqual([])
+  await click(all('[role="dialog"] button').find(button => button.textContent?.includes('在 DSH 中打开'))!)
+  expect(server.opened).toEqual(['worker-build-task'])
+})
+
+it.each([true, false])('opens the native turn-changes summary with task files or a clear empty state (reported: %s)', async reported => {
+  const view = server.teamViews['explicit-team']!, path = '/tmp/project/formatter.mjs'
+  if (reported) view.deliveries = [{ memberId: 'build', name: '实施', record: { ticketId: 'build-task', assignmentId: 'run-build', sessionId: 'worker-build-task', at: view.updatedAt,
+    files: [{ path, summary: '实现', exists: true }], checks: [], unverified: [] } }]
+  server.teamFiles[path] = { path, relative: 'formatter.mjs', size: 12, text: 'current file', binary: false, truncated: false }
+  at({ page: 'overview', query: { team: view.id, member: 'build' } }); await mount()
+  const link = document.createElement('button'), opened: string[] = []
+  link.type = 'button'; link.setAttribute('aria-label', '在侧边栏查看本轮改动'); link.textContent = '已编辑 3 个文件 +12 -0'
+  link.addEventListener('click', () => opened.push('unmounted sidebar'))
+  all('[data-test-session]')[0]!.append(link); await click(link)
+  expect(all('[role="dialog"]')).toHaveLength(1)
+  expect(text()).toContain(reported ? 'current file' : '尚未记录为交付文件')
+  expect(opened).toEqual([])
+})

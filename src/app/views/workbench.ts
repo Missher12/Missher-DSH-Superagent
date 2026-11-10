@@ -6,6 +6,8 @@ import type { Sessions } from '../sessions.ts'
 import { newestFirst, snapshot, type ActorView, type ViewHost } from './records.ts'
 import { ticketRow } from './tickets.ts'
 import type { LocalTeams } from '../../teams/local.ts'
+import { latestDelivery } from '../../teams/delivery.ts'
+import type { DeliveryRecord } from '../../teams/contracts.ts'
 
 interface Activity {
   id: string; at: string; kind: 'received' | 'assigned' | 'report' | 'ended' | 'tool'
@@ -15,6 +17,7 @@ interface Activity {
 interface Member {
   id: string; role: 'orchestrator' | 'worker'; state: 'running' | 'idle' | 'attention' | 'finished'
   title: string; directory: string; tools: ReturnType<Sessions['activity']>['tools']; taskId?: string; actor?: ActorView
+  files?: DeliveryRecord['files']
 }
 export function workbench(host: ViewHost, context: Pick<Context, 'workspaceRegistry'>, sessions: Pick<Sessions, 'activity'>,
   directory: string, masterId: string, masterDirectory = directory, selectedSession?: string, teams?: LocalTeams, selectedTeam?: string) {
@@ -45,7 +48,7 @@ export function workbench(host: ViewHost, context: Pick<Context, 'workspaceRegis
     const trigger = host.store.triggers.get(ticket.origin.triggerId)
     return [{ id: row.sessionId, role: 'worker' as const, title: ticket.title, taskId: ticket.id, directory: row.directory ?? '',
       state: live.running ? 'running' : stage === 'ended' ? 'finished' : stage === 'person' ? 'attention' : 'idle', tools: live.tools,
-      actor: actorOf(trigger) }]
+      actor: actorOf(trigger), files: latestDelivery(host.store, ticket)?.files ?? [] }]
   })]
   const activity: Activity[] = selected.flatMap(ticket => {
     const memberId = tasks.find(row => row.id === ticket.id)?.sessionId ?? masterId

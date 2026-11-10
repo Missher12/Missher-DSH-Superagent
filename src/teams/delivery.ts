@@ -49,7 +49,7 @@ export function latestDelivery(store: Store, ticket: Ticket | undefined): Delive
 
 export function previewDeliveryFile(directory: string, value: string, allowed: string[]) {
   const file = workspaceFile(directory, value)
-  if (!allowed.includes(file.path)) throw new Error('只能查看该团队实际报告的交付文件')
+  if (!allowed.includes(file.path)) throw new Error('只能查看该任务实际报告的交付文件')
   if (!file.exists) throw new Error('这个交付文件目前不存在，请在执行会话中确认')
   const fd = openSync(file.path, 'r'), buffer = Buffer.alloc(Math.min(file.size!, 128_000))
   let bytes: number

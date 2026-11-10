@@ -183,6 +183,10 @@ function routes(runtime: HttpHost): Routes {
       if (!runtime.store.tickets.get(params.id)) throw new RouteError(404, '找不到这个任务')
       return teams().target(params.id) ?? { session: workerSessionId(params.id) }
     },
+    'GET local/tasks/:id/file': ({ params, query }) => {
+      if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled')
+      return runtime.local.file(params.id, query.path ?? '')
+    },
     'GET local/teams/:id': ({ params }) => teams().get(params.id),
     'GET local/teams/:id/file': ({ params, query }) => teams().file(params.id, query.path ?? ''),
     'POST local/teams/:id/stop': ({ params }) => teams().stopTeam(params.id),
