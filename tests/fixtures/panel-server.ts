@@ -308,6 +308,18 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     teams: Object.values(server.teamViews).map(({ members: _members, handoffs: _handoffs, deliveries: _deliveries, error: _error, ...index }) => index),
     team: query.team ? server.teamViews[query.team] : undefined }) },
   'POST local/teams': { body: true, answer: () => server.nextTeamId && server.teamViews[server.nextTeamId] || refuse(400, 'No team fixture selected') },
+  'POST local/teams/:id/members': { body: true, answer: ({ params, body }) => {
+    const team = server.teamViews[params.id]; if (!team) return refuse(404, 'Team not found')
+    if (!team.members.some(member => member.id === body.id)) { team.members.push({ ...body, role: 'member', state: 'planned', summary: '', retry: false, tools: [], events: [] }); team.memberCount++ }
+    return team
+  } },
+  'GET local/tasks/:id/workbench': { answer: ({ params }) => {
+    for (const team of Object.values(server.teamViews)) {
+      const member = team.members.find(member => member.ticketId === params.id)
+      if (member) return { team: team.id, member: member.id }
+    }
+    return { session: `worker-${params.id}` }
+  } },
   'GET local/teams/:id': { answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },
   'GET local/teams/:id/file': { query: ['path'], answer: ({ query }) => server.teamFiles[query.path ?? ''] ?? refuse(404, 'File not found') },
   'POST local/teams/:id/stop': { answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },

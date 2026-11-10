@@ -4,19 +4,24 @@ import { LOCAL_BOARD_COLUMNS, type LocalBoardColumn } from '../app/api.ts'
 import { usePoll, type TicketRow } from './api.ts'
 import { Button, Icon, Input } from './controls.tsx'
 import { ticketMark } from './marks.ts'
-import { usePanel } from './provider.tsx'
+import { useAction, usePanel } from './provider.tsx'
 import { LoadState, SessionButton, StageMark, When } from './widgets.tsx'
 
 const PAGE_SIZE = 20
 
 function TaskCard({ ticket }: { ticket: TicketRow }) {
-  const { t, navigate } = usePanel()
+  const { t, navigate, call } = usePanel()
+  const open = useAction(async () => {
+    const query = await call('GET local/tasks/:id/workbench', { id: ticket.id })
+    navigate({ page: 'overview', query })
+  })
   const mark = ticketMark(t, ticket)
   const completed = ticket.ended?.outcome === 'completed'
   const note = !ticket.ended && (ticket.note?.text || ticket.summary)
   return <li className="dt-board-card" data-state={completed ? 'done' : mark.dot}>
     <div className="dt-board-card-head">
-      <StageMark state={completed ? 'done' : mark.dot} icon={completed ? 'decision' : mark.icon} label={mark.label} />
+      <button type="button" className="dt-board-card-status" disabled={open.busy} title={t('teamStatusOpen')}
+        onClick={() => { void open.run() }}><StageMark state={completed ? 'done' : mark.dot} icon={completed ? 'decision' : mark.icon} label={mark.label} /></button>
       <When at={ticket.updatedAt} />
     </div>
     <button className="dt-open dt-board-card-title" type="button" onClick={() => navigate({ page: 'execution', id: ticket.id })}>

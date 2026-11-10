@@ -5,12 +5,13 @@ import { Icon } from './controls.tsx'
 import { usePanel } from './provider.tsx'
 import { TeamStatus } from './team-ui.tsx'
 
-interface Line { id: string; path: string; dependency: boolean }
+interface Line { id: string; path: string; dependency: boolean; active: boolean }
 export function TeamGraph({ team, selected, select }: { team: TeamView; selected: string; select: (id: string) => void }) {
   const { t } = usePanel()
   const root = useRef<HTMLDivElement>(null), nodes = useRef(new Map<string, HTMLButtonElement>())
   const [lines, setLines] = useState<Line[]>([])
-  const signature = team.members.map(member => `${member.id}:${member.ticketId ?? ''}:${member.dependencies.join(',')}:${member.state}`).join('|')
+  const signature = `${team.state}|${team.handoffs.map(handoff => `${handoff.from}:${handoff.to}`).join(',')}|`
+    + team.members.map(member => `${member.id}:${member.ticketId ?? ''}:${member.dependencies.join(',')}:${member.state}:${!!member.running}`).join('|')
   useLayoutEffect(() => {
     const measure = () => {
       const bounds = root.current?.getBoundingClientRect(); if (!bounds) return
@@ -21,7 +22,10 @@ export function TeamGraph({ team, selected, select }: { team: TeamView; selected
         const x1 = start.left + start.width / 2 - bounds.left, y1 = start.bottom - bounds.top
         const x2 = end.left + end.width / 2 - bounds.left, y2 = end.top - bounds.top
         const bend = downward ? (y1 + y2) / 2 : Math.max(y1, end.bottom - bounds.top) + 18
-        return [{ id: `${from}:${to}`, dependency, path: downward ? `M${x1},${y1} C${x1},${bend} ${x2},${bend} ${x2},${y2}`
+        const target = team.members.find(member => member.id === to), source = team.members.find(member => member.id === from)
+        const active = !!target?.running && !['attention', 'failed', 'stopped', 'completed'].includes(team.state)
+          && (!dependency || source?.state === 'finished' && team.handoffs.some(handoff => handoff.from === from && handoff.to === to))
+        return [{ id: `${from}:${to}`, dependency, active, path: downward ? `M${x1},${y1} C${x1},${bend} ${x2},${bend} ${x2},${y2}`
           : `M${x1},${y1} C${x1},${bend} ${x2},${bend} ${x2},${end.bottom - bounds.top}` }]
       }
       setLines(team.members.flatMap(member => member.id === 'coordinator' ? [] : [
@@ -38,7 +42,7 @@ export function TeamGraph({ team, selected, select }: { team: TeamView; selected
   }, [signature, team.id])
   const node = (member: TeamMemberView) => <button type="button" key={member.id} ref={element => {
     if (element) nodes.current.set(member.id, element); else nodes.current.delete(member.id)
-  }} className="dt-team-node" data-coordinator={member.role === 'coordinator' || undefined} aria-pressed={selected === member.id}
+  }} className="dt-team-node" data-state={member.state} data-running={member.running || undefined} data-coordinator={member.role === 'coordinator' || undefined} aria-pressed={selected === member.id}
     aria-label={`${member.name} · ${t('teamDetails')}`} onClick={() => select(member.id)}>
     <span className="dt-team-node-head"><span className="dt-team-avatar"><Icon name={member.role === 'coordinator' ? 'queue' : 'user'} size={18} /></span>
       <strong>{member.name}</strong><Icon name="chevron-right" size={14} /></span>
@@ -49,7 +53,9 @@ export function TeamGraph({ team, selected, select }: { team: TeamView; selected
     {member.model && <span className="dt-team-node-model">{member.model.model}</span>}
   </button>
   return <div className="dt-team-graph" ref={root} aria-label={t('teamGraph')}>
-    <svg className="dt-team-lines" aria-hidden="true">{lines.map(line => <path key={line.id} d={line.path} data-dependency={line.dependency || undefined} />)}</svg>
+    <svg className="dt-team-lines" aria-hidden="true">{lines.map(line => <g key={line.id}><path d={line.path} data-dependency={line.dependency || undefined} data-active={line.active || undefined} />
+      {line.active && <circle className="dt-team-flow-packet" r="2.5"><animateMotion dur={line.dependency ? '2.6s' : '2.1s'} repeatCount="indefinite" path={line.path} /></circle>}
+    </g>)}</svg>
     <div className="dt-team-coordinator">{node(team.members[0]!)}</div>
     <div className="dt-team-workers">{team.members.slice(1).map(node)}</div>
     <div className="dt-team-legend"><span><i />{t('localDispatch')}</span><span><i data-dependency />{t('teamHandoff')}</span></div>

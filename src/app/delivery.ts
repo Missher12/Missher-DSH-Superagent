@@ -30,9 +30,18 @@ function deliveryId(message: UserMessage): string | undefined {
  */
 export class AgentDelivery {
   private readonly seen = new WeakMap<Session, Seen>()
+  private readonly claimed = new WeakMap<Session, Set<string>>()
   constructor(private readonly ctx: Context) {
+    ctx.on('agent/inbox/claimed', ({ agent, message }) => {
+      let ids = this.claimed.get(agent.session)
+      if (!ids) { ids = new Set(); this.claimed.set(agent.session, ids) }
+      ids.add(message.id)
+    })
+    ctx.on('agent/status', ({ agent, status }) => { if (status === 'idle') this.claimed.delete(agent.session) })
     ctx.on('session/event', (session, event) => {
       if (event.type !== 'user/message') return
+      this.claimed.get(session)?.delete(event.data.id)
+      if (event.data.source.kind === 'user') this.seen.get(session)?.ids.add(event.data.id)
       const id = deliveryId(event.data)
       if (id) this.seen.get(session)?.ids.add(id)
     })
@@ -49,6 +58,7 @@ export class AgentDelivery {
         if (!events.length) break
         for (const event of events) {
           if (event.type !== 'user/message') continue
+          if (event.data.source.kind === 'user') state.ids.add(event.data.id)
           const id = deliveryId(event.data)
           if (id) state.ids.add(id)
         }
@@ -61,6 +71,15 @@ export class AgentDelivery {
   async holds(agent: Agent, requestId: string): Promise<boolean> {
     const id = messageId(requestId)
     return (await this.history(agent)).ids.has(id) || [...agent.inbox.nextTurn, ...agent.inbox.nextStep].some(message => deliveryId(message) === id)
+  }
+  /** Retains the native message and its attachments; adoption never adds a second copy to an active step. */
+  async native(agent: Agent, message: UserMessage, signal: AbortSignal, authorize: () => void): Promise<void> {
+    const seen = await this.history(agent)
+    signal.throwIfAborted(); authorize()
+    if (this.ctx.agents.get(agent.id) !== agent) throw new Error('Delivery target was disposed')
+    if (!seen.ids.has(message.id) && !this.claimed.get(agent.session)?.has(message.id)
+      && ![...agent.inbox.nextTurn, ...agent.inbox.nextStep].some(item => item.id === message.id)) agent.steer(freezeMessage(message))
+    await this.ctx.sessionPersistence.flush()
   }
   /** Delivers once to the selected inbox, or injects into history without waking the agent, and flushes Session persistence before acknowledging the producer. */
   async send(agent: Agent, requestId: string, text: string, mode: 'queue' | 'steer' | { inject: string }, signal: AbortSignal, authorize?: () => void,

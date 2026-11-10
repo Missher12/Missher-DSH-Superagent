@@ -8,7 +8,7 @@ import { ExecutionStatus } from './execution.tsx'
 import { ticketMark } from './marks.ts'
 import { GLOSSARY, GLOSSARY_VALUES, en, zh, type DshSuperagentKey } from './locales.ts'
 import { OverviewPage } from './overview.tsx'
-import { PanelProvider, usePanel, usePanelData } from './provider.tsx'
+import { PanelProvider, usePanel, usePanelData, type PanelContext } from './provider.tsx'
 import { HOME, TABS, initialLocation, lastSettingsGroup, remember, routeLabel, settingsRoute, type Location, type Route,
   type Tab } from './route.ts'
 import { SettingsPage } from './settings.tsx'
@@ -23,6 +23,7 @@ import { When } from './widgets.tsx'
 export interface AppProps {
   t: T; openSession: (sessionId: string) => Promise<void>
   renderSession?: (sessionId: string) => ReactNode
+  nativeSession?: boolean
   openWorkspace?: (workspaceId: string) => Promise<void>
   pickDirectory?: () => Promise<string | null>
   deploymentForm: DeploymentForm
@@ -176,7 +177,7 @@ function Pages({ route, openTab, deploymentForm }: { route: Route; openTab: (tab
 }
 
 /** Root panel component managing route history and shared panel state. */
-export function App({ t, openSession, renderSession, openWorkspace, pickDirectory, deploymentForm }: AppProps) {
+export function App({ t, openSession, renderSession, nativeSession, openWorkspace, pickDirectory, deploymentForm }: AppProps) {
   const [location, setLocation] = useState(initialLocation)
   useEffect(() => { remember(location) }, [location])
   // Preserve the last opened settings group across navigation so the Settings tab reopens at it.
@@ -188,7 +189,7 @@ export function App({ t, openSession, renderSession, openWorkspace, pickDirector
   const back = useCallback(() => move(current => ({ route: current.stack.at(-1) ?? HOME, stack: current.stack.slice(0, -1) })), [move])
   const openTab = useCallback((tab: Tab) => move(current => ({ stack: [], route: tab === 'settings'
     ? settingsRoute(lastSettingsGroup(current)) : { page: tab, id: undefined } })), [move])
-  return <PanelProvider t={t} openSession={openSession} renderSession={renderSession} openWorkspace={openWorkspace} pickDirectory={pickDirectory} navigate={navigate} back={back} backLabel={routeLabel(t, location.stack.at(-1) ?? HOME)}>
+  return <PanelProvider t={t} openSession={openSession} renderSession={renderSession} nativeSession={nativeSession} openWorkspace={openWorkspace} pickDirectory={pickDirectory} navigate={navigate} back={back} backLabel={routeLabel(t, location.stack.at(-1) ?? HOME)}>
     <Pages route={location.route} openTab={openTab} deploymentForm={deploymentForm} />
   </PanelProvider>
 }

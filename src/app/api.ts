@@ -13,7 +13,7 @@ import type { DecisionListView, SearchView, ThreadDetailView, ThreadListView } f
 import type { TicketListView } from './views/tickets.ts'
 import type { WorkbenchView } from './views/workbench.ts'
 import type { LocalTeams } from '../teams/local.ts'
-import type { TeamRequest } from '../teams/contracts.ts'
+import type { TeamRequest, TeamMember } from '../teams/contracts.ts'
 
 export const TICKET_FILTERS = ['open', 'person', 'working', 'idle', 'ended'] as const
 export const THREAD_FILTERS = ['subscribed', 'evaluating', 'recent', 'all'] as const
@@ -28,6 +28,7 @@ type Delivery = 'injected' | 'pending'
 export interface Api {
   'GET local/workbench': { query?: { session?: string; team?: string }; response: WorkbenchView }
   'POST local/teams': { body: TeamRequest; response: Awaited<ReturnType<LocalTeams['create']>> }
+  'POST local/teams/:id/members': { body: TeamMember; response: Awaited<ReturnType<LocalTeams['addMember']>> }
   'GET local/teams/:id': { response: ReturnType<LocalTeams['get']> }
   'GET local/teams/:id/file': { query: { path: string }; response: ReturnType<LocalTeams['file']> }
   'POST local/teams/:id/stop': { response: ReturnType<LocalTeams['stopTeam']> }
@@ -45,6 +46,7 @@ export interface Api {
   'GET local/workspaces': { response: { id: string; title: string; directory: string }[] }
   'POST local/workspaces': { body: { directory: string }; response: Awaited<ReturnType<LocalTasks['addWorkspace']>> }
   'POST local/tasks': { body: LocalRequest; response: Awaited<ReturnType<LocalTasks['create']>> }
+  'GET local/tasks/:id/workbench': { response: { team?: string; member?: string; session?: string } }
   'POST local/tasks/:id/followup': { body: { requestId: string; text: string }; response: Awaited<ReturnType<LocalTasks['followup']>> }
   'GET state': { response: StateView }
   'GET overview': { response: OverviewView }

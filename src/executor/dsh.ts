@@ -4,6 +4,8 @@ import type { WorkspaceBinding } from '../sources/kind.ts'
 import { canonicalWorkspace, WorkspaceError, workspaceBindings, workspaceOf } from './workspace.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { UserMessage } from '@deepseek-ai/dsh-llm'
+import { setTimeout as delay } from 'node:timers/promises'
 import { mkdir, rmdir, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { key, latestAssignment, latestReport, liveTicket, runningAssignment, threadKey, waitsForPerson } from '../core/index.ts'
@@ -72,7 +74,7 @@ export interface ExecutorHost {
   readonly machine: Pick<Machine, 'stateDir'>
   readonly lifetime: AbortSignal
   /** Session manager for worker sessions and for relaying worker reports to the main Session. */
-  readonly sessions: Pick<Sessions, 'ensure' | 'prompt' | 'promptedId' | 'relay' | 'holds'>
+  readonly sessions: Pick<Sessions, 'ensure' | 'prompt' | 'nativePrompt' | 'promptedId' | 'relay' | 'holds'>
   closing(): boolean
   /** Whether processing is paused, which holds launches and input deliveries. */
   paused(): boolean
@@ -226,6 +228,7 @@ export class DshExecutor implements Executor {
   private readonly left = new Map<string, { jobs: Set<string>; collect: AbortController }>()
   /** When a person's message typed into a worker's Session last started a turn, by ticket. */
   private readonly personal = new Map<string, string>()
+  private readonly nativeWaiting = new WeakSet<Agent>()
   /** The timers of workers that go on after a passing failure, which dispose clears. */
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
   /** Existing workspaces reserved while an asynchronous launch or wake has not reached its first step. */
@@ -362,6 +365,11 @@ export class DshExecutor implements Executor {
       if (this.stopping.has(ticket.id)) throw new Later('The worker\'s background work is stopping')
     }
     live()
+    const native = input.kind === 'trigger' ? this.host.store.triggers.get(input.triggerId)?.meta.nativeInput as UserMessage | undefined : undefined
+    if (native?.role === 'user' && native.source.kind === 'user') {
+      await this.host.sessions.nativePrompt(workerSessionId(ticket.id), native, live)
+      return
+    }
     const trigger = input.kind === 'trigger' ? await this.triggerCard(ticket, input.triggerId, input.note) : undefined
     const message = inputMessage(input, trigger)
     if (message === undefined) return
@@ -432,7 +440,8 @@ export class DshExecutor implements Executor {
   /** Whether a ticket's worker holds a worker slot: its turn runs, or its shell jobs or subagents do after its turn ended. */
   private running(ticket: Ticket): boolean {
     if (!runningAssignment(ticket)) return false
-    return this.host.context.agents.get(workerSessionId(ticket.id) as SessionId)?.status === 'running' || this.settling.has(ticket.id)
+    const agent = this.host.context.agents.get(workerSessionId(ticket.id) as SessionId)
+    return !!agent && agent.status === 'running' && !this.nativeWaiting.has(agent) || this.settling.has(ticket.id)
   }
   /** Marks a ticket failed after its launch fails; the ticket waits until new human input or an explicit retry arrives. */
   private launchFailed(ticketId: string, assignmentId: string, error: unknown): void {
@@ -505,7 +514,31 @@ export class DshExecutor implements Executor {
   /** Subscribes to host `agent/status`, `agent/inbox/claimed`, `session/event` and `agent/error` events for worker sessions. Call once at startup. */
   install(): void {
     const ctx = this.host.context
+    this.disposers.push(ctx.on('agent/inbox/inserted', ({ agent, message }) => {
+      if (message.source.kind === 'user' && this.ticketOf(agent) && agent.status !== 'running') this.nativeWaiting.add(agent)
+    }))
+    this.disposers.push(ctx.on('agent/pre-step', async ({ agent, messages, signal }, next) => {
+      let ticket = this.ticketOf(agent)
+      if (!ticket || !messages.some(message => message.source.kind === 'user')) return next()
+      const waiting = this.nativeWaiting.has(agent)
+      let reserved = false
+      try {
+        for (;;) {
+          ticket = this.ticketOf(agent)
+          if (!ticket || !liveTicket(ticket) || this.host.closing()) return { kind: 'reject' }
+          if (!this.host.paused() && runningAssignment(ticket)) {
+            try {
+              if (waiting) { this.reserveWorker(ticket, 'person'); reserved = true }
+              this.nativeWaiting.delete(agent)
+              return await next()
+            } catch (error) { if (!(error instanceof Later)) throw error }
+          }
+          await delay(100, undefined, { signal: AbortSignal.any([signal, this.host.lifetime]) })
+        }
+      } finally { if (reserved && ticket) this.freeWorker(ticket.id) }
+    }))
     this.disposers.push(ctx.on('agent/status', ({ agent, status }) => {
+      if (status === 'idle') this.nativeWaiting.delete(agent)
       // A turn that starts ends the look at its worker's background work; the turn's own idle looks afresh.
       if (status === 'running') { this.settling.get(ticketOfSession(agent.id) ?? '')?.abort(); return }
       // The turn a stop of the worker's subagents woke and cancelled is no turn of the worker's.
@@ -523,11 +556,12 @@ export class DshExecutor implements Executor {
     // history: a step that claimed it may be cancelled or fail before, which drops it.
     this.disposers.push(ctx.on('session/event', (session, event) => {
       const ticketId = ticketOfSession(session.id)
-      if (event.type !== 'user/message' || ticketId === undefined || event.data.source.kind !== 'dsh-superagent' || this.host.closing()) return
+      if (event.type !== 'user/message' || ticketId === undefined || this.host.closing()) return
       const message = event.data
       void this.background(Promise.resolve().then(() => {
         const read = this.host.store.tickets.get(ticketId)?.inputs.filter(input => input.kind === 'trigger' && !input.readAt
-          && this.host.sessions.promptedId(input.id) === message.id).map(input => input.id) ?? []
+          && (this.host.sessions.promptedId(input.id) === message.id
+            || (this.host.store.triggers.get(input.triggerId)?.meta.nativeInput as UserMessage | undefined)?.id === message.id)).map(input => input.id) ?? []
         if (read.length) this.host.engine.inputsRead(ticketId, read)
       }))
     }))

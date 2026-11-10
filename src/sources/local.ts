@@ -4,6 +4,7 @@ import { mkdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, isAbsolute, join } from 'node:path'
 import { z } from 'zod'
 import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import type { Runtime } from '../app/runtime.ts'
 import { AgentDelivery } from '../app/delivery.ts'
 import { key, latestReport, ticketStage, type OutboundMessage, type Ticket, type Trigger } from '../core/index.ts'
@@ -53,6 +54,13 @@ export class LocalTasks {
     if (!settings.policy.sources.local) runtime.store.saveSettings({ ...settings,
       eval: { ...settings.eval, mode: 'off' }, executor: { ...settings.executor, maxWorkers: 1 },
       policy: { ...settings.policy, rules: [], sources: { ...settings.policy.sources, local: { allowed: [{ id: 'desktop-user', name: '你' }], admission: {} } } } })
+    this.disposers.push(ctx.on('agent/inbox/inserted', ({ agent, message }) => {
+      const id = ticketOfSession(agent.id)
+      if (!id || message.source.kind !== 'user' || !runtime.store.tickets.get(id) || !workspaceOf(runtime.store, runtime.store.tickets.get(id)!)) return
+      const text = message.content.filter(part => part.type === 'text').map(part => part.text).join('\n').trim() || '补充附件'
+      // Admission is synchronous: a concurrent final report must already see this unread requirement.
+      this.receiveFollowup(id, `native:${message.id}`, text.slice(0, 64000), message)
+    }))
   }
   workspaces() {
     return this.ctx.workspaceRegistry.list().filter(workspace => workspace.path !== this.runtime.machine.stateDir)
@@ -133,6 +141,9 @@ export class LocalTasks {
     })
   }
   async followup(id: string, requestId: string, text: string) {
+    return this.receiveFollowup(id, requestId, text)
+  }
+  private receiveFollowup(id: string, requestId: string, text: string, nativeInput?: UserMessage) {
     const ticket = this.ticket(id)
     if (ticket.ended?.by === 'human') throw new LocalTaskError('任务已被你停止；需要继续时请新建任务')
     const input = z.object({ requestId: z.string().min(1).max(200), text: z.string().trim().min(1).max(64000) }).parse({ requestId, text })
@@ -144,6 +155,8 @@ export class LocalTasks {
         meta: {}, channel: { source: 'local', thread: `local:operator:${id}`, address: { sessionId: '' } } }
     const previous = this.runtime.store.triggers.get(trigger.id)
     if (previous && previous.text !== trigger.text) throw new LocalTaskError('同一个 requestId 不能用于不同的补充要求')
+    if (previous) return this.get(id)
+    if (nativeInput) trigger.meta = { ...trigger.meta, nativeInput }
     this.runtime.store.atomic(() => {
       this.runtime.receive(trigger)
       if (origin.source !== 'local' && !this.runtime.store.triggers.disposition(trigger.id)?.fanout?.includes(id)) this.runtime.engine.attach(id, trigger.id)

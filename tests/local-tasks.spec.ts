@@ -7,6 +7,35 @@ let host: Host | undefined
 afterEach(async () => { await host?.stop(); host = undefined })
 
 describe('DSH local task source', () => {
+  it('adopts a native composer message once and keeps its original inbox message until it is read', async () => {
+    host = await startRuntime(undefined, { mode: 'local' })
+    const task = await host.runtime.local!.create({ requestId: 'native-composer', title: '原生输入', instructions: '实现原要求', directory: host.directory })
+    await host.runtime.idle(); host.step(task.sessionId)
+    const agent = host.agents.get(task.sessionId)!
+    const message = { id: 'native-input-one', role: 'user', content: [{ type: 'text', text: '补齐原生输入要求' }], source: { type: 'user-rpc', kind: 'user', rpcId: 'native-rpc-one' } }
+    host.ctx.emit('agent/inbox/inserted', { agent, message } as never)
+    agent.steer(message as never)
+    await host.runtime.idle()
+    expect(host.runtime.store.tickets.get(task.ticketId)!.inputs).toContainEqual(expect.objectContaining({ human: true, readAt: null }))
+    await expect(host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '旧结果' })).rejects.toThrow(/unread|pending/)
+    host.step(task.sessionId); await host.runtime.idle()
+    await host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '包含原生输入要求' })
+    expect(host.runtime.store.tickets.get(task.ticketId)!.ended?.outcome).toBe('completed')
+    expect(agent.inbox.nextStep.filter(item => item.id === 'native-input-one')).toHaveLength(1)
+    const count = host.runtime.store.tickets.get(task.ticketId)!.inputs.length
+    host.ctx.emit('agent/inbox/inserted', { agent, message } as never)
+    await host.runtime.idle()
+    expect(host.runtime.store.tickets.get(task.ticketId)!.inputs.length).toBe(count)
+    const later = { ...message, id: 'native-input-two', content: [{ type: 'text', text: '完成后再补一条' }],
+      source: { ...message.source, rpcId: 'native-rpc-two' } }
+    host.ctx.emit('agent/inbox/inserted', { agent, message: later } as never)
+    agent.steer(later as never); await host.runtime.idle()
+    expect(host.runtime.store.tickets.get(task.ticketId)!.ended).toBeUndefined()
+    await expect(host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '过早完成' })).rejects.toThrow(/unread|pending/)
+    host.step(task.sessionId); await host.runtime.idle()
+    await host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '完成后补充也已处理' })
+    expect(host.runtime.store.tickets.get(task.ticketId)!.ended?.outcome).toBe('completed')
+  })
   it('restores report tools before a follow-up wakes an existing worker whose plugin bindings were released', async () => {
     host = await startRuntime(undefined, { mode: 'local' })
     const task = await host.runtime.local!.create({ requestId: 'rebind', title: '恢复待回复会话', instructions: '等待补充要求', directory: host.directory })

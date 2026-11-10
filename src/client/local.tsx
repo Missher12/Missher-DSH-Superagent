@@ -5,7 +5,7 @@ import { useAction, usePanel } from './provider.tsx'
 import { Field, Fields } from './settings-kit.tsx'
 import { errorText } from './text.ts'
 import { Hint } from './widgets.tsx'
-import { ModelSelect } from './model-picker.tsx'
+import { ModelSelect, ReasoningSelect } from './model-picker.tsx'
 import type { RoleModel } from '../policy.ts'
 import type { TeamMember } from '../teams/contracts.ts'
 import { defaultMembers, TeamMembersEditor } from './team-members-editor.tsx'
@@ -28,7 +28,9 @@ function readDraft() {
         && Array.isArray(member.dependencies) && member.dependencies.every((id: unknown) => typeof id === 'string')) ? value.members as TeamMember[] : undefined,
       model: value.model && typeof value.model === 'object' && 'provider' in value.model && 'model' in value.model
         && typeof value.model.provider === 'string' && typeof value.model.model === 'string'
-        ? { provider: value.model.provider, model: value.model.model } : undefined }
+        ? { provider: value.model.provider, model: value.model.model,
+          ...(typeof (value.model as Record<string, unknown>).reasoningEffort === 'string' && (value.model as Record<string, unknown>).reasoningEffort
+            ? { reasoningEffort: (value.model as Record<string, unknown>).reasoningEffort as string } : {}) } : undefined }
   } catch { return fallback }
 }
 const rememberDraft = (draft: ReturnType<typeof blank>) => {
@@ -82,11 +84,13 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
         {failure && <p className="dt-error" role="alert">{failure}</p>}
         <div className="dt-actions">
           <Button variant="ghost" disabled={submit.busy} onClick={() => edit({ open: false })}>{t('cancel')}</Button>
-          <Button type="submit" form={formId} variant="primary" disabled={submit.busy || paused || !draft.instructions.trim() || (draft.existing && !draft.directory.trim())
-            || (draft.mode === 'team' && draft.members?.some(member => !member.name.trim() || !member.instructions.trim()))}>{t(submit.busy ? 'localSubmitting' : 'localDispatch')}</Button>
+          <Button type="submit" form={formId} variant="primary" disabled={submit.busy || paused}>{t(submit.busy ? 'localSubmitting' : 'localDispatch')}</Button>
         </div>
       </div>}>
-    <form id={formId} className="dt-form dt-local-form" onSubmit={event => { event.preventDefault(); void submit.run() }}>
+    <form id={formId} className="dt-form dt-local-form" onSubmit={event => { event.preventDefault(); void submit.run() }} onInvalidCapture={event => {
+      const details = (event.target as HTMLElement).closest('details'); if (details) details.open = true
+      setFailure(t('teamFormIncomplete'))
+    }}>
       <Fields disabled={submit.busy || paused}>
         <Field label={t('teamMode')}><select className="dt-select" value={draft.mode} onChange={event => edit({ mode: event.target.value as TaskDraft['mode'] })}>
           <option value="single">{t('teamModeSingle')}</option><option value="team">{t('teamModeTeam')}</option>
@@ -116,9 +120,10 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
         <Field label={t('localTaskTitle')}><Input maxLength={160} value={draft.title}
           placeholder={t('localTitlePlaceholder')} onChange={event => edit({ title: event.target.value })} /></Field>
         <Field label={t('localTaskModel')}><ModelSelect value={draft.model} onChange={model => edit({ model })} /></Field>
+        <Field label={t('modelEffort')}><ReasoningSelect value={draft.model} onChange={model => edit({ model })} /></Field>
         {draft.mode === 'team' && <><Field label={t('teamName')}><Input maxLength={80} value={draft.teamName} placeholder={t('teamNamePlaceholder')}
           onChange={event => edit({ teamName: event.target.value })} /></Field>
-          <section className="dt-team-plan"><h3>{t('teamMembers')}</h3><TeamMembersEditor members={draft.members ?? defaultMembers(t)}
+          <section className="dt-team-plan"><h3>{t('teamMembers')}</h3><TeamMembersEditor model={draft.model} members={draft.members ?? defaultMembers(t)}
             onChange={members => edit({ members })} disabled={submit.busy || paused} /></section></>}
       </Fields>
       <div className="dt-danger-zone"><Button variant="ghost" disabled={submit.busy || paused} onClick={() => {
@@ -130,15 +135,21 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
 
 export function LocalFollowup({ id, completed = false, onSent, teamId, memberId }: { id: string; completed?: boolean; onSent: () => Promise<void>; teamId?: string; memberId?: string }) {
   const { t, call, notify } = usePanel()
-  const [text, setText] = useState('')
-  const [requestId, setRequestId] = useState(() => crypto.randomUUID())
+  const [draft, setDraft] = useState(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(`dsh-superagent/followup/${id}`) ?? 'null') as { text?: string; requestId?: string } | null
+      return { text: typeof saved?.text === 'string' ? saved.text : '', requestId: saved?.requestId || crypto.randomUUID() }
+    } catch { return { text: '', requestId: crypto.randomUUID() } }
+  })
+  const { text, requestId } = draft
+  useEffect(() => { try { sessionStorage.setItem(`dsh-superagent/followup/${id}`, JSON.stringify(draft)) } catch { /* Optional draft storage. */ } }, [id, draft])
   const [failure, setFailure] = useState<string>()
   const send = useAction(async () => {
     setFailure(undefined)
     try {
       if (teamId && memberId) await call('POST local/teams/:id/followup', { id: teamId, body: { memberId, requestId, text: text.trim() } })
       else await call('POST local/tasks/:id/followup', { id, body: { requestId, text: text.trim() } })
-      setText(''); setRequestId(crypto.randomUUID()); await onSent(); notify(t('localFollowupSent'))
+      setDraft({ text: '', requestId: crypto.randomUUID() }); await onSent(); notify(t('localFollowupSent'))
     } catch (error) { setFailure(errorText(error)); throw error }
   })
   return <form className="dt-form dt-local-form" onSubmit={event => { event.preventDefault(); void send.run() }}>
@@ -146,7 +157,7 @@ export function LocalFollowup({ id, completed = false, onSent, teamId, memberId 
       <Field label={t(completed ? 'localContinue' : 'localFollowup')}>
         <textarea required className="dt-textarea" rows={2} maxLength={64000} value={text}
           placeholder={t(completed ? 'localContinuePlaceholder' : 'localFollowupPlaceholder')}
-          onChange={event => { setFailure(undefined); setText(event.target.value) }} /></Field>
+          onChange={event => { setFailure(undefined); setDraft(current => ({ ...current, text: event.target.value })) }} /></Field>
       {failure && <p className="dt-error" role="alert">{failure}</p>}
       <div className="dt-actions"><Button type="submit" variant="primary" disabled={!text.trim()}>{t(send.busy ? 'localSubmitting'
         : completed ? 'localContinueAction' : 'localSendFollowup')}</Button></div>

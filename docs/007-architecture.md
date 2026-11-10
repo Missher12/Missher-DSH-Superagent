@@ -304,7 +304,7 @@ Local desktop adaptation additions:
 | `src/source-api.ts` | Public Source adapter boundary reserved for Git/GitHub and MCP integrations |
 | `src/client/local.tsx` | Local task composer and follow-up form |
 | `src/client/local-app.tsx` | Local task list, everyday navigation, and usage help |
-| `src/client/local-workbench.tsx` | Dedicated control workspace, real session identities and live activity |
+| `src/client/local-workbench.tsx` | Independently closable task workspaces, multiple tasks, and native session focus |
 | `src/client/local-ticket.tsx` | Local task results, continue/stop/retry controls, and folded task records |
 | `src/client/local-settings.tsx` | Local model selection and concurrency settings |
 
@@ -407,6 +407,7 @@ Local desktop adaptation additions:
 | `src/client/team-ui.tsx`, `team-locales.ts` | Team/member state labels, bounded text and bilingual copy |
 | `src/client/team-graph.tsx` | Real dispatch and explicit dependency connectors with responsive member nodes |
 | `src/client/team-details.tsx`, `team-delivery.tsx` | Member tools, embedded session, durable follow-up, reported files/checks and bounded text previews |
+| `src/client/team-collaboration.tsx` | Team graph/member/completion views and validated runtime member addition |
 | `src/client/team-members-editor.tsx` | Editable team roles, model choices and acyclic delivery dependencies |
 | `src/teams/contracts.ts` | Validated team plans, delivery reports and public state views |
 | `src/teams/local.ts` | Durable coordinator/member scheduling using existing local tasks; dependency refresh and final goal review |
@@ -442,7 +443,7 @@ Local desktop adaptation checks:
 | Test | Covers |
 | --- | --- |
 | `tests/local-setup.spec.ts` | Startup without external accounts or process environment changes |
-| `tests/local-tasks.spec.ts` | Task identity, selected workspace, permissions, follow-ups, stop, result delivery and restart persistence |
+| `tests/local-tasks.spec.ts` | Task identity, native composer adoption, completion-boundary follow-ups, permissions, stop, result delivery and restart persistence |
 | `tests/local-panel.spec.tsx` | User dispatch and task-specific follow-ups in the panel |
 | `tests/local-teams.spec.ts` | Actual dependency dispatch, planning/final-review separation, follow-ups, evidence, stop and restart recovery |
 | `tests/team-panel.spec.tsx` | Explicit team overview, member selection, task creation, native sessions and delivery previews |

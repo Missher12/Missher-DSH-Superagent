@@ -27,13 +27,13 @@ it('shows only explicit teams and keeps legacy tasks separate from team collabor
   await click(all('.dt-team-overview-item')[0]!)
   expect(all('.dt-team-node')).toHaveLength(3)
   expect(text()).toContain('协调回合已结束，团队仍在等待成员交付')
-  expect(all('.dt-team-goal-head')[0]!.textContent).not.toContain('目标完成')
+  expect(all('.dt-team-count-line')[0]!.textContent).not.toContain('目标完成')
 })
 it('opens the selected actual member session and sends its durable follow-up through the team route', async () => {
   at({ page: 'overview', query: { team: 'explicit-team', member: 'check' } })
   await mount()
   expect(all('.dt-team-details')[0]!.textContent).toContain('请登录测试环境')
-  expect(text()).toContain('formatter.mjs')
+  await click('活动'); expect(text()).toContain('formatter.mjs')
   await click('打开执行会话')
   expect(all('[data-test-session="worker-check-task"]')).toHaveLength(1)
   expect(field<HTMLSelectElement>(zh.sessionModelLabel)).toBeDefined()
@@ -54,6 +54,24 @@ it('creates a real editable team plan including member models and explicit deliv
     members: [{ id: 'build', instructions: '实现 formatLabel', model: { provider: 'worker-provider', model: 'worker-model' } }, { id: 'check', dependencies: ['build'] }] })
   expect(all('[role="dialog"]')).toHaveLength(0)
   expect(all('.dt-team-node')).toHaveLength(3)
+})
+it('opens new member fields immediately instead of hiding the required empty assignment', async () => {
+  await mount(); await click('新建任务'); await click('添加成员')
+  const member = all('.dt-team-plan-member').at(-1)!
+  expect(member.hasAttribute('open')).toBe(true)
+  expect(member.querySelector('textarea')?.value).toBe('')
+})
+it('closes all workspace views without stopping tasks and reopens the same member from its task card', async () => {
+  at({ page: 'overview', query: { team: 'explicit-team', member: 'check' } })
+  await mount()
+  await click('关闭全部工作区')
+  expect(text()).toContain('请打开一个工作区')
+  expect(text()).toContain('真实团队')
+  expect(all('[data-test-session]')).toHaveLength(0)
+  expect(server.requests.some(item => /\/stop$/.test(item.path))).toBe(false)
+  await click(all('.dt-team-overview-item')[0]!)
+  expect(all('.dt-team-workspace-tab')).toHaveLength(1)
+  expect(text()).not.toContain('请打开一个工作区')
 })
 it('reviews actual reported files and commands without inventing approvals or passed checks', async () => {
   const view = server.teamViews['explicit-team']!

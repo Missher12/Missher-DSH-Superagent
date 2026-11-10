@@ -14,6 +14,7 @@ export interface PanelContext {
   backLabel: string
   openSession: (sessionId: string) => Promise<void>
   renderSession?: (sessionId: string) => ReactNode
+  nativeSession?: boolean
   openWorkspace: (workspaceId: string) => Promise<void>
   pickDirectory: () => Promise<string | null>
   notify: (text: string) => void
@@ -75,10 +76,11 @@ function Toast({ text, onDone, holdMs = 3000 }: { text: string; onDone: () => vo
 const stay = () => {}
 const noSession = async () => {}
 const noWorkspace = async () => { throw new Error('Workspace navigation is unavailable') }
-export function PanelProvider({ t, interval = 5000, openSession = noSession, renderSession, openWorkspace = noWorkspace, pickDirectory = noWorkspace, navigate = stay, back = stay, backLabel = '', children }: {
+export function PanelProvider({ t, interval = 5000, openSession = noSession, renderSession, nativeSession, openWorkspace = noWorkspace, pickDirectory = noWorkspace, navigate = stay, back = stay, backLabel = '', children }: {
   t: T; interval?: number; openSession?: (sessionId: string) => Promise<void>; navigate?: PanelContext['navigate']; back?: () => void
   openWorkspace?: (workspaceId: string) => Promise<void>
   renderSession?: PanelContext['renderSession']
+  nativeSession?: boolean
   pickDirectory?: () => Promise<string | null>
   backLabel?: string
   children: ReactNode
@@ -103,8 +105,8 @@ export function PanelProvider({ t, interval = 5000, openSession = noSession, ren
     const timer = setTimeout(() => setRestarting(undefined), 30_000)
     return () => clearTimeout(timer)
   }, [restarting])
-  const context = useMemo(() => ({ t, call, navigate, back, backLabel, openSession, renderSession, openWorkspace, pickDirectory, notify, restart }), [t, call, navigate, back, backLabel,
-    openSession, renderSession, openWorkspace, pickDirectory, notify, restart])
+  const context = useMemo(() => ({ t, call, navigate, back, backLabel, openSession, renderSession, nativeSession, openWorkspace, pickDirectory, notify, restart }), [t, call, navigate, back, backLabel,
+    openSession, renderSession, nativeSession, openWorkspace, pickDirectory, notify, restart])
   const data = useMemo(() => ({ state, error, reload, setup: state?.setup, running: state?.load.running ?? 0, restarts }), [state, error,
     reload, restarts])
   return <Panel.Provider value={context}><PanelState.Provider value={data}>

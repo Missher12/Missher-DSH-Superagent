@@ -62,12 +62,20 @@ export interface TeamMemberView {
   tools: { id: string; name: string; at: string; state: 'running' | 'done' | 'error' | 'interrupted'; detail?: string }[]
   events: { id: string; at: string; state: string; summary: string }[]
   delivery?: DeliveryRecord
+  running?: boolean
+}
+export interface TeamCompletion {
+  members: boolean; finalReview: boolean; evidence: boolean; issues: string[]
+  checks: { passed: number; failed: number; notRun: number }; unverified: string[]
 }
 export interface TeamIndex {
   id: string; name: string; title: string; instructions: string; directory?: string; state: TeamState
   coordinatorTicketId?: string; createdAt: string; updatedAt: string; completedMembers: number; memberCount: number; summary: string
+  activeMembers?: number; currentAction?: string
 }
 export interface TeamView extends TeamIndex {
   members: TeamMemberView[]; handoffs: TeamRecord['handoffs']; error?: string
   deliveries: { memberId: string; name: string; record: DeliveryRecord }[]
+  completion?: TeamCompletion
+  model?: RoleModel
 }

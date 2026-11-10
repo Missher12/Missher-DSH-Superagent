@@ -25,11 +25,58 @@ async function readySession(ticketId: string) {
 }
 async function complete(ticketId: string, summary = '本成员分工完成', delivery?: object) {
   const session = await readySession(ticketId)
-  await host!.runTool(session, 'orchestrator_report', { state: 'ready', summary, ...delivery ? { delivery } : {} })
+  await host!.runTool(session, 'orchestrator_report', { state: 'ready', summary, delivery: delivery ?? { files: [], checks: [], unverified: ['本回合未运行其他检查'] } })
   const agent = host!.agents.get(session)!
   agent.status = 'idle'; host!.ctx.emit('agent/status', { agent, status: 'idle' } as never)
   await settle()
 }
+
+it('adds an idempotent member to an existing team and preserves earlier sessions and dependency handoffs', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  await complete(team.coordinatorTicketId!)
+  const before = host.runtime.teams!.get(team.id)
+  const plan = { id: 'research', name: '研究', instructions: '核对源文件与边界', dependencies: ['check'] }
+  const result = await host.api('POST', `local/teams/${team.id}/members`, plan)
+  expect(result.status).toBe(200)
+  expect((await host.api('POST', `local/teams/${team.id}/members`, plan)).status).toBe(200)
+  let view = host.runtime.teams!.get(team.id)
+  expect(view.members).toHaveLength(4)
+  expect(view.members.find(member => member.id === 'research')!.sessionId).toBeUndefined()
+  expect(view.members.find(member => member.id === 'build')!.ticketId).toBe(before.members.find(member => member.id === 'build')!.ticketId)
+  expect((await host.api('POST', `local/teams/${team.id}/members`, { ...plan, instructions: 'different' })).status).toBe(400)
+  expect((await host.api('POST', `local/teams/${team.id}/members`, { ...plan, id: 'invalid', dependencies: ['unknown'] })).status).toBe(400)
+  await complete(view.members.find(member => member.id === 'build')!.ticketId!)
+  view = host.runtime.teams!.get(team.id)
+  await complete(view.members.find(member => member.id === 'check')!.ticketId!)
+  view = host.runtime.teams!.get(team.id)
+  expect(view.members.find(member => member.id === 'research')!.ticketId).toBeTruthy()
+  await complete(view.members.find(member => member.id === 'research')!.ticketId!)
+  await complete(team.coordinatorTicketId!)
+  expect(host.runtime.teams!.get(team.id).state).toBe('completed')
+  host.runtime.teams!.stopTeam(team.id)
+  expect((await host.api('POST', `local/teams/${team.id}/members`, { ...plan, id: 'later' })).status).toBe(400)
+}, 40_000)
+
+it('keeps finalization open until the coordinator supplies delivery evidence', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  await complete(team.coordinatorTicketId!)
+  await complete(host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!.ticketId!)
+  await complete(host.runtime.teams!.get(team.id).members.find(member => member.id === 'check')!.ticketId!)
+  const session = await readySession(team.coordinatorTicketId!)
+  await host.runTool(session, 'orchestrator_report', { state: 'ready', summary: '没有给出结构化交付记录' })
+  const agent = host.agents.get(session)!; agent.status = 'idle'; host.ctx.emit('agent/status', { agent, status: 'idle' } as never)
+  await settle()
+  let view = host.runtime.teams!.get(team.id)
+  expect(view.state).toBe('attention')
+  expect(view.completion?.issues.join(' ')).toContain('交付记录')
+  await host.runtime.teams!.followup(team.id, 'coordinator', 'final-evidence', '补齐最终交付记录')
+  await complete(team.coordinatorTicketId!, '最终复核完成', { files: [], checks: [], unverified: ['没有运行浏览器检查'] })
+  view = host.runtime.teams!.get(team.id)
+  expect(view.state).toBe('completed')
+  expect(view.completion?.unverified).toContain('没有运行浏览器检查')
+}, 40_000)
 
 it('creates an explicit plan once, starts a real coordinator, and does not call a planning round a completed goal', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
@@ -70,7 +117,7 @@ it('dispatches actual dependent work, delivers its predecessor report, and finis
   expect(finished.state).toBe('completed')
   expect(finished.completedMembers).toBe(2)
   const file = realpathSync(join(host.directory, 'result.txt'))
-  expect(finished.deliveries[0]!.record.files[0]).toMatchObject({ exists: true, path: file })
+  expect(finished.deliveries.find(delivery => delivery.memberId === 'build')!.record.files[0]).toMatchObject({ exists: true, path: file })
   expect(host.runtime.teams!.file(team.id, file)).toMatchObject({ text: 'actual-team-output' })
   writeFileSync(join(host.directory, 'large.txt'), '中文'.repeat(30_000))
   const large = realpathSync(join(host.directory, 'large.txt'))

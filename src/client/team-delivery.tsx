@@ -6,6 +6,13 @@ import { Button, Icon, Modal } from './controls.tsx'
 import { useAction, usePanel } from './provider.tsx'
 import { LoadState, MarkdownLite, SessionButton, When } from './widgets.tsx'
 
+export function TeamFilesButton({ team }: { team: TeamView }) {
+  const { t } = usePanel(), [open, setOpen] = useState(false)
+  return <><Button size="sm" variant="ghost" icon={<Icon name="queue" />} aria-label={t('teamWorkingFiles')} title={t('teamWorkingFiles')}
+    onClick={() => setOpen(true)} /><Modal open={open} onClose={() => setOpen(false)} title={t('teamWorkingFiles')} closeLabel={t('close')} className="dt-team-files-modal">
+    <TeamDelivery team={team} compact /></Modal></>
+}
+
 export function TeamDelivery({ team, compact = false }: { team: TeamView; compact?: boolean }) {
   const { t, call, notify } = usePanel()
   const [path, setPath] = useState<string>(), [file, setFile] = useState<ApiResponse<'GET local/teams/:id/file'>>()

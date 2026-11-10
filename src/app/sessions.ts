@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, ModelSelection } from '@deepseek-ai/dsh-agent'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import type { MessageId } from '@deepseek-ai/dsh-llm'
+import type { MessageId, UserMessage } from '@deepseek-ai/dsh-llm'
 import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { basename, dirname } from 'node:path'
@@ -124,6 +124,9 @@ export class Sessions {
     ctx.on('session/event', (session, event) => {
       const agent = ctx.agents.get(session.id)
       const binding = agent && agent.session === session ? this.bindings.get(agent) : undefined
+      if (event.type === 'model/selection' && ticketOfSession(session.id) && this.host.store.tickets.get(ticketOfSession(session.id)!)) {
+        this.host.store.set(sessionModels(session.id), event.data)
+      }
       if (!agent || !binding || binding.subagent) return
       if (event.type === 'model/selection') {
         this.host.store.set(sessionModels(agent.id), event.data)
@@ -271,6 +274,12 @@ export class Sessions {
   }
   /** The id of the message `prompt` delivers under `requestId`, which DSH's inbox events name it by. */
   promptedId(requestId: string): MessageId { return messageId(key(requestId)) }
+  async nativePrompt(sessionId: string, message: UserMessage, authorize: () => void): Promise<void> {
+    const result = await this.ctx.sessionController.resolveAgent(sessionId as SessionId)
+    if ('error' in result) throw result.error
+    await this.decorate(result.agent)
+    await this.agentDelivery.native(result.agent, message, this.host.lifetime, authorize)
+  }
   /** Enqueues a steering relay to the main Session; relays are durable and retried by `Effects` until delivered, at most once per `requestId`. */
   relay(requestId: string, text: string): void { this.host.effects.enqueue('relay', requestId, { text }) }
   /** Enqueues a durable background notice for injection into the main Session; a new notice with the same `name` replaces a still-waiting notice of that `name`. */

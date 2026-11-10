@@ -5,14 +5,14 @@ import { selectLocalWorkspace } from './local.tsx'
 import { useAction, usePanel } from './provider.tsx'
 import { LoadState } from './widgets.tsx'
 
-export function OpenWorkspaceButton({ directory }: { directory: string }) {
+export function OpenWorkspaceButton({ directory, compact = false }: { directory: string; compact?: boolean }) {
   const { t, call, openWorkspace } = usePanel()
   const open = useAction(async () => {
     const workspace = await call('POST local/workspaces', { body: { directory } })
     await openWorkspace(workspace.id)
   })
-  return <Button variant="outline" size="sm" icon={<Icon name="folder" />} disabled={open.busy}
-    title={directory} onClick={() => { void open.run() }}>{t('localOpenWorkspace')}</Button>
+  return <Button variant={compact ? 'ghost' : 'outline'} size="sm" icon={<Icon name="folder" />} disabled={open.busy}
+    aria-label={t('localOpenWorkspace')} title={directory} onClick={() => { void open.run() }}>{compact ? null : t('localOpenWorkspace')}</Button>
 }
 
 export function LocalWorkspaces() {

@@ -6,8 +6,8 @@ import { resolveRoleModel } from '../app/role-models.ts'
 import { workerSessionId } from '../executor/dsh.ts'
 import { family } from '../kv.ts'
 import { LocalTaskError } from '../sources/local.ts'
-import { TeamRequestSchema, type TeamRecord, type TeamRequest, type TeamMemberView, type TeamView, type TeamIndex, type MemberState, type TeamState } from './contracts.ts'
-import { latestDelivery, previewDeliveryFile } from './delivery.ts'
+import { TeamMemberSchema, TeamRequestSchema, type TeamMember, type TeamRecord, type TeamRequest, type TeamMemberView, type TeamView, type TeamIndex, type TeamCompletion, type MemberState, type TeamState } from './contracts.ts'
+import { latestDelivery, previewDeliveryFile, workspaceFile } from './delivery.ts'
 
 const records = family<TeamRecord>('local-team:')
 const done = (ticket: Ticket | undefined) => ticket?.ended?.outcome === 'completed'
@@ -64,6 +64,57 @@ export class LocalTeams {
     })
     await this.reconcile()
     return this.get(id)
+  }
+  /** Append a user-authored plan once, leaving existing member tickets and files untouched. */
+  async addMember(id: string, value: TeamMember): Promise<TeamView> {
+    const plan = TeamMemberSchema.parse(value)
+    if (plan.model) {
+      try { await resolveRoleModel(this.context, plan.model) } catch { throw new LocalTaskError('成员模型暂不可用，请重新选择') }
+    }
+    this.patch(id, team => {
+      if (team.stoppedAt) throw new LocalTaskError('团队已被你停止；请新建任务后添加成员')
+      const existing = team.members.find(member => member.plan.id === plan.id)
+      if (existing) {
+        if (JSON.stringify(existing.plan) !== JSON.stringify(plan)) throw new LocalTaskError('这个成员标识已用于其他分工，请重新添加')
+        return
+      }
+      TeamRequestSchema.parse({ ...team.request, members: [...team.members.map(member => member.plan), plan] })
+      team.members.push({ plan })
+      if (team.phase === 'completed' || team.phase === 'integrating') {
+        team.phase = 'working'; delete team.finalVersion; delete team.finalBaseline; delete team.finalAssignment
+      }
+    })
+    await this.reconcile(); return this.get(id)
+  }
+  /** Resolve a board ticket to its existing workspace, including a worker whose session is still queued. */
+  target(ticketId: string): { team: string; member: string } | undefined {
+    for (const team of this.all()) {
+      if (team.coordinatorTicketId === ticketId) return { team: team.id, member: 'coordinator' }
+      const member = team.members.find(member => member.ticketId === ticketId)
+      if (member) return { team: team.id, member: member.plan.id }
+    }
+    return undefined
+  }
+  private completion(team: TeamRecord): TeamCompletion {
+    const coordinator = this.ticket(team.coordinatorTicketId)
+    const members = team.members.every(member => done(this.ticket(member.ticketId)) && member.dependencyVersion === this.dependencyVersion(team, member))
+    const finalReview = members && ['integrating', 'completed'].includes(team.phase) && done(coordinator)
+      && assignment(coordinator) !== team.finalBaseline && this.resultVersion(team) === team.finalVersion
+    const delivery = finalReview ? latestDelivery(this.runtime.store, coordinator) : undefined
+    const issues: string[] = []
+    if (finalReview && !delivery) issues.push('最终汇总尚未提供结构化交付记录，请协调成员补齐文件、检查和未验证事项。')
+    if (delivery) {
+      for (const file of delivery.files) {
+        try { if (!team.directory || !workspaceFile(team.directory, file.path).exists) issues.push(`交付文件目前不存在：${file.path}`) }
+        catch { issues.push(`无法核对交付文件：${file.path}`) }
+      }
+      if (delivery.checks.some(check => check.outcome === 'failed')) issues.push('最终检查仍有失败项，请修复并重新报告，不能标记目标完成。')
+    }
+    return { members, finalReview, evidence: !!delivery && !issues.length, issues,
+      checks: { passed: delivery?.checks.filter(check => check.outcome === 'passed').length ?? 0,
+        failed: delivery?.checks.filter(check => check.outcome === 'failed').length ?? 0,
+        notRun: delivery?.checks.filter(check => check.outcome === 'not-run').length ?? 0 },
+      unverified: [...delivery?.unverified ?? [], ...delivery?.checks.filter(check => check.outcome === 'not-run').map(check => `未运行检查：${check.command}`) ?? []] }
   }
   start(): void { if (this.timer || this.stopped) return; this.timer = setInterval(() => this.request(), 1000); this.request() }
   request(): void {
@@ -176,7 +227,7 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}`
     coordinator = this.ticket(team.coordinatorTicketId)!
     const resultVersion = this.resultVersion(team)
     if (team.phase === 'integrating' && team.finalVersion === resultVersion) {
-      if (done(coordinator) && assignment(coordinator) !== team.finalBaseline) {
+      if (done(coordinator) && assignment(coordinator) !== team.finalBaseline && this.completion(team).evidence) {
         this.patch(id, value => { value.phase = 'completed'; value.finalAssignment = assignment(coordinator) })
       } else if (done(coordinator) && assignment(coordinator) === team.finalBaseline) {
         // Recover a crash between recording finalization and delivering its idempotent follow-up.
@@ -232,11 +283,15 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}`
       instructions: coordinator ? team.request.instructions : plan!.plan.instructions, dependencies: coordinator ? [] : plan!.plan.dependencies,
       state, ticketId: ticket?.id, sessionId, directory: team.directory, model: sessionId ? this.runtime.sessions.model(sessionId) : coordinator ? team.request.model : plan?.plan.model ?? team.request.model,
       summary: report?.summary ?? '', attention: ticket?.attention?.question ?? (ticket?.ended && !done(ticket) ? ticket.ended.reason ?? '此成员已结束执行，尚未完成分工；已产生的文件仍保留。' : undefined), retry: !!ticket && canRetry(ticket), tools: live?.tools ?? [], events,
-      delivery: latestDelivery(this.runtime.store, ticket) }
+      delivery: latestDelivery(this.runtime.store, ticket), running: live?.running ?? false }
   }
   get(id: string): TeamView {
     const team = this.require(id), coordinator = this.ticket(team.coordinatorTicketId)
     const members = [this.member(team, 'coordinator'), ...team.members.map(member => this.member(team, member.plan.id))]
+    const completion = this.completion(team)
+    if (completion.issues.length && team.phase !== 'completed') {
+      members[0]!.state = 'attention'; members[0]!.attention = completion.issues.join('\n')
+    }
     let state: TeamState = team.phase === 'planning' || team.phase === 'creating' ? 'planning' : 'working'
     if (members.some(member => member.state === 'waiting') && !members.some(member => ['queued', 'working'].includes(member.state))) state = 'waiting'
     if (members.some(member => member.state === 'failed')) state = 'failed'
@@ -248,11 +303,16 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}`
       directory: team.directory, state, createdAt: team.createdAt, updatedAt, coordinatorTicketId: team.coordinatorTicketId,
       completedMembers: members.filter(member => member.role === 'member' && member.state === 'finished').length, memberCount: team.members.length,
       summary: state === 'completed' ? latestReport(coordinator!)?.summary ?? '' : members.find(member => ['attention', 'failed', 'working'].includes(member.state))?.summary ?? '',
-      members, handoffs: team.handoffs, error: team.error,
+      members, handoffs: team.handoffs, error: team.error, completion, model: team.request.model ?? this.runtime.store.settings().executor.model ?? undefined,
+      activeMembers: members.filter(member => member.running).length,
+      currentAction: members.filter(member => member.running).map(member => {
+        const tool = member.tools.find(tool => tool.state === 'running')
+        return `${member.name}：${tool ? `${tool.name}${tool.detail ? ` · ${tool.detail}` : ''}` : '正在思考或生成回复'}`
+      }).join('；'),
       deliveries: members.flatMap(member => member.delivery ? [{ memberId: member.id, name: member.name, record: member.delivery }] : []) }
   }
   list(): TeamIndex[] { return this.all().map(team => {
-    const { members: _members, handoffs: _handoffs, deliveries: _deliveries, error: _error, ...entry } = this.get(team.id); return entry
+    const { members: _members, handoffs: _handoffs, deliveries: _deliveries, error: _error, completion: _completion, model: _model, ...entry } = this.get(team.id); return entry
   }) }
   file(id: string, path: string) {
     const team = this.get(id)

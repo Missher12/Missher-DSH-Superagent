@@ -26,6 +26,27 @@ export function ModelSelect({ value, onChange, id, disabled, label, defaultLabel
   </select>
 }
 
+/** Only expose reasoning efforts supported by the actual selected or inherited model. */
+export function ReasoningSelect({ value, inherited, onChange, id, disabled, label }: {
+  value?: RoleModel | null; inherited?: RoleModel | null; onChange: (model: RoleModel | undefined) => void; id?: string; disabled?: boolean; label?: string
+}) {
+  const { t, call } = usePanel()
+  const { data, error } = usePoll(() => call('GET models'), [call], 60_000)
+  const effective = value ?? inherited ?? data?.default
+  const options = data?.groups.find(group => group.id === effective?.provider)?.models.find(model => model.id === effective?.model)?.reasoning?.efforts ?? []
+  const effort = value ? value.reasoningEffort ?? '' : effective?.reasoningEffort ?? ''
+  return <select id={id} className="dt-select dt-reasoning-select" aria-label={label} value={effort}
+    disabled={disabled || !data || !effective || !options.length} onChange={event => {
+      if (!effective) return
+      const { reasoningEffort: _old, ...model } = effective
+      onChange({ ...model, ...(event.target.value ? { reasoningEffort: event.target.value } : {}) })
+    }}>
+    <option value="">{error ? t('modelPickerError') : options.length ? t('modelEffortDefault') : t('modelEffortUnavailable')}</option>
+    {effort && !options.some(option => option.id === effort) && <option value={effort}>{effort}</option>}
+    {options.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
+  </select>
+}
+
 export function SessionModelPicker({ sessionId, running }: { sessionId: string; running: boolean }) {
   const { t, call, notify } = usePanel()
   const { data, error, reload } = usePoll(() => call('GET local/sessions/:id/model', { id: sessionId }), [call, sessionId], 2000)
@@ -33,8 +54,10 @@ export function SessionModelPicker({ sessionId, running }: { sessionId: string; 
     await call('PUT local/sessions/:id/model', { id: sessionId, body: model ?? null })
     await reload(); notify(t(running ? 'sessionModelNext' : 'sessionModelSaved'))
   })
-  return <label className="dt-session-model" title={error ? t('modelPickerError') : t('sessionModelNext')}>
-    <span>{t('modelLabel')}</span><ModelSelect label={t('sessionModelLabel')} value={data} disabled={change.busy || data === undefined}
-      onChange={model => { void change.run(model) }} />
-  </label>
+  return <div className="dt-session-model-controls" title={error ? t('modelPickerError') : t('sessionModelNext')}>
+    <div className="dt-session-model"><span>{t('modelLabel')}</span><ModelSelect label={t('sessionModelLabel')} value={data} disabled={change.busy || data === undefined}
+      onChange={model => { void change.run(model) }} /></div>
+    <div className="dt-session-model dt-session-effort"><span>{t('modelEffortShort')}</span><ReasoningSelect label={t('modelEffort')} value={data}
+      disabled={change.busy || data === undefined} onChange={model => { void change.run(model) }} /></div>
+  </div>
 }

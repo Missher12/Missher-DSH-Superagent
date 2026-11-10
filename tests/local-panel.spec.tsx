@@ -6,6 +6,31 @@ import { server, ticketSummary } from './fixtures/panel-server.ts'
 
 usePanel()
 beforeEach(() => at({ page: 'execution' }))
+it('keeps model reasoning effort through draft restoration and dispatch', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  await mount(); await click('新建任务')
+  await type(field<HTMLSelectElement>(zh.localTaskModel), JSON.stringify(['worker-provider', 'worker-model']))
+  await type(field<HTMLSelectElement>(zh.modelEffort), 'high')
+  await type(field<HTMLTextAreaElement>('任务要求'), '使用高思考强度检查代码')
+  await remount()
+  expect(field<HTMLSelectElement>(zh.modelEffort).value).toBe('high')
+  await click('派出任务')
+  expect(server.requests.find(item => item.path === 'local/tasks' && item.method === 'POST')?.body).toMatchObject({
+    model: { provider: 'worker-provider', model: 'worker-model', reasoningEffort: 'high' },
+  })
+})
+
+it('opens a task workspace when its status is clicked', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  const task = ticketSummary({ id: 'status-jump', title: '从状态打开', sessionId: 'worker-status-jump' })
+  server.tickets.open = [task]
+  await mount()
+  const control = all('.dt-board-card-status')[0]
+  expect(control, 'Task status is a keyboard-operable workspace link').toBeDefined()
+  await click(control!)
+  expect(server.requests.some(item => item.path === 'local/tasks/status-jump/workbench')).toBe(true)
+  expect(JSON.parse(sessionStorage.getItem('dsh-superagent/route')!).route).toMatchObject({ page: 'overview', query: { session: 'worker-status-jump' } })
+})
 it('dispatches the selected task model from a bounded dialog', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   await mount(); await click('新建任务')

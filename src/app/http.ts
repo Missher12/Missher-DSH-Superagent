@@ -13,7 +13,7 @@ import { SettingsConflict, type Settings } from './settings.ts'
 import { SetupError, type SetupProblem } from '../setup.ts'
 import { UserError, type EngineForPeople, type Ticket } from '../core/index.ts'
 import type { Deployment, Machine } from '../deployment.ts'
-import type { DshExecutor } from '../executor/dsh.ts'
+import { workerSessionId, type DshExecutor } from '../executor/dsh.ts'
 import type { Health } from '../sources/host.ts'
 import type { SourceRegistry } from '../sources/registry.ts'
 import type { Sessions } from './sessions.ts'
@@ -31,7 +31,7 @@ import { LocalRequestSchema, LocalTaskError, localMessages, type LocalTasks } fr
 import { WorkspaceError, workspaceOf } from '../executor/workspace.ts'
 import { McpClientRequest, McpTaskError, type McpTasks } from '../sources/mcp.ts'
 import type { WorkbenchView } from './views/workbench.ts'
-import { TeamRequestSchema } from '../teams/contracts.ts'
+import { TeamMemberSchema, TeamRequestSchema } from '../teams/contracts.ts'
 import type { LocalTeams } from '../teams/local.ts'
 import { latestDelivery } from '../teams/delivery.ts'
 
@@ -177,6 +177,12 @@ function routes(runtime: HttpHost): Routes {
   return {
     'GET local/workbench': ({ query }) => { if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled'); return runtime.workbench(query.session, query.team) },
     'POST local/teams': async ({ body }) => teams().create(TeamRequestSchema.parse(await body(256 * 1024))),
+    'POST local/teams/:id/members': async ({ params, body }) => teams().addMember(params.id, TeamMemberSchema.parse(await body(64 * 1024))),
+    'GET local/tasks/:id/workbench': ({ params }) => {
+      if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled')
+      if (!runtime.store.tickets.get(params.id)) throw new RouteError(404, '找不到这个任务')
+      return teams().target(params.id) ?? { session: workerSessionId(params.id) }
+    },
     'GET local/teams/:id': ({ params }) => teams().get(params.id),
     'GET local/teams/:id/file': ({ params, query }) => teams().file(params.id, query.path ?? ''),
     'POST local/teams/:id/stop': ({ params }) => teams().stopTeam(params.id),

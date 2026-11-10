@@ -29,7 +29,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 type ConversationSeat = PropsRenderSlots<'superagent.session'>
 
-/** Own a native Session reference only while this embedded transcript is mounted. Task input goes through durable follow-up intake below it. */
+/** Own a native Session reference only while this embedded transcript is mounted. Native input is adopted by the durable task intake. */
 function EmbeddedSession({ ctx, id, seat, t }: { ctx: ClientContext; id: string; seat: ConversationSeat; t: T }) {
   const [reference, setReference] = useState<SessionReference>()
   const [error, setError] = useState<Error>()
@@ -86,7 +86,7 @@ function Mounted({ ctx, t, seat }: { ctx: ClientContext; t: T; seat: Conversatio
   const pickDirectory = useCallback(() => pickWorkspaceDirectory(() => ctx.uiWorkspace.pickDirectory()), [ctx])
   const form = usePageForm(ctx.get('configForms')?.get<Record<string, unknown>>(ENTRY))
   const renderSession = useCallback((id: string) => <EmbeddedSession key={id} ctx={ctx} id={id} seat={seat} t={t} />, [ctx, seat, t])
-  return <App t={t} openSession={openSession} renderSession={renderSession} openWorkspace={openWorkspace} pickDirectory={pickDirectory} deploymentForm={form} />
+  return <App t={t} openSession={openSession} renderSession={renderSession} nativeSession openWorkspace={openWorkspace} pickDirectory={pickDirectory} deploymentForm={form} />
 }
 
 export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace']
