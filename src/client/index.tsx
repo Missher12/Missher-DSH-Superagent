@@ -14,7 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PropsRenderSlots, PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { openKnownSession, pickWorkspaceDirectory, SessionNavigationError } from '../navigation.ts'
+import { openKnownSession, retainKnownSession, pickWorkspaceDirectory, SessionNavigationError } from '../navigation.ts'
 import { App } from './app.tsx'
 import { PluginConfig, usePageForm } from './deployment.tsx'
 import { en, zh } from './locales.ts'
@@ -30,15 +30,24 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 type ConversationSeat = PropsRenderSlots<'superagent.session'>
 
 /** Own a native Session reference only while this embedded transcript is mounted. Task input goes through durable follow-up intake below it. */
-function EmbeddedSession({ ctx, id, seat }: { ctx: ClientContext; id: string; seat: ConversationSeat }) {
+function EmbeddedSession({ ctx, id, seat, t }: { ctx: ClientContext; id: string; seat: ConversationSeat; t: T }) {
   const [reference, setReference] = useState<SessionReference>()
   const [error, setError] = useState<Error>()
   useEffect(() => {
-    let active = true
-    const ref = ctx.sessions.retain(id as SessionId, { source: 'superagent' })
-    ref.ready.then(() => { if (active) setReference(ref) }, failure => { if (active) setError(failure instanceof Error ? failure : new Error(String(failure))) })
-    return () => { active = false; ref.release() }
-  }, [ctx, id])
+    const controller = new AbortController()
+    let retained: SessionReference | undefined
+    setReference(undefined); setError(undefined)
+    void retainKnownSession(ctx.sessions, id as SessionId, controller.signal).then(ref => {
+      if (!ref) return
+      if (controller.signal.aborted) { ref.release(); return }
+      retained = ref; setReference(ref)
+    }, failure => {
+      if (!controller.signal.aborted) setError(failure instanceof SessionNavigationError
+        ? new Error(t(failure.code === 'not-ready' ? 'sessionListNotReady' : 'sessionNotListed'))
+        : failure instanceof Error ? failure : new Error(String(failure)))
+    })
+    return () => { controller.abort(); retained?.release() }
+  }, [ctx, id, t])
   if (!reference) return <LoadState loading={!error} error={error} />
   const { SessionProvider, renderSlot } = seat
   return <SessionProvider session={reference}><div className="dt-native-transcript" data-superagent-session={id}>
@@ -76,7 +85,7 @@ function Mounted({ ctx, t, seat }: { ctx: ClientContext; t: T; seat: Conversatio
   }, [ctx])
   const pickDirectory = useCallback(() => pickWorkspaceDirectory(() => ctx.uiWorkspace.pickDirectory()), [ctx])
   const form = usePageForm(ctx.get('configForms')?.get<Record<string, unknown>>(ENTRY))
-  const renderSession = useCallback((id: string) => <EmbeddedSession key={id} ctx={ctx} id={id} seat={seat} />, [ctx, seat])
+  const renderSession = useCallback((id: string) => <EmbeddedSession key={id} ctx={ctx} id={id} seat={seat} t={t} />, [ctx, seat, t])
   return <App t={t} openSession={openSession} renderSession={renderSession} openWorkspace={openWorkspace} pickDirectory={pickDirectory} deploymentForm={form} />
 }
 

@@ -1,5 +1,5 @@
 /** Open a DSH Session in the workspace after ensuring the session catalog is loaded. */
-import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ISessions, SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 /**
@@ -20,6 +20,18 @@ export async function openKnownSession(sessions: Pick<ISessions, 'list' | 'refre
   if (!list.byId[id]) throw new SessionNavigationError('not-listed')
   open(id)
   return true
+}
+
+/** Embedded transcripts need the same catalog hydration as workspace navigation before retaining a Session. */
+export async function retainKnownSession(sessions: Pick<ISessions, 'list' | 'refresh' | 'retain'>, id: SessionId, signal: AbortSignal): Promise<SessionReference | undefined> {
+  let reference: SessionReference | undefined
+  await openKnownSession(sessions, id, () => { reference = sessions.retain(id, { source: 'superagent', signal }) }, signal)
+  if (!reference) return
+  try {
+    await reference.ready
+    if (signal.aborted) { reference.release(); return }
+    return reference
+  } catch (error) { reference.release(); throw error }
 }
 
 interface DirectoryPickerScope { __DSH_DIRECTORY_PICKER__?: { pick: () => Promise<string | null> } }

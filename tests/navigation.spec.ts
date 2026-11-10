@@ -2,7 +2,7 @@
 import { expect, it, vi } from 'vitest'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { openKnownSession } from '../src/navigation.ts'
+import { openKnownSession, retainKnownSession } from '../src/navigation.ts'
 import { initialLocation, parseRoute, remember, setupPage } from '../src/client/route.ts'
 const id = 'orchestrator-test' as SessionId
 function fixture(ready = false) {
@@ -38,6 +38,38 @@ it('does not navigate after the panel unmounts or a newer request supersedes it'
   const navigation = openKnownSession(sessions, id, open, controller.signal)
   controller.abort(); state.phase = 'ready'; state.byId[id] = {}; pending.resolve()
   await expect(navigation).resolves.toBe(false); expect(open).not.toHaveBeenCalled()
+})
+it('hydrates the catalog before retaining a transcript restored by a page reload', async () => {
+  const { sessions, pending, state } = fixture()
+  const reference = { ready: Promise.resolve(), release: vi.fn() }
+  const retain = vi.fn(() => reference)
+  const host = { ...sessions, retain } as unknown as Pick<ISessions, 'list' | 'refresh' | 'retain'>
+  const result = retainKnownSession(host, id, new AbortController().signal)
+  expect(retain).not.toHaveBeenCalled()
+  state.phase = 'ready'; state.byId[id] = {}; pending.resolve()
+  await expect(result).resolves.toBe(reference)
+  expect(retain).toHaveBeenCalledOnce()
+})
+it('releases a transcript when cancelled while its history is opening', async () => {
+  const { sessions } = fixture(true), opening = Promise.withResolvers<void>(), controller = new AbortController()
+  const reference = { ready: opening.promise, release: vi.fn() }
+  const retain = vi.fn((_id, options) => {
+    options.signal.addEventListener('abort', () => opening.reject(new Error('cancelled')), { once: true })
+    return reference
+  })
+  const host = { ...sessions, retain } as unknown as Pick<ISessions, 'list' | 'refresh' | 'retain'>
+  const result = retainKnownSession(host, id, controller.signal)
+  controller.abort()
+  await expect(result).rejects.toThrow('cancelled')
+  expect(reference.release).toHaveBeenCalledOnce()
+})
+it('reports unavailable restored transcripts without calling the throwing retainer', async () => {
+  const { sessions, pending, state } = fixture(), retain = vi.fn(() => { throw new Error('unknown session') })
+  const host = { ...sessions, retain } as unknown as Pick<ISessions, 'list' | 'refresh' | 'retain'>
+  const result = retainKnownSession(host, id, new AbortController().signal)
+  state.phase = 'ready'; pending.resolve()
+  await expect(result).rejects.toMatchObject({ code: 'not-listed' })
+  expect(retain).not.toHaveBeenCalled()
 })
 it('reopens the page this tab showed last, and the overview for a route that no longer exists', () => {
   remember({ route: { page: 'eval', query: { filter: 'stop' } }, stack: [{ page: 'overview' }] })
