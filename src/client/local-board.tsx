@@ -6,6 +6,7 @@ import { Button, Icon, Input } from './controls.tsx'
 import { ticketMark } from './marks.ts'
 import { useAction, usePanel } from './provider.tsx'
 import { LoadState, SessionButton, StageMark, When } from './widgets.tsx'
+import { shortText } from './text.ts'
 
 const PAGE_SIZE = 20
 
@@ -27,7 +28,7 @@ function TaskCard({ ticket }: { ticket: TicketRow }) {
     <button className="dt-open dt-board-card-title" type="button" onClick={() => navigate({ page: 'execution', id: ticket.id })}>
       {ticket.title}
     </button>
-    {note && <p className="dt-board-note" data-error={ticket.note?.error || undefined}>{note}</p>}
+    {note && <p className="dt-board-note" data-error={ticket.note?.error || undefined}>{shortText(note, 100)}</p>}
     <div className="dt-board-card-footer">
       {ticket.directory && <span className="dt-board-path" title={ticket.directory}><Icon name="folder" size={14} />
         <span>{ticket.directory.split('/').filter(Boolean).at(-1)}</span></span>}

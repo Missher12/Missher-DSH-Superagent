@@ -32,7 +32,9 @@
 
 执行成员可在 `orchestrator_report.delivery` 中报告 `files`、`checks` 与 `unverified`。文件必须位于真实任务目录中，完成报告不能列不存在的文件；预览只允许已报告的文件，限制前 128 KB。检查中的 `command` 与本轮实际执行结束的 bash/pwsh 调用完全匹配，界面明确标为成员报告结果。没有结构化记录时显示未提供，不推断通过；原始执行会话保留完整上下文。历史单成员任务和外部 MCP/GitHub/飞书派单仍通过原有单任务入口处理，不会被拼成团队。
 
-其他应用派单已提供独立的 [MCP 接入教程](mcp.md)，在 Superagent 设置页管理每个应用的授权。
+任务、工作区、设置与提示词编辑器共用紧凑页头和可滚动内容区，短窗口不再要求 600px 的最小内容高度。切回工作台恢复所选任务及成员，关闭全部后保持空白。工作区支持名称和路径搜索，缩略显示长路径；完整路径保留在悬停提示中。活动默认一行摘要，完整会话与原始报告保留。
+
+其他应用派单已提供独立的 [MCP 接入教程](mcp.md)，在 Superagent「设置 → 连接与定制 → MCP 外部派单」管理每个应用的授权。
 
 `@missher/dsh-superagent/sources` 导出 `SourceKind`、`SourceHost`、`SourceContext`、`Trigger`、`OutboundMessage` 以及持久化键工具。其他 DSH 插件可以：
 

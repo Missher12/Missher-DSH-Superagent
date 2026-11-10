@@ -304,6 +304,32 @@ it('opens a real workspace and prepares its task without dispatching or losing t
   await click('派任务')
   expect(field<HTMLTextAreaElement>('任务要求').value).toBe('保留这段要求')
 })
+it('filters workspace names and paths without changing the list or dispatching a task', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  server.workspaceChoices = [{ id: 'a', title: 'Alpha', directory: '/tmp/one' }, { id: 'b', title: 'Beta', directory: '/srv/project-two' }]
+  await mount(); await click('工作区')
+  const search = field<HTMLInputElement>(zh.localSearchWorkspaces)
+  await type(search, 'alpha')
+  expect(all('.dt-local-workspace-row').map(row => row.textContent)).toEqual([expect.stringContaining('Alpha')])
+  await type(search, 'PROJECT-TWO')
+  expect(all('.dt-local-workspace-row').map(row => row.textContent)).toEqual([expect.stringContaining('Beta')])
+  await type(search, 'not-found')
+  expect(text()).toContain(zh.localNoWorkspaceMatches)
+  await type(search, '')
+  expect(all('.dt-local-workspace-row')).toHaveLength(2)
+  expect(server.requests.some(request => request.method !== 'GET')).toBe(false)
+})
+it('opens advanced settings separately and retains an unsaved basic setting', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  await mount(); await click('设置')
+  await type(field<HTMLInputElement>(zh.localMaxWorkers), '4')
+  expect(all('.dt-mcp-connection')).toHaveLength(0)
+  await click(zh.mcpTitle)
+  expect(text()).toContain(zh.mcpAdd)
+  await click(zh.localBackSettings)
+  expect(field<HTMLInputElement>(zh.localMaxWorkers).value).toBe('4')
+  expect(server.requests.some(request => request.method === 'PUT')).toBe(false)
+})
 
 it('keeps full reports in task details while the board stays concise', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }

@@ -1,5 +1,5 @@
 /** Everyday local navigation: tasks, settings, and a short usage guide. */
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { StateView } from './api.ts'
 import { Button, Icon, SegmentedTabs } from './controls.tsx'
 import { LocalTaskBoard } from './local-board.tsx'
@@ -56,11 +56,16 @@ export function LocalPages({ route, openTab }: { route: Route; openTab: (tab: Ta
   const { t, navigate } = usePanel()
   const { state, error } = usePanelData()
   const page = TABS.find(tab => tab === route.page) ?? 'overview'
+  const workspace = useRef<Route>({ page: 'overview' })
+  useEffect(() => { if (route.page === 'overview') workspace.current = route }, [route])
   useEffect(() => { if (!TABS.some(tab => tab === route.page)) navigate({ page: 'overview' }, true) }, [route.page, navigate])
   return <div className={`dt-page dt-local-page${page === 'overview' ? ' dt-workspace-page' : ''}`}><div className="dt-column">
     <header className="dt-head"><div className="dt-local-brand"><span className="dt-local-brand-icon"><Icon name="session" size={21} /></span>
       <h1 className="dt-local-title">{t('title')}</h1></div>
-      <SegmentedTabs className="dt-tabs" label={t('pagesLabel')} value={page} onChange={openTab}
+      <SegmentedTabs className="dt-tabs" label={t('pagesLabel')} value={page} onChange={tab => {
+        if (tab === 'overview') navigate(workspace.current, true)
+        else openTab(tab)
+      }}
         items={TABS.map(value => ({ value, label: t(value === 'overview' ? 'localWorkbench' : value === 'execution' ? 'localTasks' : value === 'source' ? 'localWorkspaces' : `tab.${value}`),
           id: `dt-tab-${value}`, panelId: 'dt-page' }))} />
     </header>

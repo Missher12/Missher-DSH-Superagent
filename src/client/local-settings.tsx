@@ -57,7 +57,7 @@ function SettingsForm() {
           min={LIMITS.maxWorkers.min} max={LIMITS.maxWorkers.max} value={draft.value.maxWorkers}
           onChange={event => draft.edit({ ...draft.value, maxWorkers: event.target.value })} /></Field>
       </Section>
-      <Section title={t('localPermissionTitle')}><Hint>{t('localPermissionHint')}</Hint></Section>
+      <details className="dt-local-details"><summary>{t('localPermissionTitle')}</summary><div className="dt-local-details-body"><Hint>{t('localPermissionHint')}</Hint></div></details>
     </Fields>
     <SaveBar {...draft} onDiscard={draft.discard} />
   </form>
@@ -65,16 +65,16 @@ function SettingsForm() {
 
 export function LocalSettings() {
   const { t } = usePanel()
-  const [editor, setEditor] = useState<'sources' | 'policy' | 'prompts'>()
-  const entries = [{ id: 'sources' as const, title: t('localExternalTitle') },
+  const [editor, setEditor] = useState<'mcp' | 'sources' | 'policy' | 'prompts'>()
+  const entries = [{ id: 'mcp' as const, title: t('mcpTitle') }, { id: 'sources' as const, title: t('localExternalTitle') },
     { id: 'policy' as const, title: t('localExternalPolicy') }, { id: 'prompts' as const, title: t('settingsGroup.prompts') }]
   return <SettingsProvider>{editor ? <section className="dt-local-settings-editor">
     <header className="dt-local-editor-head"><Button variant="ghost" icon={<Icon name="chevron-left" />} onClick={() => setEditor(undefined)}>{t('localBackSettings')}</Button>
       <h2>{entries.find(entry => entry.id === editor)!.title}</h2></header>
-    <div className="dt-local-settings-content">{editor === 'sources' ? <SourceSettings include={['github', 'feishu']} />
+    <div className="dt-local-settings-content">{editor === 'mcp' ? <McpSettings /> : editor === 'sources' ? <SourceSettings include={['github', 'feishu']} />
       : editor === 'policy' ? <EvalSettings include={['github', 'feishu']} /> : <PromptsPage />}</div>
-  </section> : <div className="dt-form dt-local-settings-page"><SettingsForm /><McpSettings />
-    <div className="dt-local-setting-entries">{entries.map(entry => <div className="dt-local-setting-entry" key={entry.id}><h2>{entry.title}</h2>
-      <Button variant="outline" aria-label={entry.title} onClick={() => setEditor(entry.id)}>{t('localSettingsEdit')}</Button></div>)}</div>
+  </section> : <div className="dt-form dt-local-settings-page"><SettingsForm />
+    <Section title={t('localSettingsConnections')}><div className="dt-local-setting-entries">{entries.map(entry => <button type="button" className="dt-local-setting-entry" key={entry.id}
+      aria-label={entry.title} onClick={() => setEditor(entry.id)}><span>{entry.title}</span><Icon name="chevron-right" /></button>)}</div></Section>
   </div>}</SettingsProvider>
 }

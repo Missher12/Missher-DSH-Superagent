@@ -1,6 +1,7 @@
 /** Real DSH projects, their directories, and entry points into task execution. */
+import { useState } from 'react'
 import { usePoll } from './api.ts'
-import { Button, Icon } from './controls.tsx'
+import { Button, Icon, Input } from './controls.tsx'
 import { selectLocalWorkspace } from './local.tsx'
 import { useAction, usePanel } from './provider.tsx'
 import { LoadState } from './widgets.tsx'
@@ -18,6 +19,9 @@ export function OpenWorkspaceButton({ directory, compact = false }: { directory:
 export function LocalWorkspaces() {
   const { t, call, navigate, openWorkspace, pickDirectory } = usePanel()
   const { data, error, reload } = usePoll(() => call('GET local/workspaces'), [call])
+  const [query, setQuery] = useState('')
+  const search = query.trim().toLocaleLowerCase()
+  const workspaces = data?.filter(workspace => `${workspace.title}\n${workspace.directory}`.toLocaleLowerCase().includes(search))
   const open = useAction(async (id: string) => { await openWorkspace(id) })
   const add = useAction(async () => {
     const directory = await pickDirectory()
@@ -28,16 +32,19 @@ export function LocalWorkspaces() {
   return <section className="dt-local-workspaces" aria-label={t('localWorkspaces')}>
     <div className="dt-local-workspace-tools"><h2>{t('localWorkspaces')}{data && <span className="dt-count">{data.length}</span>}</h2><Button variant="primary" icon={<Icon name="plus" />}
       disabled={add.busy} onClick={() => { void add.run() }}>{t('localAddWorkspace')}</Button></div>
+    <Input type="search" icon={<Icon name="search" />} aria-label={t('localSearchWorkspaces')} placeholder={t('localSearchWorkspaces')}
+      maxLength={200} value={query} onChange={event => setQuery(event.target.value)} />
     <LoadState error={error} loading={!data} />
-    {data && <ul className="dt-local-workspace-list">{data.map(workspace => <li key={workspace.id} className="dt-local-workspace-row">
+    {workspaces && <ul className="dt-local-workspace-list">{workspaces.map(workspace => <li key={workspace.id} className="dt-local-workspace-row">
       <div className="dt-local-workspace-info"><button type="button" className="dt-local-workspace-icon" disabled={open.busy}
         aria-label={`${t('localOpenWorkspace')} · ${workspace.title}`} title={workspace.directory}
         onClick={() => { void open.run(workspace.id) }}><Icon name="folder" size={25} /></button>
-        <div><h3>{workspace.title}</h3><p title={workspace.directory}>{workspace.directory}</p></div></div>
+        <div><h3 title={workspace.title}>{workspace.title}</h3><p title={workspace.directory}>{workspace.directory}</p></div></div>
       <div className="dt-actions"><Button variant="ghost" icon={<Icon name="external" size={14} />} disabled={open.busy}
         onClick={() => { void open.run(workspace.id) }}>{t('localOpenWorkspace')}</Button>
         <Button variant="primary" icon={<Icon name="plus" size={14} />} onClick={() => { selectLocalWorkspace(workspace.directory); navigate({ page: 'execution' }) }}>{t('localWorkspaceTask')}</Button></div>
     </li>)}</ul>}
     {data?.length === 0 && <p className="dt-hint">{t('localNoWorkspaces')}</p>}
+    {!!data?.length && !workspaces?.length && <p className="dt-hint" role="status">{t('localNoWorkspaceMatches')}</p>}
   </section>
 }

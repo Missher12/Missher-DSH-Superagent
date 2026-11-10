@@ -87,6 +87,20 @@ it('closes all workspace views without stopping tasks and reopens the same membe
   expect(all('.dt-team-workspace-tab')).toHaveLength(1)
   expect(text()).not.toContain('请打开一个工作区')
 })
+it('returns from management pages to the selected task and member while keeping an explicitly closed workspace empty', async () => {
+  at({ page: 'overview', query: { team: 'explicit-team', member: 'build' } })
+  await mount()
+  for (const page of ['任务', '工作区', '设置']) {
+    await click(page)
+    await click('工作台')
+    expect(all('[data-test-session="worker-build-task"]')).toHaveLength(1)
+    expect(JSON.parse(sessionStorage.getItem('dsh-superagent/route')!).route.query).toEqual({ team: 'explicit-team', member: 'build' })
+  }
+  await click('关闭全部工作区')
+  await click('设置'); await click('工作台')
+  expect(text()).toContain('请打开一个工作区')
+  expect(all('[data-test-session]')).toHaveLength(0)
+})
 it('reviews actual reported files and commands without inventing approvals or passed checks', async () => {
   const view = server.teamViews['explicit-team']!
   view.deliveries = [{ memberId: 'build', name: '实施', record: { ticketId: 'build-task', assignmentId: 'run-build', sessionId: 'worker-build-task', at: view.updatedAt,

@@ -43,6 +43,7 @@ export function LocalWorkbench({ sessionId, teamId, memberId = 'coordinator' }: 
   const current = teamId ? `team:${teamId}` : sessionId ? `session:${sessionId}` : undefined
   const team = data?.team && data.team.id === teamId ? data.team : undefined
   const title = team?.name ?? data?.tasks.find(task => task.sessionId === sessionId || `worker-${task.id}` === sessionId)?.title
+    ?? views.find(view => viewKey(view) === current)?.title
     ?? (sessionId === 'all-single' ? t('teamSingle') : teamId ?? sessionId ?? '')
   useEffect(() => {
     if (!current) return
@@ -89,12 +90,12 @@ export function LocalWorkbench({ sessionId, teamId, memberId = 'coordinator' }: 
       <button type="button" className="dt-team-tab-close" aria-label={t('teamCloseWorkspace', { name: view.title })} title={t('close')} onClick={() => close(viewKey(view))}><Icon name="close" size={13} /></button>
     </div>)}</div><Button size="sm" disabled={!views.length} onClick={() => { setViews([]); selectView() }}>{t('teamCloseAll')}</Button></nav>
     <LoadState loading={!data} error={error} />
-    {data && <><label className="dt-team-compact-select"><span>{t('teamSelect')}</span><select className="dt-select" value={teamId ?? ''} onChange={event => event.target.value ? selectTeam(event.target.value) : selectView()}>
-      <option value="">{t('teamAll')}</option>{data.teams.map(team => <option value={team.id} key={team.id}>{team.name}</option>)}</select></label>
-      {team && <div className="dt-team-mobile-panels"><SegmentedTabs value={pane} onChange={setPane} label={t('teamCompactPane')} items={[
+    {data && <><div className="dt-team-compact-bar">{team && <div className="dt-team-mobile-panels"><SegmentedTabs value={pane} onChange={setPane} label={t('teamCompactPane')} items={[
         { value: 'conversation', label: t('workbenchConversation'), id: 'dt-compact-conversation', panelId: 'dt-team-workspace-content' },
         { value: 'team', label: t('teamCompactTeam'), id: 'dt-compact-team', panelId: 'dt-team-workspace-content' },
       ]} /></div>}
+      <label className="dt-team-compact-select"><span>{t('teamSelect')}</span><select className="dt-select" aria-label={t('teamSelect')} value={teamId ?? ''} onChange={event => event.target.value ? selectTeam(event.target.value) : selectView()}>
+        <option value="">{t('teamAll')}</option>{data.teams.map(team => <option value={team.id} key={team.id}>{team.name}</option>)}</select></label></div>
       <div id="dt-team-workspace-content" data-compact-pane={pane} className={`dt-team-layout dt-team-focus-layout${!current ? ' dt-team-layout-overview' : ''}${sessionId ? ' dt-team-layout-single' : ''}`}>
         <nav className="dt-team-sidebar" aria-label={t('teamList')}><div className="dt-team-list-heading"><strong>{t('teamTasks')}</strong><span className="dt-count">{data.teams.length}</span></div>
           <button type="button" className="dt-team-nav-item" aria-pressed={!current} onClick={() => selectView()}><Icon name="history" /><strong>{t('teamAll')}</strong></button>

@@ -2,7 +2,7 @@
   "name": "@missher/dsh-superagent",
   "author": "DeepSeek Harness Team <team@dsh.dev>",
   "license": "MIT",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "private": true,
   "description": "DSH local task orchestration with durable tickets and pluggable Git/MCP sources.",
   "type": "module",
