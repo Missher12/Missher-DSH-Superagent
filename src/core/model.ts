@@ -334,10 +334,11 @@ export function reached(ticket: Ticket, trigger: Trigger, thread: (key: string) 
 export const latestAssignment = (ticket: Ticket): Assignment | undefined => ticket.assignments.at(-1)
 /** The latest report any of a ticket's Assignments made, which is what the ticket last said. */
 export const latestReport = (ticket: Pick<Ticket, 'assignments'>): Assignment['report'] => ticket.assignments.findLast(assignment => assignment.report)?.report
-/** Human requests still queued for delivery or waiting to be taken into a worker step. Legacy inputs without read tracking keep their existing semantics. */
+/** Human requests queued or unread on the current assignment. Earlier endings already released their untaken inputs. */
 export function hasUnreadRequest(ticket: Ticket): boolean {
+  const assignment = runningAssignment(ticket) ?? latestAssignment(ticket)
   return ticket.inputs.some(input => input.kind === 'trigger' && input.human && !input.context
-    && (input.readAt === null || ticket.undelivered.includes(input.id)))
+    && (ticket.undelivered.includes(input.id) || input.readAt === null && !!assignment && input.deliveredTo === assignment.id))
 }
 /** Until the latest report (excluding progress if requested) or idle turn, whichever is later. */
 export function readUntil(ticket: Pick<Ticket, 'assignments'>, progress = true): string {

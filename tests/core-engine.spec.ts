@@ -72,6 +72,19 @@ function accepted(h: ReturnType<typeof harness>, id = '1', thread = 't1') {
 }
 
 describe('intake', () => {
+  it('does not let unread inputs already released by an earlier ending block a resumed assignment', () => {
+    const h = harness()
+    const ticketId = accepted(h).ticketId!
+    h.tick(1); h.engine.receive(trigger('2')); h.settle()
+    h.engine.report(ticketId, { state: 'dropped', summary: 'Handed back' })
+    h.tick(1); h.engine.receive(trigger('3')); h.settle()
+    const resumed = h.repo.tickets.get(ticketId)!
+    const current = runningAssignment(resumed)!
+    h.engine.inputsRead(ticketId, resumed.inputs.filter(input => input.kind === 'trigger' && input.deliveredTo === current.id).map(input => input.id))
+    expect(resumed.inputs).toContainEqual(expect.objectContaining({ triggerId: '2', readAt: null }))
+    expect(() => h.engine.report(ticketId, { state: 'ready', summary: 'New request completed' })).not.toThrow()
+    expect(h.repo.tickets.get(ticketId)!.ended?.outcome).toBe('completed')
+  })
   it.each([false, true])('keeps a follow-up pending across an old ready report (delivered=%s)', delivered => {
     const h = harness()
     const ticketId = accepted(h).ticketId!
