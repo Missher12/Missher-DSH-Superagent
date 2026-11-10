@@ -10,6 +10,8 @@ import { useAction, usePanel, usePanelData } from './provider.tsx'
 import { settingsRoute } from './route.ts'
 import { errorText, localized, valueLabel, when, type T } from './text.ts'
 import { Hint, LoadState } from './widgets.tsx'
+import { Select } from './select.tsx'
+import { effortLabel } from './model-labels.ts'
 
 /** Parse a numeric input string, returning `null` when empty so the server rejects blank required numbers instead of coercing to 0. */
 export const numberOf = (text: string): number | null => text.trim() ? Number(text) : null
@@ -54,11 +56,11 @@ export function Fields({ disabled, children }: { disabled: boolean; children: Re
   return <fieldset ref={set} className="dt-fieldset" disabled={disabled}>{children}</fieldset>
 }
 export function Field({ label, hint, note,
-  children }: { label: string; hint?: string | undefined; note?: ReactNode; children: ReactElement<{ id?: string }> }) {
+  children }: { label: string; hint?: string | undefined; note?: ReactNode; children: ReactElement<{ id?: string; 'aria-label'?: string }> }) {
   const id = useId()
   return <div className="dt-field">
     <span className="dt-field-head"><label htmlFor={id}>{label}</label>{hint && <InfoTip text={hint} />}</span>{cloneElement(children,
-      { id })}{note && <small>{note}</small>}
+      { id, 'aria-label': children.props['aria-label'] ?? label })}{note && <small>{note}</small>}
   </div>
 }
 function SwitchRow({ label, hint, checked,
@@ -69,6 +71,24 @@ function SwitchRow({ label, hint, checked,
   </div>
 }
 type RoleModel = Settings['eval']['model']
+function ModelChoice({ id, label, value, options, placeholder, onChange }: { id?: string; label: string; value: string;
+  options: { value: string; label: string }[]; placeholder: string; onChange: (value: string) => void }) {
+  const { t } = usePanel(), token = useId()
+  const [manual, setManual] = useState(false)
+  let custom = `custom:${token}`
+  while (options.some(option => option.value === custom)) custom += ':'
+  if (manual) return <div className="dt-model-custom"><Input id={id} aria-label={label} value={value} spellCheck={false} autoFocus
+    onChange={event => onChange(event.target.value)} /><Button variant="ghost" size="sm" aria-label={t('modelChooseList')}
+    title={t('modelChooseList')} icon={<Icon name="chevron-down" />} onClick={() => setManual(false)} /></div>
+  return <Select id={id} aria-label={label} value={value} onChange={event => {
+    if (event.target.value === custom) setManual(true)
+    else onChange(event.target.value)
+  }}><option value="">{placeholder}</option>
+    {value && !options.some(option => option.value === value) && <option value={value}>{value}</option>}
+    {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+    <option value={custom}>{t('modelCustomValue')}</option>
+  </Select>
+}
 export function ModelField({ id, value, onChange }: { id: string; value: RoleModel; onChange: (next: RoleModel) => void }) {
   const { t, call } = usePanel()
   const [catalog, setCatalog] = useState<ApiResponse<'GET models'>>()
@@ -80,26 +100,26 @@ export function ModelField({ id, value, onChange }: { id: string; value: RoleMod
     onChange(provider.trim() || model.trim() || effort.trim() ? { provider, model, ...effort ? { reasoningEffort: effort } : {} } : null)
   }
   const models = catalog?.groups.find(group => group.id === current.provider.trim())?.models ?? []
+  const efforts = models.find(model => model.id === current.model.trim())?.reasoning?.efforts ?? []
   const fallback = catalog?.default
+  const fallbackGroup = catalog?.groups.find(group => group.id === fallback?.provider)
+  const fallbackModel = fallbackGroup?.models.find(model => model.id === fallback?.model)
+  const fallbackEffort = fallbackModel?.reasoning?.efforts.find(effort => effort.id === fallback?.reasoningEffort)
+  const fallbackName = fallback && `${fallbackGroup?.name ?? fallback.provider} / ${fallbackModel?.name ?? fallback.model}${fallback.reasoningEffort
+    ? ` · ${effortLabel(fallback.reasoningEffort, fallbackEffort?.name ?? fallback.reasoningEffort, t)}` : ''}`
+  const options = { provider: catalog?.groups.map(group => ({ value: group.id, label: group.name })) ?? [],
+    model: models.map(model => ({ value: model.id, label: model.name })),
+    effort: efforts.map(effort => ({ value: effort.id, label: effortLabel(effort.id, effort.name, t) })) }
   const input = (name: keyof typeof current, label: string, placeholder: string) => <Field label={label}>
-    <Input list={`${id}-${name}s`} spellCheck={false} placeholder={placeholder} value={current[name]}
-      onChange={event => set({ [name]: event.target.value })} />
+    <ModelChoice label={label} placeholder={placeholder} value={current[name]} options={options[name]} onChange={next => set({ [name]: next })} />
   </Field>
-  return <div className="dt-model">
-    <Hint>{fallback ? t('defaultModel', { model: `${fallback.provider} / ${fallback.model}${fallback.reasoningEffort
-      ? ` · ${fallback.reasoningEffort}` : ''}` }) : t('defaultModelUnavailable')}</Hint>
+  return <div className="dt-model" data-model-field={id}>
+    <Hint>{fallbackName ? t('defaultModel', { model: fallbackName }) : t('defaultModelUnavailable')}</Hint>
     {error && <p className="dt-error">{t('modelCatalogError', { error })}</p>}
     <div className="dt-grid3">
       {input('provider', t('modelProvider'), t('modelInherit'))}{input('model', t('modelName'), t('modelInherit'))}{input('effort',
         t('modelEffort'), t('modelEffortDefault'))}
     </div>
-    <datalist id={`${id}-providers`}>{catalog?.groups.map(group => <option key={group.id}
-      value={group.id}>{group.name}</option>)}</datalist>
-    <datalist id={`${id}-models`}>{models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}</datalist>
-    <datalist id={`${id}-efforts`}>
-      {(models.find(model => model.id === current.model.trim())?.reasoning?.efforts ?? []).map(effort => <option key={effort.id}
-        value={effort.id}>{effort.name}</option>)}
-    </datalist>
   </div>
 }
 
@@ -196,17 +216,17 @@ function RowsField({ field, value, saved, onChange, labels, refreshLabels }: {
       return <span key={column.key} className={labels[id] ? 'dt-row-label' : 'dt-row-label dt-mono'} title={id}>{labels[id] ?? id}</span>
     }
     if (column === key && choose) {
-      return <select key={column.key} className="dt-select" aria-label={choose} required value={id}
+      return <Select key={column.key} className="dt-select" aria-label={choose} required value={id}
         onChange={event => change(event.target.value)}>
         <option value="" disabled>{choose}</option>
         {choices(id).map(([option, name]) => <option key={option} value={option}>{name}</option>)}
-      </select>
+      </Select>
     }
     if (column.type === 'select') {
-      return <select key={column.key} className="dt-select" aria-label={localized(t, column.label)} value={row[column.key] ?? ''}
+      return <Select key={column.key} className="dt-select" aria-label={localized(t, column.label)} value={row[column.key] ?? ''}
         onChange={event => change(event.target.value)}>
         {column.options.map(option => <option key={option.value} value={option.value}>{localized(t, option.label)}</option>)}
-      </select>
+      </Select>
     }
     return <Input key={column.key} className={column.optional ? undefined : 'dt-mono'} aria-label={localized(t, column.label)}
       placeholder={localized(t, column.label)}
@@ -256,11 +276,11 @@ export function SourceField({ field, value, saved, fact, onChange, labels, refre
     </Field>
     case 'text': return <Field label={label} hint={hint} note={localized(t, fact)}>
       {field.choose && Object.keys(labels).length
-        ? <select className="dt-select" value={String(value ?? '')} onChange={event => onChange(event.target.value)}>
+        ? <Select className="dt-select" value={String(value ?? '')} onChange={event => onChange(event.target.value)}>
           <option value="">{localized(t, field.choose)}</option>
           {value && !labels[String(value)] ? <option value={String(value)}>{String(value)}</option> : null}
           {Object.entries(labels).sort(byName).map(([option, name]) => <option key={option} value={option}>{name}</option>)}
-        </select>
+        </Select>
         : <Input value={String(value ?? '')} readOnly={field.readonly} pattern={field.pattern} spellCheck={false}
           onChange={event => onChange(event.target.value)} />}
     </Field>

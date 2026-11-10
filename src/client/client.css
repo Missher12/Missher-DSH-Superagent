@@ -79,6 +79,21 @@
 .dt-textarea { box-sizing: border-box; width: 100%; min-width: 0; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 14px; line-height: 22px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-1, transparent); resize: vertical; text-align: center; align-content: center; }
 .dt-select { box-sizing: border-box; width: 100%; min-width: 0; height: 32px; border: 0.5px solid var(--dsw-alias-border-l4); border-radius: 8px; padding: 0 28px; text-overflow: ellipsis; font: inherit; font-size: 14px; line-height: 22px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-1, transparent); text-align: center; text-align-last: center; }
 .dt-textarea:focus-visible, .dt-select:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.dt-select.dt-choice { position: relative; display: block; padding: 0; font-size: 13px; }
+.dt-choice-native { position: absolute; width: 1px; height: 1px; padding: 0; margin: 0; opacity: 0; pointer-events: none; }
+.dt-choice-anchor { display: block; width: 100%; height: 100%; }
+.dt-choice-trigger { position: relative; display: block; width: 100%; height: 100%; padding: 0 28px; border: 0; border-radius: inherit; background: transparent; color: inherit; font: inherit; text-align: center; cursor: pointer; }
+.dt-choice-trigger > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-choice-trigger > svg { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--dsw-alias-label-secondary); }
+.dt-choice-trigger:focus { outline: none; }
+.dt-choice:has(.dt-choice-trigger:focus-visible), .dt-choice[data-open] { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.dt-choice:has(.dt-choice-trigger:disabled) { color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-layer-2); }
+.dt-choice-trigger:disabled { cursor: default; }
+[role='menu']:has(.dt-choice-option) { box-sizing: border-box; font-family: inherit; font-size: 13px; max-height: min(300px, calc(100dvh - 24px)); }
+.dt-choice-option { display: block; overflow-wrap: anywhere; font-size: 13px; line-height: 20px; }
+.dt-model-custom { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.dt-model-custom > .dt-input { flex: 1; min-width: 0; }
+.dt-model-custom > .dt-btn { flex: none; }
 .dt-mono { font-family: var(--ds-font-family-code, Menlo, monospace); font-size: 12px; overflow-wrap: anywhere; }
 .dt-detail { margin-top: 2px; color: var(--dsw-alias-label-secondary); }
 .dt-savebar .dt-error { white-space: pre-line; }

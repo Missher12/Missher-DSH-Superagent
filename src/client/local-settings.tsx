@@ -1,5 +1,7 @@
 /** Local defaults: model, worker capacity, and plain descriptions of permissions and adapters. */
 import { useEffect, useState } from 'react'
+import { Select } from './select.tsx'
+import { effortLabel } from './model-labels.ts'
 import { LIMITS } from '../limits.ts'
 import { type ApiResponse } from '../app/api.ts'
 import { Button, Icon, Input } from './controls.tsx'
@@ -37,21 +39,21 @@ function SettingsForm() {
     <Fields disabled={draft.busy}>
       <Section title={t('localSettingsTitle')}>
         <Field label={t('localTaskModel')} note={t('localModelHint')}>
-          <select className="dt-select" value={selected} onChange={event => {
+          <Select className="dt-select" value={selected} onChange={event => {
             const choice = choices.find(item => item.value === event.target.value)
             draft.edit({ ...draft.value, model: choice ? { provider: choice.provider, model: choice.model.id } : null })
           }}>
             <option value="">{defaultName ? t('localInheritModel', { model: defaultName }) : t('localInheritDefault')}</option>
             {selection && !choices.some(choice => choice.value === selected) && <option value={selected}>{selection.provider} · {selection.model}</option>}
             {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
-          </select>
+          </Select>
         </Field>
-        {selection && reasoning && <Field label={t('modelEffort')}><select className="dt-select" value={selection.reasoningEffort ?? ''}
+        {selection && reasoning && <Field label={t('modelEffort')}><Select className="dt-select" value={selection.reasoningEffort ?? ''}
           onChange={event => {
             const { reasoningEffort: _old, ...model } = selection
             draft.edit({ ...draft.value, model: { ...model, ...event.target.value ? { reasoningEffort: event.target.value } : {} } })
-          }}><option value="">{t('modelEffortDefault')}</option>{reasoning.efforts.map(effort => <option key={effort.id} value={effort.id}>{effort.name}</option>)}
-        </select></Field>}
+          }}><option value="">{t('modelEffortDefault')}</option>{reasoning.efforts.map(effort => <option key={effort.id} value={effort.id}>{effortLabel(effort.id, effort.name, t)}</option>)}
+        </Select></Field>}
         {error && <p className="dt-error" role="status">{error}</p>}
         <Field label={t('localMaxWorkers')} note={t('localConcurrencyHint')}><Input type="number" required
           min={LIMITS.maxWorkers.min} max={LIMITS.maxWorkers.max} value={draft.value.maxWorkers}

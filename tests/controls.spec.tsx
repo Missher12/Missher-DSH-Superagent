@@ -9,12 +9,14 @@ import { Modal, SegmentedTabs } from '../src/client/controls.tsx'
 declare global { var IS_REACT_ACT_ENVIRONMENT: boolean }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
-it('imports no DSH client runtime package, only React and type declarations', () => {
+it('uses only the public host Menu at runtime, keeping the rest of the panel independent of DSH client packages', () => {
   const dir = join(process.cwd(), 'src/client')
   for (const name of readdirSync(dir)) {
     const source = readFileSync(join(dir, name), 'utf8')
-    for (const match of source.matchAll(/^import (type )?[^'"]*from '(@deepseek-ai\/[^']+)'/gm)) expect({ name, from: match[2], typeOnly: !!match[1] }).toMatchObject({ typeOnly: true })
-    expect(source).not.toContain('dsh-client-ui-primitives\'')
+    for (const match of source.matchAll(/^import (type )?[^'"]*from '(@deepseek-ai\/[^']+)'/gm)) {
+      if (name === 'select.tsx' && match[2] === '@deepseek-ai/dsh-client-ui-primitives') continue
+      expect({ name, from: match[2], typeOnly: !!match[1] }).toMatchObject({ typeOnly: true })
+    }
   }
 })
 

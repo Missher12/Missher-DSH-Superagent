@@ -29,8 +29,10 @@ it('saves the Eval block on the Policy settings and the Executor with its execut
   await click(find(zh['tab.settings'], '.dt-status-head button'))
   await click(zh['mode.auto'])
   await type(field<HTMLInputElement>(zh.evalTimeout), '180')
-  const [provider, model] = all('.dt-model input')
-  await type(provider as HTMLInputElement, 'worker-provider'); await type(model as HTMLInputElement, 'worker-model')
+  await type(field<HTMLSelectElement>(zh.modelProvider), 'worker-provider')
+  await type(field<HTMLSelectElement>(zh.modelName), 'worker-model')
+  expect(find(zh.modelProvider).textContent).toBe('Worker provider')
+  expect(find(zh.modelName).textContent).toBe('Worker model')
   await click(zh.save)
   expect(server.settings.eval).toEqual({ mode: 'auto', timeoutSeconds: 180, model: { provider: 'worker-provider', model: 'worker-model' } })
   await click(find(zh['promptPart.runtime/work'], '.dt-settings-link'))
@@ -48,16 +50,39 @@ it('saves the Eval block on the Policy settings and the Executor with its execut
   await click('DSH_SUPERAGENT_DIR')
   expect(field<HTMLTextAreaElement>(zh.prepareCommand).value).toBe('git worktree add "$DSH_SUPERAGENT_DIR"')
   await type(field<HTMLInputElement>(zh.blockedCommands), 'gh-personal  gh.other')
-  const [workerProvider, workerModel, effort] = all('.dt-model input')
-  await type(workerProvider as HTMLInputElement, 'worker-provider'); await type(workerModel as HTMLInputElement,
-    'worker-model'); await type(effort as HTMLInputElement, 'high')
-  expect([...document.querySelectorAll('#dt-worker-model-efforts option')].map(option => option.getAttribute('value'))).toEqual(['high'])
+  await type(field<HTMLSelectElement>(zh.modelProvider), 'worker-provider')
+  await type(field<HTMLSelectElement>(zh.modelName), 'worker-model')
+  await type(field<HTMLSelectElement>(zh.modelEffort), 'high')
+  expect(find(zh.modelEffort).textContent).toBe(zh['effortName.high'])
   await click(zh.save)
   expect(server.settings.executor).toEqual({ maxWorkers: 5, directory: '/srv/work',
     prepare: 'git worktree add "$DSH_SUPERAGENT_DIR"', blockedCommands: ['gh-personal', 'gh.other'], model: { provider: 'worker-provider',
       model: 'worker-model', reasoningEffort: 'high' } })
   expect(server.requests.filter(request => request.method === 'PUT').map(request => request.path)).toEqual(['settings/eval',
     'settings/executor'])
+})
+
+it('preserves custom model IDs and can return them to inherited defaults without saving a menu sentinel', async () => {
+  await mount()
+  await click(zh['tab.eval'])
+  await click(find(zh['tab.settings'], '.dt-status-head button'))
+  await click(find(zh.modelProvider))
+  await click(find(zh.modelCustomValue, '[role="menuitem"]'))
+  expect(document.activeElement).toBe(field<HTMLInputElement>(zh.modelProvider))
+  await type(field<HTMLInputElement>(zh.modelProvider), 'custom-provider')
+  await click(find(zh.modelName))
+  await click(find(zh.modelCustomValue, '[role="menuitem"]'))
+  await type(field<HTMLInputElement>(zh.modelName), 'custom-model')
+  await click(zh.save)
+  expect(server.settings.eval.model).toEqual({ provider: 'custom-provider', model: 'custom-model' })
+  for (const label of [zh.modelProvider, zh.modelName]) {
+    await click(zh.modelChooseList)
+    await click(find(label))
+    await click(find(zh.modelInherit, '[role="menuitem"]'))
+    expect(field<HTMLSelectElement>(label).value).toBe('')
+  }
+  await click(zh.save)
+  expect(server.settings.eval.model).toBeNull()
 })
 
 it('loads configuration history on demand with localized changes, Source field labels and notified Tickets', async () => {

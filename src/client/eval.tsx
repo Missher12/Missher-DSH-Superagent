@@ -1,3 +1,4 @@
+import { Select } from './select.tsx'
 /** Eval status view (Decision log) and Eval settings group (Policy rules, per-Source admission, and assessor settings). */
 import { useState } from 'react'
 import { ADMISSION_DEFAULTS, ADMISSION_OPTIONS, type Admission, type AdmissionCell } from '../admission.ts'
@@ -108,10 +109,10 @@ function AdmissionTable({ rows, labels, table, explicit, onChange }: {
     const value = table[row.id]?.[cell] ?? ADMISSION_DEFAULTS[cell]
     // Reserve a fixed-width slot for the warning icon so selecting a value never shifts column widths.
     return <td key={cell}><span className="dt-admission-cell">
-      <select className="dt-select" aria-label={`${name(row)} · ${t(`admissionCell.${cell}`)}`} value={value} onChange={event => set(row.id,
+      <Select className="dt-select" aria-label={`${name(row)} · ${t(`admissionCell.${cell}`)}`} value={value} onChange={event => set(row.id,
         cell, event.target.value as Admission)}>
         {ADMISSION_OPTIONS[cell].map(option => <option key={option} value={option}>{t(`admissionValue.${option}`)}</option>)}
-      </select>
+      </Select>
       <span className="dt-admission-slot">{cell === 'unlistedAddressed' && value === 'explicit' && <InfoTip
         text={t('admissionAnyoneWarning')} icon="alert" warn />}</span>
     </span></td>

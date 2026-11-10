@@ -9,6 +9,6 @@ const raw = { name: 'raw',
 export default defineConfig([
   { entry: { index: 'src/index.ts', sources: 'src/source-api.ts', 'github-watch': 'src/sources/github.ts', 'feishu-watch': 'src/sources/feishu.ts', 'mcp-bridge': 'src/mcp-bridge.ts' }, outDir: 'lib', format: 'esm', fixedExtension: false, platform: 'node', target: 'es2024', dts: true, clean: true, deps: { neverBundle: [/^@deepseek-ai\//, /^@modelcontextprotocol\//, 'zod', 'proper-lockfile'] } },
   { entry: { client: 'src/client/index.tsx' }, outDir: 'lib', format: 'cjs', platform: 'browser', dts: false, clean: false, plugins: [raw],
-    deps: { neverBundle: ['react', 'react/jsx-runtime', 'react-dom'] },
+    deps: { neverBundle: ['react', 'react/jsx-runtime', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives'] },
     outputOptions: { entryFileNames: 'client.js', banner: 'window.__ModuleLoader__.load({ id: "@missher/dsh-superagent", factory: (require) => {', footer: 'return module.exports; } });', intro: 'var module = { exports: {} }; var exports = module.exports;' } },
 ])
