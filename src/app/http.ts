@@ -45,7 +45,7 @@ export interface HttpHost {
   readonly sourceLinks: Pick<TextCache, 'entries'>
   readonly sources: SourceRegistry
   readonly prompts: Pick<Prompts, 'current' | 'version' | 'history' | 'preview' | 'save' | 'defaultChanged' | 'defaults'>
-  readonly sessions: Pick<Sessions, 'status' | 'notify' | 'delivery' | 'model' | 'selectModel'>
+  readonly sessions: Pick<Sessions, 'status' | 'notify' | 'delivery' | 'model' | 'selectModel' | 'capabilities'>
   readonly settings: Pick<Settings, 'view' | 'save' | 'pause' | 'sync' | 'refreshLabels'>
   readonly engine: EngineForPeople
   readonly executor: Pick<DshExecutor, 'activeCount'>
@@ -208,10 +208,15 @@ function routes(runtime: HttpHost): Routes {
       if (!runtime.local) throw new RouteError(404, 'Local task intake is not enabled')
       return runtime.local.workspaces()
     },
+    'GET local/capabilities': () => runtime.sessions.capabilities(),
     'POST local/workspaces': async ({ body }) => {
       if (!runtime.local) throw new RouteError(404, 'Local task intake is not enabled')
       const request = z.object({ directory: z.string().trim().min(1).max(4096) }).strict().parse(await body(32 * 1024))
       return runtime.local.addWorkspace(request.directory)
+    },
+    'DELETE local/workspaces/:id': ({ params }) => {
+      if (!runtime.local) throw new RouteError(404, 'Local task intake is not enabled')
+      return runtime.local.removeWorkspace(params.id)
     },
     'POST local/tasks': async ({ body }) => {
       if (!runtime.local) throw new RouteError(404, 'Local task intake is not enabled')

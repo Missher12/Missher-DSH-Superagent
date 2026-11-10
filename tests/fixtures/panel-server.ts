@@ -114,7 +114,7 @@ export interface PanelServer {
   opened: string[]
   openedWorkspaces: string[]
   pickedDirectory: string | null
-  workspaceChoices: { id: string; title: string; directory: string }[]
+  workspaceChoices: { id: string; title: string; directory: string; activeTasks?: number; protected?: boolean }[]
   dropped: DroppedReply[]
   failing: Extract<Problem, { kind: 'outgoing' }>['outgoing'][]
 }
@@ -349,7 +349,16 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     return { items: items.slice(offset, offset + limit), total: items.length,
       next_offset: offset + limit < items.length ? offset + limit : null }
   } },
-  'GET local/workspaces': { answer: () => server.workspaceChoices },
+  'GET local/workspaces': { answer: () => server.workspaceChoices.map(workspace => ({ ...workspace, activeTasks: workspace.activeTasks ?? 0, protected: workspace.protected ?? false })) },
+  'GET local/capabilities': { answer: () => ({ tools: [
+    { name: 'missher_project_ops_doctor', registered: true, worker: true, lastCall: undefined },
+    { name: 'missher_project_ops_task_run', registered: true, worker: false, lastCall: undefined },
+  ] }) },
+  'DELETE local/workspaces/:id': { answer: ({ params }) => {
+    const before = server.workspaceChoices.length
+    server.workspaceChoices = server.workspaceChoices.filter(workspace => workspace.id !== params.id)
+    return { removed: before !== server.workspaceChoices.length }
+  } },
   'POST local/workspaces': { body: true, answer: ({ body }) => {
     const existing = server.workspaceChoices.find(item => item.directory === body.directory)
     if (existing) return existing

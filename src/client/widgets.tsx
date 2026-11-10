@@ -72,19 +72,20 @@ export function ClampText({ text }: { text: string }) {
   </>
 }
 
-export function ConfirmButton({ label, title, message, onConfirm, variant = 'ghost', icon }: {
+export function ConfirmButton({ label, title, message, onConfirm, variant = 'ghost', icon, disabled = false, disabledReason, confirmLabel }: {
   label: string; title: string; message: string; onConfirm: () => Promise<unknown>; variant?: 'ghost' | 'outline'; icon?: IconName
+  disabled?: boolean; disabledReason?: string; confirmLabel?: string
 }) {
   const { t } = usePanel()
   const [open, setOpen] = useState(false)
   const confirm = useAction(onConfirm)
   return <>
-    <Button variant={variant} size="sm" icon={icon && <Icon name={icon} size={14} />} onClick={() => setOpen(true)}>{label}</Button>
+    <Button variant={variant} size="sm" icon={icon && <Icon name={icon} size={14} />} aria-label={label} disabled={disabled} title={disabledReason ?? label} onClick={() => setOpen(true)}>{label}</Button>
     <Modal open={open} onClose={() => setOpen(false)} title={title} closeLabel={t('close')} description={message}
       footer={<>
         <Button variant="ghost" onClick={() => setOpen(false)}>{t('cancel')}</Button>
-        <Button variant="primary" disabled={confirm.busy}
-          onClick={() => { void confirm.run().then(done => { if (done) setOpen(false) }) }}>{t('confirm')}</Button>
+        <Button variant="primary" disabled={confirm.busy || disabled}
+          onClick={() => { void confirm.run().then(done => { if (done) setOpen(false) }) }}>{confirmLabel ?? t('confirm')}</Button>
       </>} />
   </>
 }
@@ -92,7 +93,7 @@ export function SessionButton({ sessionId, label, external = false,
   variant = 'ghost' }: { sessionId: string; label?: string; variant?: 'ghost' | 'outline'; external?: boolean }) {
   const { t, openSession, notify, renderSession, navigate } = usePanel()
   const { setup } = usePanelData()
-  return <Button variant={variant} size="sm" icon={<Icon name="session" size={14} />}
+  return <Button variant={variant} size="sm" icon={<Icon name="session" size={14} />} aria-label={label ?? t('openSession')} title={label ?? t('openSession')}
     onClick={() => { if (!external && renderSession && setup?.mode === 'local') navigate({ page: 'overview', query: { session: sessionId } })
       else openSession(sessionId).catch(error => notify(errorText(error))) }}>{label ?? t('openSession')}</Button>
 }

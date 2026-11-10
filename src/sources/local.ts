@@ -16,6 +16,7 @@ import { workspaceOf } from '../executor/workspace.ts'
 import { executionRoot } from '../app/execution-environment.ts'
 import { RoleModelSchema } from '../policy.ts'
 import { resolveRoleModel, sessionModels } from '../app/role-models.ts'
+import { toolParameters } from '../app/tools/tool.ts'
 
 export const LocalRequestSchema = z.object({
   requestId: z.string().trim().min(1).max(200), title: z.string().trim().min(1).max(160),
@@ -62,9 +63,22 @@ export class LocalTasks {
       this.receiveFollowup(id, `native:${message.id}`, text.slice(0, 64000), message)
     }))
   }
-  workspaces() {
+  workspaces(): { id: string; title: string; directory: string; activeTasks: number; protected: boolean }[] {
+    let root = executionRoot(this.runtime.store.settings(), this.runtime.machine.stateDir)
+    try { root = realpathSync(root) } catch { /* A missing root can still be identified by its configured absolute path. */ }
+    const active = this.runtime.store.tickets.list().filter(ticket => !ticket.ended || this.runtime.sessions.activity(workerSessionId(ticket.id)).running)
     return this.ctx.workspaceRegistry.list().filter(workspace => workspace.path !== this.runtime.machine.stateDir)
-      .map(workspace => ({ id: workspace.id, title: workspace.title, directory: workspace.path }))
+      .map(workspace => ({ id: workspace.id, title: workspace.title, directory: workspace.path,
+        activeTasks: active.filter(ticket => workspaceOf(this.runtime.store, ticket)?.directory === workspace.path).length,
+        protected: workspace.path === root }))
+  }
+  /** Remove only the host's registration. The host retains its directory and every session log. */
+  async removeWorkspace(id: string): Promise<{ removed: boolean }> {
+    const workspace = this.workspaces().find(workspace => workspace.id === id)
+    if (!workspace) return { removed: false }
+    if (workspace.protected) throw new LocalTaskError('这是 Superagent 任务根工作区，不能移除')
+    if (workspace.activeTasks) throw new LocalTaskError('工作区还有未完成或正在运行的任务，请先完成或停止任务')
+    return { removed: await this.ctx.workspaceRegistry.delete(id as Parameters<typeof this.ctx.workspaceRegistry.delete>[0]) }
   }
   async ensureWorkspace(): Promise<void> {
     const directory = executionRoot(this.runtime.store.settings(), this.runtime.machine.stateDir)
@@ -178,7 +192,7 @@ export class LocalTasks {
     const ctx = this.ctx
     this.disposers.push(ctx.tools.register({ name: 'superagent_task',
       description: '管理本地后台任务。只有用户明确要求派单、交给 Superagent 或后台执行时才 create；普通开发请求请直接完成。创建后立即返回，不等待轮询。directory 默认当前工作区。get/list 查看结果；followup 补充要求；stop 停止；retry 重试失败任务。不得自行派出额外任务。',
-      parameters: z.toJSONSchema(schema),
+      parameters: toolParameters(schema),
       output: { schema: {}, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       execute: async (args, execution) => {
         const input = schema.parse(args), agent = execution.agent

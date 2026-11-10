@@ -4,7 +4,7 @@ import { usePoll } from './api.ts'
 import { Button, Icon, Input } from './controls.tsx'
 import { selectLocalWorkspace } from './local.tsx'
 import { useAction, usePanel } from './provider.tsx'
-import { LoadState } from './widgets.tsx'
+import { ConfirmButton, LoadState } from './widgets.tsx'
 
 export function OpenWorkspaceButton({ directory, compact = false }: { directory: string; compact?: boolean }) {
   const { t, call, openWorkspace } = usePanel()
@@ -41,8 +41,15 @@ export function LocalWorkspaces() {
         onClick={() => { void open.run(workspace.id) }}><Icon name="folder" size={25} /></button>
         <div><h3 title={workspace.title}>{workspace.title}</h3><p title={workspace.directory}>{workspace.directory}</p></div></div>
       <div className="dt-actions"><Button variant="ghost" icon={<Icon name="external" size={14} />} disabled={open.busy}
-        onClick={() => { void open.run(workspace.id) }}>{t('localOpenWorkspace')}</Button>
-        <Button variant="primary" icon={<Icon name="plus" size={14} />} onClick={() => { selectLocalWorkspace(workspace.directory); navigate({ page: 'execution' }) }}>{t('localWorkspaceTask')}</Button></div>
+        aria-label={t('localOpenWorkspace')} onClick={() => { void open.run(workspace.id) }}>{t('localWorkspaceOpenShort')}</Button>
+        <Button variant="ghost" icon={<Icon name="plus" size={14} />} aria-label={t('localWorkspaceTask')}
+          onClick={() => { selectLocalWorkspace(workspace.directory); navigate({ page: 'execution' }) }}>{t('localWorkspaceTask')}</Button></div>
+      <div className="dt-workspace-remove"><ConfirmButton variant="ghost" icon="trash" label={t('localRemoveWorkspace')}
+        title={t('localRemoveWorkspaceTitle', { name: workspace.title })} message={t('localRemoveWorkspaceConfirm')}
+        confirmLabel={t('localRemoveWorkspace')} disabled={workspace.protected || workspace.activeTasks > 0}
+        disabledReason={workspace.protected ? t('localWorkspaceProtected') : workspace.activeTasks ? t('localWorkspaceBusy') : undefined} onConfirm={async () => {
+          await call('DELETE local/workspaces/:id', { id: workspace.id }); await reload()
+        }} /></div>
     </li>)}</ul>}
     {data?.length === 0 && <p className="dt-hint">{t('localNoWorkspaces')}</p>}
     {!!data?.length && !workspaces?.length && <p className="dt-hint" role="status">{t('localNoWorkspaceMatches')}</p>}

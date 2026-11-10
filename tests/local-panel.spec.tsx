@@ -330,6 +330,34 @@ it('opens advanced settings separately and retains an unsaved basic setting', as
   expect(field<HTMLInputElement>(zh.localMaxWorkers).value).toBe('4')
   expect(server.requests.some(request => request.method === 'PUT')).toBe(false)
 })
+it('confirms workspace removal separately and disables removal for running and protected workspaces', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  server.workspaceChoices = [{ id: 'old', title: '旧项目', directory: '/tmp/old' },
+    { id: 'active', title: '活动项目', directory: '/tmp/active', activeTasks: 1 },
+    { id: 'root', title: '任务根目录', directory: '/tmp/root', protected: true }]
+  await mount(); await click('工作区')
+  const buttons = all('.dt-workspace-remove button') as HTMLButtonElement[]
+  expect(buttons.map(button => button.disabled)).toEqual([false, true, true])
+  await click(buttons[0]!)
+  expect(text()).toContain('磁盘文件、会话和任务记录都会保留')
+  await click('取消')
+  expect(server.requests.some(request => request.method === 'DELETE')).toBe(false)
+  await click(buttons[0]!)
+  await click(all('[role="dialog"] button').find(button => button.textContent === '移除工作区')!)
+  expect(server.requests.find(request => request.method === 'DELETE')?.path).toBe('local/workspaces/old')
+  expect(all('.dt-local-workspace-row')).toHaveLength(2)
+})
+it('distinguishes host plugin loading from member tool availability without invoking any tools', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  await mount(); await click('设置'); await click('插件能力')
+  expect(text()).toContain('Project Ops')
+  expect(text()).toContain('已加载')
+  await click(all('.dt-plugin-tools summary')[0]!)
+  expect(text()).toContain('已向成员开放')
+  expect(text()).toContain('未向成员开放')
+  expect(server.requests.some(request => request.path === 'local/capabilities')).toBe(true)
+  expect(server.requests.some(request => request.method !== 'GET')).toBe(false)
+})
 
 it('keeps full reports in task details while the board stays concise', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }

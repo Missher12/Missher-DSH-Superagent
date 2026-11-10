@@ -96,7 +96,7 @@ export class McpTasks {
     return [...new Set(ids)].map(id => {
       const project = available.find(item => item.id === id)
       if (!project) throw new McpTaskError(400, '工作区不存在，请重新选择')
-      return { ...project, directory: canonicalWorkspace({ directory: project.directory,
+      return { id: project.id, title: project.title, directory: canonicalWorkspace({ directory: project.directory,
         permissionPreset: this.ctx.permissionPresets.defaultPreset }).directory }
     })
   }

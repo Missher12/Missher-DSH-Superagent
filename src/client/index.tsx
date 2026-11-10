@@ -20,6 +20,7 @@ import { PluginConfig, usePageForm } from './deployment.tsx'
 import { en, zh } from './locales.ts'
 import type { T } from './text.ts'
 import { LoadState } from './widgets.tsx'
+import type { HostPlugin } from './provider.tsx'
 
 declare module '@deepseek-ai/dsh-api-session-controller/client' {
   interface SessionReferenceSourceMap { superagent: unknown }
@@ -84,12 +85,20 @@ function Mounted({ ctx, t, seat }: { ctx: ClientContext; t: T; seat: Conversatio
     await ctx.uiWorkspace.openWorkspace(id as Parameters<typeof ctx.uiWorkspace.openWorkspace>[0])
   }, [ctx])
   const pickDirectory = useCallback(() => pickWorkspaceDirectory(() => ctx.uiWorkspace.pickDirectory()), [ctx])
+  const inspectPlugins = useCallback(async (): Promise<HostPlugin[]> => {
+    const remote = (ctx as unknown as { remote?: { pluginManager?: { listPlugins(): Promise<{ ok: boolean; value?: (HostPlugin & { meta?: { title?: HostPlugin['title'] } })[] }> } } }).remote
+    if (!remote?.pluginManager) throw new Error(t('localPluginsUnavailable'))
+    const result = await remote.pluginManager.listPlugins()
+    if (!result.ok || !Array.isArray(result.value)) throw new Error(t('localPluginsUnavailable'))
+    return result.value.map(plugin => ({ entryId: plugin.entryId, moduleName: plugin.moduleName, enabled: plugin.enabled,
+      fiberPhase: plugin.fiberPhase, title: plugin.meta?.title }))
+  }, [ctx, t])
   const form = usePageForm(ctx.get('configForms')?.get<Record<string, unknown>>(ENTRY))
   const renderSession = useCallback((id: string) => <EmbeddedSession key={id} ctx={ctx} id={id} seat={seat} t={t} />, [ctx, seat, t])
-  return <App t={t} openSession={openSession} renderSession={renderSession} nativeSession openWorkspace={openWorkspace} pickDirectory={pickDirectory} deploymentForm={form} />
+  return <App t={t} openSession={openSession} renderSession={renderSession} nativeSession inspectPlugins={inspectPlugins} openWorkspace={openWorkspace} pickDirectory={pickDirectory} deploymentForm={form} />
 }
 
-export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace']
+export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace', 'remote', 'remote.pluginManager']
 /** Registers the panel, sidebar icon, and Plugin Manager config view; `configForms` is optional (without it, machine settings are read-only). */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-superagent: dictionaries')

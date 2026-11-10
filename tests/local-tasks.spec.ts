@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync, existsSync, readdirSync } from 'node:fs'
+import { mkdirSync, realpathSync, existsSync, readdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { startRuntime, type Host } from './fixtures/host.ts'
@@ -286,4 +286,37 @@ it('registers an existing project as a DSH workspace without dispatching a task'
     body: { id: realpathSync(directory), title: 'workspace-project', directory: realpathSync(directory) } })
   expect(host.runtime.store.tickets.list()).toHaveLength(0)
   expect((await host.api('POST', 'local/workspaces', { directory: `${directory}/missing` })).status).toBeGreaterThanOrEqual(400)
+})
+it('removes only a workspace registration and retains completed tasks, session logs and files', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const directory = join(host.directory, 'removable-project'); mkdirSync(directory)
+  writeFileSync(join(directory, 'keep.txt'), 'keep this file')
+  const workspace = await host.runtime.local!.addWorkspace(directory)
+  const task = await host.runtime.local!.create({ requestId: 'removal-check', title: '完成后移除', instructions: '读取文件', directory })
+  await host.runtime.idle(); host.step(task.sessionId)
+  await host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '已核对文件' })
+  await host.runtime.idle()
+  await expect(host.runtime.local!.removeWorkspace(workspace.id)).rejects.toThrow('正在运行')
+  const agent = host.agents.get(task.sessionId)!; agent.status = 'idle'
+  host.ctx.emit('agent/status', { agent, status: 'idle' } as never)
+  await host.runtime.idle()
+  const original = host.runtime.store.tickets.get(task.ticketId)
+  expect(await host.api('DELETE', `local/workspaces/${encodeURIComponent(workspace.id)}`)).toMatchObject({ status: 200, body: { removed: true } })
+  expect(host.runtime.local!.workspaces().some(item => item.id === workspace.id)).toBe(false)
+  expect(readFileSync(join(directory, 'keep.txt'), 'utf8')).toBe('keep this file')
+  expect(host.runtime.store.tickets.get(task.ticketId)).toEqual(original)
+  expect(host.agents.has(task.sessionId)).toBe(true)
+  expect(await host.runtime.local!.removeWorkspace(workspace.id)).toEqual({ removed: false })
+  expect(await host.runtime.local!.addWorkspace(directory)).toMatchObject({ directory: realpathSync(directory) })
+})
+it('refuses removal of the task root and a workspace with unfinished work', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const root = host.runtime.local!.workspaces().find(workspace => workspace.protected)!
+  await expect(host.runtime.local!.removeWorkspace(root.id)).rejects.toThrow('任务根工作区')
+  const directory = join(host.directory, 'active-project'); mkdirSync(directory)
+  const workspace = await host.runtime.local!.addWorkspace(directory)
+  await host.runtime.local!.create({ requestId: 'active-removal', title: '仍在运行', instructions: '核对文件', directory })
+  await host.runtime.idle()
+  expect(host.runtime.local!.workspaces().find(item => item.id === workspace.id)!.activeTasks).toBeGreaterThan(0)
+  await expect(host.runtime.local!.removeWorkspace(workspace.id)).rejects.toThrow('未完成')
 })

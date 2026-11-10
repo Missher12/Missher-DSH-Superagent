@@ -21,7 +21,8 @@ import { bundledSkills } from './skill-files.ts'
 import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
 import type { Store } from './store.ts'
 import { KV } from '../kv.ts'
-import type { RegisterTool, Tool } from './tools/tool.ts'
+import { toolParameters, type RegisterTool, type Tool } from './tools/tool.ts'
+import { PROJECT_OPS_READ_TOOLS, PROJECT_OPS_OTHER_TOOLS } from './plugin-tools.ts'
 
 /** Host dependencies used by `Sessions`. */
 export interface SessionsHost {
@@ -61,10 +62,10 @@ declare module '@deepseek-ai/cordis' {
  * The DSH tools an Executor Session works with: files, search, the shell and its jobs, the web, skills, its todo list and
  * subagents. It gets no other tool the profile has, whenever it was registered: none that asks or shows a person something,
  * changes the profile, schedules work or starts goals outside the worker slots, the pause and a person's hold, starts or
- * messages other Sessions, or edits documents.
+ * messages other Sessions. Project Ops exposes only its four read-only project tools.
  */
 const WORK_TOOLS = ['read', 'write', 'edit', 'read_image', 'glob', 'grep', 'bash', 'pwsh', 'job_output', 'job_list', 'job_kill', 'web_search',
-  'web_fetch', 'skill', 'todo_write', 'subagent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent']
+  'web_fetch', 'skill', 'todo_write', 'subagent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent', ...PROJECT_OPS_READ_TOOLS]
 /** What the main Session is told when it would wait: what it waits for comes to it, and a waiting step holds back the next. */
 const NO_WAIT = 'Reports, follow_up notices, new candidates and a background job\'s end with its output arrive by themselves as messages; '
   + 'end the turn instead of waiting for them.'
@@ -311,6 +312,15 @@ export class Sessions {
     const agent = this.ctx.agents.get(sessionId as SessionId)
     return { running: agent?.status === 'running', tools: this.recentTools.get(sessionId) ?? [] }
   }
+  /** Availability in the host and the explicit worker policy are separate signals. No tool is invoked here. */
+  capabilities() {
+    return { tools: [...PROJECT_OPS_READ_TOOLS, ...PROJECT_OPS_OTHER_TOOLS].map(name => {
+      const lastCall = [...this.recentTools].flatMap(([sessionId, tools]) => tools.filter(tool => tool.name === name)
+        .map(tool => ({ sessionId, at: tool.at, state: tool.state }))).sort((a, b) => b.at.localeCompare(a.at))[0]
+      return { name, registered: typeof this.ctx.tools.get === 'function' && !!this.ctx.tools.get(name),
+        worker: WORK_TOOLS.includes(name), lastCall }
+    }) }
+  }
   /** Match a reported check to a real shell call from the current assignment without exposing raw commands in activity views. */
   commandEvidence(sessionId: string, command: string, since: string) {
     return this.recentTools.get(sessionId)?.findLast(tool => tool.at >= since && this.recentCommands.get(sessionId)?.get(tool.id) === command.trim())
@@ -327,7 +337,7 @@ export class Sessions {
   /** Returns a tool registrar for `agent` that renders tool output as JSON text and attaches `output.image` as an image when present. */
   private registerTool(agent: Agent, binding: SessionBinding): RegisterTool {
     return (name, description, schema, execute) => {
-      binding.disposers.push(agent.ctx.tools.register({ name, description, parameters: z.toJSONSchema(schema),
+      binding.disposers.push(agent.ctx.tools.register({ name, description, parameters: toolParameters(schema),
         output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => {
           const text = { type: 'text' as const, text: JSON.stringify(value) }
           const image = value && typeof value === 'object' && 'image' in value ? (value as { image: never }).image : undefined

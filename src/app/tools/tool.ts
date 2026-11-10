@@ -12,6 +12,9 @@ export interface Tool<S extends z.ZodType = z.ZodType> {
 export type RegisterTool = <S extends z.ZodType>(name: string, description: string, schema: S, execute: Tool<S>['execute']) => void
 export const tool = <S extends z.ZodType>(definition: Tool<S>): Tool => definition as unknown as Tool
 
+/** Zod adds hidden Standard Schema methods; the host requires a pure JSON tool schema. */
+export const toolParameters = (schema: z.ZodType): ReturnType<typeof z.toJSONSchema> => JSON.parse(JSON.stringify(z.toJSONSchema(schema)))
+
 /** Human-facing acknowledgement text, constrained to `IM_WORDS` regardless of which channel it is posted to. */
 export const AcknowledgementSchema = z.string().trim().min(1)
   .refine(text => wordCount(text) <= IM_WORDS, `An acknowledgement has at most ${IM_WORDS} words (Chinese uses word segmentation); write one short sentence.`)

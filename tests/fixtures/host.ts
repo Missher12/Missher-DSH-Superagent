@@ -31,6 +31,7 @@ export function feishu(id: string, text: string, overrides: Record<string, unkno
 
 type RegisteredTool = { name: string; execute: (args: unknown, execution: { signal: AbortSignal }) => Promise<unknown> }
 type FakeAgent = {
+  ctx: Context
   id: string; status: string; inbox: { nextTurn: UserMessage[]; nextStep: UserMessage[] }
   cancel: Mock; inject: Mock<(message: UserMessage) => void>; steer: Mock<(message: UserMessage) => void>; followup: Mock<(message: UserMessage) => void>
 }
@@ -161,6 +162,7 @@ export async function startRuntime(seed?: (store: Store) => void, machine: Parti
     const done = argv[0] === 'sh' && hooks.prepare ? hooks.prepare.then(() => exited) : Promise.resolve(exited)
     return { done, collected: { stdout: reader(answers[argv.join(' ')] ?? ''), stderr: reader('') } }
   }) }
+  const rootTools = new Map<string, RegisteredTool>()
   const agents = new Map<string, FakeAgent>()
   /** Each Session's next step, which takes the messages that wait for one. */
   const steps = new Map<string, () => void>(), claims = new Map<string, () => void>()
@@ -175,7 +177,7 @@ export async function startRuntime(seed?: (store: Store) => void, machine: Parti
       const sessionTools = new Map<string, RegisteredTool>()
       tools.set(sessionId, sessionTools)
       const register = (tool: RegisteredTool) => { sessionTools.set(tool.name, tool); return () => sessionTools.delete(tool.name) }
-      agentCtx.reflect.provide('tools', { register, get: () => undefined, restrict: vi.fn(() => () => {}), guard: vi.fn(() => () => {}) })
+      agentCtx.reflect.provide('tools', { register, get: (name: string) => rootTools.get(name), restrict: vi.fn(() => () => {}), guard: vi.fn(() => () => {}) })
       agentCtx.reflect.provide('skills', { register: () => () => {} })
       agentCtx.reflect.provide('systemPrompt', { section: () => () => {} })
       const inbox = { nextTurn: [] as UserMessage[], nextStep: [] as UserMessage[],
@@ -243,7 +245,6 @@ export async function startRuntime(seed?: (store: Store) => void, machine: Parti
   const jobs = jobRegistry(id => agents.get(id))
   const subagents = subagentRuntime(agents)
   const permission = new Map<string, string>()
-  const rootTools = new Map<string, RegisteredTool>()
   const workspaces = new Map<string, { id: string; path: string; title: string; setTitle: (title: string) => Promise<void> }>()
   const workspace = (cwd: string, title: string) => ({ id: cwd, path: cwd, title,
     setTitle: async (next: string) => { workspaces.get(cwd)!.title = next } })
@@ -252,10 +253,10 @@ export async function startRuntime(seed?: (store: Store) => void, machine: Parti
     sessionPersistence: persistence, workspaceRegistry: { create: async (cwd: string, title?: string) => {
       if (!workspaces.has(cwd)) workspaces.set(cwd, workspace(cwd, title ?? cwd.split('/').at(-1)!))
       return workspaces.get(cwd)!
-    }, get: (id: string) => workspaces.get(id), list: () => [...workspaces.values()] },
+    }, get: (id: string) => workspaces.get(id), list: () => [...workspaces.values()], delete: async (id: string) => workspaces.delete(id) },
     permissionPresets: { defaultPreset: 'workspace-write', current: (session: { id: string }) => permission.get(session.id) ?? 'workspace-write',
       set: (session: { id: string }, preset: string) => { permission.set(session.id, preset) } },
-    tools: { register: (tool: RegisteredTool) => { rootTools.set(tool.name, tool); return () => { rootTools.delete(tool.name) } } }, subprocess, webServer,
+    tools: { register: (tool: RegisteredTool) => { rootTools.set(tool.name, tool); return () => { rootTools.delete(tool.name) } }, get: (name: string) => rootTools.get(name) }, subprocess, webServer,
     jobs: jobs.service, subagents: subagents.service }
   const ctx = new Context()
   for (const [name, service] of Object.entries(services)) ctx.reflect.provide(name, service)
