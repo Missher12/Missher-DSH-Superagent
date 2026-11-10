@@ -1,5 +1,5 @@
 /** Native settings for external applications dispatching tasks over MCP. */
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { ApiResponse } from '../app/api.ts'
 import { usePoll } from './api.ts'
 import { Button, Icon, Input, Modal, Switch } from './controls.tsx'
@@ -13,6 +13,7 @@ type Credential = ApiResponse<'POST mcp/clients/:id/token'>
 
 export function McpSettings() {
   const { call, t, notify } = usePanel()
+  const formId = useId()
   const { data, error, reload } = usePoll(() => call('GET mcp'), [call])
   const { data: workspaces, error: workspaceError } = usePoll(() => call('GET local/workspaces'), [call])
   const [editing, setEditing] = useState<{ id?: string; name: string; workspaceIds: string[] }>()
@@ -63,8 +64,11 @@ export function McpSettings() {
       </div>)}
     </Fields>
     <Modal className="dt-mcp-dialog" open={!!editing} title={editing?.id ? t('mcpConfigure') : t('mcpAdd')} closeLabel={t('close')}
-      onClose={() => { if (!busy) setEditing(undefined) }}>
-      {editing && <form className="dt-form dt-mcp-form" onSubmit={event => { event.preventDefault(); void save() }}>
+      onClose={() => { if (!busy) setEditing(undefined) }} footer={<>
+        <Button disabled={busy} onClick={() => setEditing(undefined)}>{t('cancel')}</Button>
+        <Button type="submit" form={formId} variant="primary" disabled={busy || !editing?.name.trim() || !editing.workspaceIds.length}>{t('save')}</Button>
+      </>}>
+      {editing && <form id={formId} className="dt-form dt-mcp-form" onSubmit={event => { event.preventDefault(); void save() }}>
         <Fields disabled={busy}>
           <Field label={t('mcpName')}><Input value={editing.name} required maxLength={100}
             onChange={event => setEditing({ ...editing, name: event.target.value })} /></Field>
@@ -77,8 +81,6 @@ export function McpSettings() {
           </fieldset></Field>
           <Hint>{t('mcpGrantHint')}</Hint>
           {failure && <p className="dt-error" role="status">{failure}</p>}
-          <div className="dt-actions dt-mcp-form-actions"><Button onClick={() => setEditing(undefined)}>{t('cancel')}</Button>
-            <Button type="submit" variant="primary" disabled={!editing.name.trim() || !editing.workspaceIds.length}>{t('save')}</Button></div>
           {editing.id && <div className="dt-mcp-credentials">
             <ConfirmButton label={t('mcpResetToken')} title={t('mcpResetToken')} message={t('mcpResetHint')}
               onConfirm={() => perform(async () => {

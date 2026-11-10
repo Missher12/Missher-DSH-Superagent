@@ -10,8 +10,10 @@ export function ModelSelect({ value, onChange, id, disabled, label }: {
   const { data, error } = usePoll(() => call('GET models'), [call], 60_000)
   const selected = value ? JSON.stringify([value.provider, value.model]) : ''
   const listed = data?.groups.some(group => group.id === value?.provider && group.models.some(model => model.id === value?.model))
+  const group = data?.groups.find(group => group.id === value?.provider)
+  const selectedName = value ? `${group?.name ?? value.provider} · ${group?.models.find(model => model.id === value.model)?.name ?? value.model}` : t('taskModelDefault')
   return <select id={id} className="dt-select dt-model-select" aria-label={label} disabled={disabled || !data}
-    value={selected} title={error ? t('modelPickerError') : label} onChange={event => {
+    value={selected} title={error ? t('modelPickerError') : selectedName} onChange={event => {
       if (!event.target.value) { onChange(undefined); return }
       const [provider, model] = JSON.parse(event.target.value) as [string, string]
       onChange({ provider, model })

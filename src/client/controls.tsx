@@ -172,7 +172,7 @@ export function DisclosureRow({ icon, title, open, onToggle, collapsedContent, c
 const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
 function trapTab(event: globalThis.KeyboardEvent, dialog: HTMLElement) {
   // Query `*` and filter so elements stay in document order across all DOM implementations.
-  const items = [...dialog.querySelectorAll<HTMLElement>('*')].filter(element => element.matches(FOCUSABLE))
+  const items = [...dialog.querySelectorAll<HTMLElement>('*')].filter(element => element.matches(FOCUSABLE) && !element.matches(':disabled') && !element.closest('[hidden], [inert]'))
   const first = items[0], last = items.at(-1), active = document.activeElement
   const target = event.shiftKey ? last : first
   if (!target || !dialog.contains(active) || active === dialog || active === (event.shiftKey ? first : last)) {
@@ -194,7 +194,9 @@ export function Modal({ open, onClose, title, closeLabel, description, footer, c
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
     dialog.current?.focus()
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') close.current()
+      // A confirmation can open over a settings dialog. Only the top dialog owns the keyboard.
+      if (document.querySelectorAll('.dt-modal').item(document.querySelectorAll('.dt-modal').length - 1) !== dialog.current) return
+      if (event.key === 'Escape') { event.preventDefault(); close.current() }
       else if (event.key === 'Tab' && dialog.current) trapTab(event, dialog.current)
     }
     document.addEventListener('keydown', onKeyDown)

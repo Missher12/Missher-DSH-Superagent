@@ -2,7 +2,7 @@
 
 ![Superagent · 项目任务（品牌插画）](docs/images/cover-v2.png)
 
-当前版本 **1.4.3** · [下载安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.4.3)
+当前版本 **1.5.1** · [下载安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.5.1)
 在 DSH 里派出任务，在 Superagent 的独立工作区中查看执行会话、文件目录、进度和结果。
 
 适用场景：调研代码、定位问题、修改功能、运行相关检查。任务会在自动创建的独立目录或你选择的已有项目目录内工作，遵守该项目的 `AGENTS.md`。

@@ -19,7 +19,7 @@
 ---
 
 <!-- current-source -->
-当前开发源码：**1.4.3** · [分支 `main`](https://github.com/Missher12/Missher-DSH-Superagent/tree/main)。安装包以实际 Release 为准。
+当前开发源码：**1.5.1** · [分支 `main`](https://github.com/Missher12/Missher-DSH-Superagent/tree/main)。[已发布安装包为 1.4.3](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.4.3)；开发源码与已发布安装包分别记录。
 <!-- /current-source -->
 
 ## 功能一览
