@@ -4,7 +4,8 @@ import { Select } from './select.tsx'
 import { effortLabel } from './model-labels.ts'
 import { LIMITS } from '../limits.ts'
 import { type ApiResponse } from '../app/api.ts'
-import { Button, Icon, Input } from './controls.tsx'
+import { Button, Icon, Input, SegmentedControl } from './controls.tsx'
+import { DENSITIES, useDensity } from './density.ts'
 import { SaveBar } from './draft.tsx'
 import { usePanel } from './provider.tsx'
 import { PromptsPage } from './prompts.tsx'
@@ -14,6 +15,15 @@ import { Hint, Section } from './widgets.tsx'
 import { McpSettings } from './local-mcp.tsx'
 import { SourceSettings } from './source.tsx'
 import { EvalSettings } from './eval.tsx'
+
+function InterfaceSettings() {
+  const { t } = usePanel(), { density, setDensity } = useDensity()
+  return <div className="dt-form dt-local-settings"><Section title={t('interfaceSettings')}>
+    <Field label={t('interfaceDensity')} note={t('densityHint')}><SegmentedControl label={t('interfaceDensity')} value={density}
+      options={DENSITIES.map(value => ({ value, label: t(`density.${value}`) }))} onChange={setDensity} /></Field>
+    <div className="dt-actions dt-density-reset"><Button variant="ghost" disabled={density === 'compact'} onClick={() => setDensity('compact')}>{t('densityReset')}</Button></div>
+  </Section></div>
+}
 
 function SettingsForm() {
   const { t, call } = usePanel()
@@ -71,7 +81,7 @@ export function LocalSettings() {
   const entries = [{ id: 'mcp' as const, title: t('mcpTitle') }, { id: 'sources' as const, title: t('localExternalTitle') },
     { id: 'policy' as const, title: t('localExternalPolicy') }, { id: 'prompts' as const, title: t('settingsGroup.prompts') }]
   return <SettingsProvider><div className="dt-local-settings-root"><h2 className="dt-local-management-title">{t('tab.settings')}</h2><div className="dt-local-settings-layout"><nav className="dt-local-settings-nav" aria-label={t('localSettingsGroups')}>
-    <button type="button" className="dt-local-setting-entry" aria-current={!editor ? 'page' : undefined} onClick={() => setEditor(undefined)}><Icon name="settings" /><span>{t('localSettingsTitle')}</span></button>
+    <button type="button" className="dt-local-setting-entry" aria-current={!editor ? 'page' : undefined} onClick={() => setEditor(undefined)}><Icon name="settings" /><span>{t('localGeneralSettings')}</span></button>
     {entries.map(entry => <button type="button" className="dt-local-setting-entry" key={entry.id} aria-label={entry.title} aria-current={editor === entry.id ? 'page' : undefined}
       onClick={() => setEditor(entry.id)}><Icon name={entry.id === 'prompts' ? 'message' : entry.id === 'policy' ? 'shield' : 'folder'} /><span>{entry.title}</span></button>)}
   </nav>{editor ? <section className="dt-local-settings-editor">
@@ -79,5 +89,5 @@ export function LocalSettings() {
       {editor !== 'mcp' && <h2>{entries.find(entry => entry.id === editor)!.title}</h2>}</header>
     <div className="dt-local-settings-content">{editor === 'mcp' ? <McpSettings /> : editor === 'sources' ? <SourceSettings include={['github', 'feishu']} />
       : editor === 'policy' ? <EvalSettings include={['github', 'feishu']} /> : <PromptsPage />}</div>
-  </section> : <div className="dt-form dt-local-settings-page"><SettingsForm /></div>}</div></div></SettingsProvider>
+  </section> : <div className="dt-form dt-local-settings-page"><InterfaceSettings /><SettingsForm /></div>}</div></div></SettingsProvider>
 }
