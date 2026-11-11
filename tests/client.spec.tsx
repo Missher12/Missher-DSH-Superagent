@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, useState, type ComponentType } from 'react'
+import { act, useState, type ComponentType, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ApiError, caller, usePoll } from '../src/client/api.ts'
@@ -66,6 +66,21 @@ it('opens a listed Session through the workspace from the main panel', async () 
   await openMaster(view.container)
   expect(ctx.uiWorkspace.openSession).toHaveBeenCalledExactlyOnceWith('master')
   view.dispose()
+})
+
+it('pins the embedded chat and context views independently of the native preferred view', async () => {
+  const { entries } = fixture([])
+  type Views = ComponentType<{ renderSlot: (name: string, props: { view: string }) => ReactNode }>
+  const renderFactorySlot = (_name: string, _props: unknown, options?: { slots: { views: Views } }) => {
+    const View = options?.slots.views
+    // This session was last opened on the native context tab.
+    return View ? <View renderSlot={(_name, props) => <span>{props.view}</span>} /> : <span>context-manager</span>
+  }
+  for (const [name, expected] of [['superagent.session', 'chat'], ['superagent.context', 'context-manager']]) {
+    const view = await render(entries.find(entry => entry.options.name === name)!, { renderFactorySlot })
+    expect(view.container.textContent).toBe(expected)
+    view.dispose()
+  }
 })
 
 it('reports a Session missing from the catalog in the interface language', async () => {

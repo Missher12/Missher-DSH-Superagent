@@ -32,6 +32,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 type ConversationSeat = PropsRenderSlots<'superagent.session' | 'superagent.context'>
 
+/** Keep the embedded transcript independent of the native page's last selected view. */
+function ChatSessionView({ renderSlot }: ConversationViewsProps) {
+  return renderSlot('conversation.session', { view: 'chat' })
+}
+
 /** Select the installed context plugin inside an independently scoped native Conversation factory. */
 function ContextPluginView({ renderSlot }: ConversationViewsProps) {
   return renderSlot('conversation.session', { view: 'context-manager' })
@@ -108,7 +113,8 @@ export function apply(ctx: ClientContext): void {
     children: { 'superagent.session': { kind: 'single', scope: 'session' }, 'superagent.context': { kind: 'single', scope: 'session' } } },
     (props: { t: T } & ConversationSeat) => <Mounted ctx={ctx} t={props.t} seat={props} />))
   ctx.slots.inject('superagent.session', () => ctx.slots.register({ name: 'superagent.session' },
-    ({ renderFactorySlot }: PropsRenderFactories) => renderFactorySlot('conversation.content', { variant: 'embedded', phase: 'active', hero: false })))
+    ({ renderFactorySlot }: PropsRenderFactories) => renderFactorySlot('conversation.content', { variant: 'embedded', phase: 'active', hero: false },
+      { slots: { views: ChatSessionView } })))
   ctx.slots.inject('superagent.context', () => ctx.slots.register({ name: 'superagent.context' },
     ({ renderFactorySlot }: PropsRenderFactories) => renderFactorySlot('conversation.content', { variant: 'embedded', phase: 'active', hero: false },
       { slots: { views: ContextPluginView } })))

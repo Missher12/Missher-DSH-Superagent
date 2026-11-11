@@ -53,3 +53,13 @@ it('resizes the project sidebar with the keyboard and keeps its width across pag
   expect(all('[role="separator"][aria-label="调整项目侧栏宽度"]')[0]!.getAttribute('aria-valuenow')).toBe(String(initial + 16))
   expect(JSON.parse(localStorage.getItem('dsh-superagent/studio-widths')!).left).toBe(initial + 16)
 })
+
+it('returns to the beginning of a task form when clearing a scrolled draft', async () => {
+  await mount(); await click('新建任务')
+  await type(field<HTMLTextAreaElement>('任务要求'), '尚未派出的草稿')
+  const body = all('.dt-composer-modal .dt-modal-body')[0]!
+  body.scrollTop = 160
+  await click('清空草稿')
+  expect(field<HTMLTextAreaElement>('任务要求').value).toBe('')
+  expect(body.scrollTop).toBe(0)
+})

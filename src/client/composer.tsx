@@ -22,6 +22,7 @@ export function ComposerForm({ id, disabled, onSubmit, failure, children }: {
   id: string; disabled: boolean; onSubmit: () => void; failure?: string; children: ReactNode
 }) {
   const { t } = usePanel(), [errors, setErrors] = useState<Record<string, string>>({}), focus = useRef<HTMLElement>(), form = useRef<HTMLFormElement>(null)
+  useLayoutEffect(() => { const body = form.current?.closest('.dt-modal-body'); if (body) body.scrollTop = 0 }, [])
   useLayoutEffect(() => {
     const field = focus.current
     if (field?.isConnected) {

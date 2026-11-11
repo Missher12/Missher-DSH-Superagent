@@ -7,7 +7,7 @@
 <p>派出项目任务，回来查看进度、执行过程与结果。</p>
 
 <p>
-  <a href="https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.9.1"><img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.9.1-4D6BFE?style=flat-square" alt="版本: 1.9.1"></a>
+  <a href="https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.9.3"><img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.9.3-4D6BFE?style=flat-square" alt="版本: 1.9.3"></a>
   <a href="https://github.com/Missher12/Missher-DSH-Superagent"><img src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-%E4%B8%AD%E6%96%87-4D6BFE?style=flat-square" alt="文档: 中文"></a>
   <a href="https://github.com/Missher12/Missher-DSH-Superagent/blob/main/LICENSE"><img src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF-MIT-6B7280?style=flat-square" alt="许可: MIT"></a>
 </p>
@@ -19,7 +19,7 @@
 ---
 
 <!-- current-source -->
-当前版本：**1.9.1** · [分支 `main`](https://github.com/Missher12/Missher-DSH-Superagent/tree/main) · [Release 与安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.9.1)。
+当前版本：**1.9.3** · [分支 `main`](https://github.com/Missher12/Missher-DSH-Superagent/tree/main) · [Release 与安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.9.3)。
 <!-- /current-source -->
 
 ## 功能一览
@@ -37,7 +37,7 @@
 
 ## 快速开始
 
-1. 从 [Releases](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.9.1) 下载对应版本的 `.tgz` 安装包。
+1. 从 [Releases](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.9.3) 下载对应版本的 `.tgz` 安装包。
 2. 在 DSH **插件 → 添加插件** 中选择下载的文件，安装并启用；按宿主提示重新加载或正常重启。
 3. 打开侧栏 **Superagent → 任务 → 新建任务**，或在聊天中明确要求派单。
 
