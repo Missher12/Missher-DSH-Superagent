@@ -934,12 +934,12 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-team-count-line { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 7px; font-size: 11px; color: var(--dsw-alias-label-secondary); }
 .dt-team-collaboration .dt-team-graph { margin: 18px 0 10px; padding: 0; }
 .dt-team-collaboration .dt-team-coordinator { padding-bottom: 32px; }
-.dt-team-collaboration .dt-team-workers { gap: 30px 12px; padding-bottom: 22px; }
+.dt-team-collaboration .dt-team-workers { grid-template-columns: repeat(auto-fit, minmax(min(100%, 148px), 1fr)); gap: 30px 12px; padding-bottom: 22px; }
 .dt-team-collaboration .dt-team-node { padding: 10px; gap: 6px; border-radius: 9px; transition: border-color 160ms ease, background 160ms ease, outline-color 160ms ease; }
 .dt-team-collaboration .dt-team-node[data-coordinator] { max-width: 180px; }
 .dt-team-collaboration .dt-team-node-head { gap: 6px; }
 .dt-team-collaboration .dt-team-avatar { width: 24px; height: 24px; border-radius: 6px; }
-.dt-team-collaboration .dt-team-node-head strong { font-size: 13px; }
+.dt-team-collaboration .dt-team-node-head strong { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dt-team-collaboration .dt-team-node-action { display: none; }
 .dt-team-collaboration .dt-team-node-model { font-size: 11px; padding-top: 2px; }
 .dt-team-node[data-running] { border-color: var(--dsw-alias-state-business-primary, var(--dsw-alias-label-primary)); }
