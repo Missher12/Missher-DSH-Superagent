@@ -58,6 +58,7 @@ export const TEAM_TEXT = {
   teamPrerequisite: ['前置交付：{names}', 'Prerequisite: {names}'],
   teamPlanningRound: ['协调回合已结束，团队仍在等待成员交付。', 'The planning round ended; the team is still waiting for member deliveries.'],
   teamNeedsHelp: ['受阻原因', 'Blocking issue'], teamImpact: ['受影响成员', 'Affected members'],
+  teamModelQuotaWait: ['模型额度不足，等待重试', 'Model quota exhausted; waiting to retry'],
   teamRetry: ['重试派发', 'Retry dispatch'], teamRetryMember: ['重试成员', 'Retry member'],
   teamStop: ['停止团队', 'Stop team'], teamStopHint: ['停止当前团队的执行任务，并取消尚未派出的成员。已产生的文件会保留。', 'Stop this team’s active tasks and cancel undispatched assignments. Existing files are preserved.'],
   teamCompletedCount: ['{done} / {total} 名成员已交付', '{done} / {total} members delivered'],

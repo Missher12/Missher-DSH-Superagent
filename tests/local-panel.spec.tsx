@@ -20,6 +20,29 @@ it('keeps model reasoning effort through draft restoration and dispatch', async 
   })
 })
 
+it('uses labelled host menus for task models and reasoning without losing the selected model', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  await mount(); await click('新建任务')
+  const model = all('button[aria-haspopup="menu"]').find(button => button.getAttribute('aria-label') === zh.localTaskModel)
+  expect(model, 'Task model uses the same labelled menu as settings').toBeDefined()
+  await click(model!)
+  const choice = all('[role="menuitem"]').find(item => item.textContent?.includes('Worker model'))
+  expect(choice).toBeDefined()
+  await click(choice!)
+  const effort = all('button[aria-haspopup="menu"]').find(button => button.getAttribute('aria-label') === zh.modelEffort)
+  expect(effort).toBeDefined()
+  await click(effort!)
+  const high = all('[role="menuitem"]').find(item => item.textContent?.trim() === zh['effortName.high'])
+  expect(high, 'Standard reasoning labels are localized').toBeDefined()
+  await click(high!)
+  expect(document.activeElement).toBe(effort)
+  await type(field<HTMLTextAreaElement>('任务要求'), '开发指定的插件')
+  await click('派出任务')
+  expect(server.requests.find(item => item.path === 'local/tasks' && item.method === 'POST')?.body).toMatchObject({
+    model: { provider: 'worker-provider', model: 'worker-model', reasoningEffort: 'high' },
+  })
+})
+
 it('opens a task workspace when its status is clicked', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   const task = ticketSummary({ id: 'status-jump', title: '从状态打开', sessionId: 'worker-status-jump' })

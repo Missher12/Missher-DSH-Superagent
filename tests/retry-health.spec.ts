@@ -14,6 +14,26 @@ const success = (seq: number, turn = 1, step = 2, provider = 'provider-a'): Sess
   data: { turn, step, stream: [], message: createAssistantMessage({ content: [], source: { provider, model: 'test-model' } }) },
 })
 
+it('keeps a structured quota failure visible across a resumed turn until a real model response succeeds', () => {
+  const health = new RetryHealth()
+  health.observe('worker', event('turn/end', 1, { turn: 1, reason: { kind: 'error', error: { code: 'QUOTA', message: 'private provider details' } } }))
+  expect(health.quotaWaiting('worker')).toBe(true)
+  health.clear('worker')
+  health.observe('worker', event('turn/start', 2, { turn: 2 }))
+  expect(health.quotaWaiting('worker')).toBe(true)
+  health.observe('worker', { ...success(3, 2, 0), data: { ...success(3, 2, 0).data, interrupted: true } })
+  expect(health.quotaWaiting('worker')).toBe(true)
+  health.observe('worker', success(4, 2, 0))
+  expect(health.quotaWaiting('worker')).toBe(false)
+})
+
+it('does not infer quota waits from quoted text or unrelated failures', () => {
+  const health = new RetryHealth()
+  health.observe('worker', event('user/message', 1, { content: [{ type: 'text', text: 'QUOTA' }] }))
+  health.observe('worker', event('turn/end', 2, { turn: 1, reason: { kind: 'error', error: { code: 'AUTH', message: 'QUOTA' } } }))
+  expect(health.quotaWaiting('worker')).toBe(false)
+})
+
 it('projects native retry schedules without exposing failure text or policy data', () => {
   const health = new RetryHealth()
   health.observe('worker-a', retry(1))

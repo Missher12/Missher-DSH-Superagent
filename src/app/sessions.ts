@@ -310,7 +310,7 @@ export class Sessions {
   /** Read-only live activity; only a tool's brief description or file path is exposed, never commands or outputs. */
   activity(sessionId: string) {
     const agent = this.ctx.agents.get(sessionId as SessionId)
-    return { running: agent?.status === 'running', tools: this.recentTools.get(sessionId) ?? [] }
+    return { running: agent?.status === 'running', tools: this.recentTools.get(sessionId) ?? [], quotaWait: this.retryHealth.quotaWaiting(sessionId) }
   }
   /** Availability in the host and the explicit worker policy are separate signals. No tool is invoked here. */
   capabilities() {

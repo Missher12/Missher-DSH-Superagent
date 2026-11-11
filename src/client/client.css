@@ -236,7 +236,7 @@ div.dt-preview-head { color: var(--dsw-alias-label-secondary); }
 .dt-input:has(input:focus-visible) { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
 .dt-input-icon { display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; color: var(--dsw-alias-label-tertiary); position: absolute; inset-inline-start: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; }
 .dt-input input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font: inherit; font-size: 14px; line-height: 30px; color: var(--dsw-alias-label-primary); width: 100%; height: 100%; padding: 0 28px; text-align: center; appearance: textfield; }
-.dt-input input::placeholder { color: var(--dsw-alias-label-dimmed); }
+.dt-input input::placeholder, .dt-textarea::placeholder { color: var(--dsw-alias-label-secondary); }
 .dt-input input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
 .dt-field .dt-input, .dt-search .dt-input, .dt-add-skill .dt-input { display: flex; width: 100%; }
 .dt-switch { box-sizing: border-box; flex: 0 0 auto; width: 36px; height: 20px; padding: 2px; border: 0; border-radius: 10px; background: var(--dsw-alias-border-l3); cursor: pointer; }
@@ -830,9 +830,12 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-team-plan { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
 .dt-team-members-editor { display: flex; flex-direction: column; gap: 10px; }
 .dt-team-plan-member { border-top: .5px solid var(--dsw-alias-border-l2); padding: 10px 0; border-color: var(--dsw-alias-border-l2); }
-.dt-team-plan-member > summary { cursor: pointer; font-size: 13px; line-height: 22px; padding-block: 13px; }
-.dt-team-plan-member > summary strong { font-weight: 600; font-size: 14px; }
-.dt-team-plan-member > summary span { display: inline-block; max-width: 65%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; vertical-align: bottom; margin-left: 16px; font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.dt-team-plan-member > summary { cursor: pointer; display: flex; align-items: center; gap: 8px; min-width: 0; list-style: none; font-size: 13px; line-height: 22px; padding-block: 13px; }
+.dt-team-plan-member > summary::-webkit-details-marker { display: none; }
+.dt-team-plan-member > summary > svg { flex: none; }
+.dt-team-plan-member[open] > summary > svg { transform: rotate(90deg); }
+.dt-team-plan-member > summary strong { flex: 0 1 auto; max-width: 40%; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; font-size: 14px; }
+.dt-team-plan-member > summary span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; color: var(--dsw-alias-label-secondary); }
 .dt-team-plan-fields { display: flex; flex-direction: column; gap: 10px; padding: 12px 0 0; padding-bottom: 8px; }
 .dt-team-role-input { min-height: 72px; max-height: 180px; }
 .dt-team-dependencies { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px 16px; }
@@ -993,7 +996,7 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
   .dt-team-compact-select .dt-select { flex: 1; min-width: 0; height: 30px; }
   .dt-team-empty-workspace, .dt-team-single-space { padding-inline: 0; }
 }
-@container (max-width: 640px) {
+@container (max-width: 800px) {
   .dt-team-focus-layout { grid-template-columns: minmax(0,1fr); }
   .dt-team-mobile-panels { display: flex; flex: none; }
   .dt-team-mobile-panels .dt-tabs { gap: 16px; }

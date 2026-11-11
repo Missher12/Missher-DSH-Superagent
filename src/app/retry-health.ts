@@ -2,7 +2,7 @@
 export interface RetryHealthEvent { readonly type: string; readonly seq: number; readonly time: number; readonly data: unknown }
 export interface BudgetRetryStatus { sessionId: string; provider: string; attempts: number; since: string; lastAt: string }
 type Chain = { id: string; provider: string; status: BudgetRetryStatus }
-type State = { seq: number; turn: number; step: number; ended: boolean; settled: boolean; active?: Chain }
+type State = { seq: number; turn: number; step: number; ended: boolean; settled: boolean; quota?: boolean; active?: Chain }
 const record = (value: unknown): Record<string, unknown> | undefined => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
 const ordinal = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 
@@ -50,6 +50,9 @@ export class RetryHealth {
     return [...this.sessions.values()].flatMap(state => state.active ? [{ ...state.active.status }] : [])
   }
 
+  /** A native QUOTA turn failure remains relevant during the executor's bounded retry backoff. */
+  quotaWaiting(sessionId: string): boolean { return this.sessions.get(sessionId)?.quota === true }
+
   observe(sessionId: string, event: RetryHealthEvent): void {
     if (!ordinal(event.seq) || !Number.isFinite(event.time) || event.time < 0 || event.time > 8.64e15) return
     let state = this.sessions.get(sessionId)
@@ -61,7 +64,11 @@ export class RetryHealth {
     if (event.type === 'turn/start' || event.type === 'turn/end') {
       if (!ordinal(data.turn) || data.turn < state.turn) return
       if (data.turn > state.turn) Object.assign(state, { turn: data.turn, step: -1, ended: false, settled: false, active: undefined })
-      if (event.type === 'turn/end') { state.active = undefined; state.ended = true }
+      if (event.type === 'turn/end') {
+        const reason = record(data.reason)
+        state.quota = reason?.kind === 'error' && record(reason.error)?.code === 'QUOTA'
+        state.active = undefined; state.ended = true
+      }
       return
     }
     if (event.type === 'llm/retry-started') return // A retry attempt starting does not mean the budget failure has recovered.
@@ -70,6 +77,7 @@ export class RetryHealth {
     if (data.turn < state.turn || data.turn === state.turn && (state.ended || data.step < state.step)) return
     if (event.type === 'assistant/message') {
       const source = record(record(data.message)?.source)
+      if (data.interrupted !== true && source?.kind === 'model') state.quota = false
       if (state.active && data.turn === state.turn && data.step === state.step && data.interrupted !== true && source?.kind === 'model' && source.provider === state.active.provider) {
         state.active = undefined; state.settled = true
       }

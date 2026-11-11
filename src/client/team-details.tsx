@@ -34,7 +34,7 @@ export function TeamDetails({ team, member, reload, view: selectedView, onView }
   const [ownView, setOwnView] = useState<'activity' | 'conversation' | 'context' | 'delivery'>('conversation')
   const view = selectedView ?? ownView, setView = onView ?? setOwnView
   const currentTool = member.tools.findLast(tool => tool.state === 'running')
-  const activity = currentTool ? `${workbenchToolLabel(t, currentTool.name)}${currentTool.detail ? ` · ${currentTool.detail}` : ''}`
+  const activity = member.quotaWait ? t('teamModelQuotaWait') : currentTool ? `${workbenchToolLabel(t, currentTool.name)}${currentTool.detail ? ` · ${currentTool.detail}` : ''}`
     : member.running ? t('teamMemberWorking') : member.summary || t('teamNoProgress')
   const retry = useAction(async () => { if (member.ticketId) { await call('POST tickets/:id/retry', { id: member.ticketId }); await reload() } })
   const affected = new Set([member.id])

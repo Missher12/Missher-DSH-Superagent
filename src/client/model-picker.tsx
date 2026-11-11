@@ -2,9 +2,11 @@
 import type { RoleModel } from '../policy.ts'
 import { usePoll } from './api.ts'
 import { useAction, usePanel } from './provider.tsx'
+import { Select } from './select.tsx'
+import { effortLabel } from './model-labels.ts'
 
-export function ModelSelect({ value, onChange, id, disabled, label, defaultLabel }: {
-  value?: RoleModel | null; onChange: (model: RoleModel | undefined) => void; id?: string; disabled?: boolean; label?: string; defaultLabel?: string
+export function ModelSelect({ value, onChange, id, disabled, label, 'aria-label': ariaLabel, defaultLabel }: {
+  value?: RoleModel | null; onChange: (model: RoleModel | undefined) => void; id?: string; disabled?: boolean; label?: string; 'aria-label'?: string; defaultLabel?: string
 }) {
   const { t, call } = usePanel()
   const { data, error } = usePoll(() => call('GET models'), [call], 60_000)
@@ -12,7 +14,7 @@ export function ModelSelect({ value, onChange, id, disabled, label, defaultLabel
   const listed = data?.groups.some(group => group.id === value?.provider && group.models.some(model => model.id === value?.model))
   const group = data?.groups.find(group => group.id === value?.provider)
   const selectedName = value ? `${group?.name ?? value.provider} · ${group?.models.find(model => model.id === value.model)?.name ?? value.model}` : defaultLabel ?? t('taskModelDefault')
-  return <select id={id} className="dt-select dt-model-select" aria-label={label} disabled={disabled || !data}
+  return <Select id={id} className="dt-model-select" aria-label={label ?? ariaLabel} disabled={disabled || !data}
     value={selected} title={error ? t('modelPickerError') : selectedName} onChange={event => {
       if (!event.target.value) { onChange(undefined); return }
       const [provider, model] = JSON.parse(event.target.value) as [string, string]
@@ -23,19 +25,19 @@ export function ModelSelect({ value, onChange, id, disabled, label, defaultLabel
     {data?.groups.map(group => <optgroup label={group.name} key={group.id}>
       {group.models.map(model => <option key={model.id} value={JSON.stringify([group.id, model.id])}>{group.name} · {model.name}</option>)}
     </optgroup>)}
-  </select>
+  </Select>
 }
 
 /** Only expose reasoning efforts supported by the actual selected or inherited model. */
-export function ReasoningSelect({ value, inherited, onChange, id, disabled, label }: {
-  value?: RoleModel | null; inherited?: RoleModel | null; onChange: (model: RoleModel | undefined) => void; id?: string; disabled?: boolean; label?: string
+export function ReasoningSelect({ value, inherited, onChange, id, disabled, label, 'aria-label': ariaLabel }: {
+  value?: RoleModel | null; inherited?: RoleModel | null; onChange: (model: RoleModel | undefined) => void; id?: string; disabled?: boolean; label?: string; 'aria-label'?: string
 }) {
   const { t, call } = usePanel()
   const { data, error } = usePoll(() => call('GET models'), [call], 60_000)
   const effective = value ?? inherited ?? data?.default
   const options = data?.groups.find(group => group.id === effective?.provider)?.models.find(model => model.id === effective?.model)?.reasoning?.efforts ?? []
   const effort = value ? value.reasoningEffort ?? '' : effective?.reasoningEffort ?? ''
-  return <select id={id} className="dt-select dt-reasoning-select" aria-label={label} value={effort}
+  return <Select id={id} className="dt-reasoning-select" aria-label={label ?? ariaLabel} value={effort}
     disabled={disabled || !data || !effective || !options.length} onChange={event => {
       if (!effective) return
       const { reasoningEffort: _old, ...model } = effective
@@ -43,8 +45,8 @@ export function ReasoningSelect({ value, inherited, onChange, id, disabled, labe
     }}>
     <option value="">{error ? t('modelPickerError') : options.length ? t('modelEffortDefault') : t('modelEffortUnavailable')}</option>
     {effort && !options.some(option => option.id === effort) && <option value={effort}>{effort}</option>}
-    {options.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
-  </select>
+    {options.map(option => <option key={option.id} value={option.id}>{effortLabel(option.id, option.name, t)}</option>)}
+  </Select>
 }
 
 export function SessionModelPicker({ sessionId, running }: { sessionId: string; running: boolean }) {

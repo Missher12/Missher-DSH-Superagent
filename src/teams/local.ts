@@ -283,7 +283,7 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}`
       instructions: coordinator ? team.request.instructions : plan!.plan.instructions, dependencies: coordinator ? [] : plan!.plan.dependencies,
       state, ticketId: ticket?.id, sessionId, directory: team.directory, model: sessionId ? this.runtime.sessions.model(sessionId) : coordinator ? team.request.model : plan?.plan.model ?? team.request.model,
       summary: report?.summary ?? '', attention: ticket?.attention?.question ?? (ticket?.ended && !done(ticket) ? ticket.ended.reason ?? '此成员已结束执行，尚未完成分工；已产生的文件仍保留。' : undefined), retry: !!ticket && canRetry(ticket), tools: live?.tools ?? [], events,
-      delivery: latestDelivery(this.runtime.store, ticket), running: live?.running ?? false }
+      delivery: latestDelivery(this.runtime.store, ticket), running: live?.running ?? false, quotaWait: state === 'working' && !!live?.quotaWait }
   }
   get(id: string): TeamView {
     const team = this.require(id), coordinator = this.ticket(team.coordinatorTicketId)
@@ -305,9 +305,9 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}`
       summary: state === 'completed' ? latestReport(coordinator!)?.summary ?? '' : members.find(member => ['attention', 'failed', 'working'].includes(member.state))?.summary ?? '',
       members, handoffs: team.handoffs, error: team.error, completion, model: team.request.model ?? this.runtime.store.settings().executor.model ?? undefined,
       activeMembers: members.filter(member => member.running).length,
-      currentAction: members.filter(member => member.running).map(member => {
+      currentAction: members.filter(member => member.running || member.quotaWait).map(member => {
         const tool = member.tools.find(tool => tool.state === 'running')
-        return `${member.name}：${tool ? `${tool.name}${tool.detail ? ` · ${tool.detail}` : ''}` : '正在思考或生成回复'}`
+        return `${member.name}：${member.quotaWait ? '模型额度不足，等待重试' : tool ? `${tool.name}${tool.detail ? ` · ${tool.detail}` : ''}` : '正在思考或生成回复'}`
       }).join('；'),
       deliveries: members.flatMap(member => member.delivery ? [{ memberId: member.id, name: member.name, record: member.delivery }] : []) }
   }

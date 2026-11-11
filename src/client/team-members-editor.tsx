@@ -19,7 +19,7 @@ export function TeamMembersEditor({ members, onChange, disabled, model }: { memb
   const edit = (id: string, patch: Partial<TeamMember>) => onChange(members.map(member => member.id === id ? { ...member, ...patch } : member))
   return <div className="dt-team-members-editor">{members.map((member, index) => <details className="dt-team-plan-member" key={member.id} open={expanded[member.id] ?? false}
     onToggle={event => { const open = event.currentTarget.open; setExpanded(current => current[member.id] === open ? current : { ...current, [member.id]: open }) }}>
-    <summary><strong>{member.name || t('teamMemberNumber', { count: index + 1 })}</strong><span>{member.instructions}</span></summary>
+    <summary><Icon name="chevron-right" size={14} /><strong title={member.name}>{member.name || t('teamMemberNumber', { count: index + 1 })}</strong><span>{member.instructions}</span></summary>
     <div className="dt-team-plan-fields">
       <Field label={t('teamMemberName')}><Input required maxLength={60} value={member.name} onChange={event => edit(member.id, { name: event.target.value })} /></Field>
       <Field label={t('teamMemberWork')}><textarea required className="dt-textarea dt-team-role-input" rows={2} maxLength={4000} value={member.instructions}

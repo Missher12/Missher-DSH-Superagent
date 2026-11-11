@@ -9,6 +9,7 @@ import { ModelSelect, ReasoningSelect } from './model-picker.tsx'
 import type { RoleModel } from '../policy.ts'
 import type { TeamMember } from '../teams/contracts.ts'
 import { defaultMembers, TeamMembersEditor } from './team-members-editor.tsx'
+import { Select } from './select.tsx'
 
 const DRAFT = 'dsh-superagent/local-draft'
 interface TaskDraft { requestId: string; title: string; directory: string; instructions: string; open: boolean; existing: boolean; model?: RoleModel; mode: 'single' | 'team'; teamName: string; members?: TeamMember[] }
@@ -92,9 +93,9 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
       setFailure(t('teamFormIncomplete'))
     }}>
       <Fields disabled={submit.busy || paused}>
-        <Field label={t('teamMode')}><select className="dt-select" value={draft.mode} onChange={event => edit({ mode: event.target.value as TaskDraft['mode'] })}>
+        <Field label={t('teamMode')}><Select value={draft.mode} onChange={event => edit({ mode: event.target.value as TaskDraft['mode'] })}>
           <option value="single">{t('teamModeSingle')}</option><option value="team">{t('teamModeTeam')}</option>
-        </select></Field>
+        </Select></Field>
         <div className="dt-local-request">
           <Field label={t('localInstructions')}><textarea required className="dt-textarea" rows={5}
             value={draft.instructions} maxLength={draft.mode === 'team' ? 24000 : 64000} placeholder={t('localInstructionsPlaceholder')}
@@ -103,18 +104,18 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
             onClick={() => edit({ instructions: t(`localExample.${kind}`) })}>{t(`localExampleLabel.${kind}`)}</Button>)}</div>
         </div>
         <Field label={t('localWorkspaceMode')} note={draft.existing ? undefined : t('localIndependentHint')}>
-          <select className="dt-select" value={draft.existing ? 'existing' : 'independent'} onChange={event => edit({ existing: event.target.value === 'existing' })}>
+          <Select value={draft.existing ? 'existing' : 'independent'} onChange={event => edit({ existing: event.target.value === 'existing' })}>
             <option value="independent">{t('localIndependent')}</option><option value="existing">{t('localExistingProject')}</option>
-          </select></Field>
+          </Select></Field>
         {draft.existing && <>
         <div className="dt-local-project">
           <Field label={t('localDirectory')} note={t('localDirectoryHint')}><Input required value={draft.directory}
             placeholder="/Users/.../project" onChange={event => edit({ directory: event.target.value })} /></Field>
-          {workspaces.length > 0 && <Field label={t('localChooseWorkspace')}><select className="dt-select" value=""
+          {workspaces.length > 0 && <Field label={t('localChooseWorkspace')}><Select value=""
             onChange={event => { if (event.target.value) edit({ directory: event.target.value }) }}>
             <option value="">{t('localChooseWorkspacePlaceholder')}</option>
             {workspaces.map(workspace => <option key={workspace.directory} value={workspace.directory}>{workspace.title} — {workspace.directory}</option>)}
-          </select></Field>}
+          </Select></Field>}
         </div>
         </>}
         <Field label={t('localTaskTitle')}><Input maxLength={160} value={draft.title}

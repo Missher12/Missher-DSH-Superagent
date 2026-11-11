@@ -63,6 +63,7 @@ export interface TeamMemberView {
   events: { id: string; at: string; state: string; summary: string }[]
   delivery?: DeliveryRecord
   running?: boolean
+  quotaWait?: boolean
 }
 export interface TeamCompletion {
   members: boolean; finalReview: boolean; evidence: boolean; issues: string[]
