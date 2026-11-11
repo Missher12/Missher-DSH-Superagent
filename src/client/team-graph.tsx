@@ -44,12 +44,11 @@ export function TeamGraph({ team, selected, select }: { team: TeamView; selected
     if (element) nodes.current.set(member.id, element); else nodes.current.delete(member.id)
   }} className="dt-team-node" data-state={member.state} data-running={member.running || undefined} data-coordinator={member.role === 'coordinator' || undefined} aria-pressed={selected === member.id}
     aria-label={`${member.name} · ${t('teamDetails')}`} title={member.name + (member.dependencies.length ? ' · ' + t('teamPrerequisite', { names: member.dependencies.map(id => team.members.find(item => item.id === id)?.name ?? id).join('、') }) : '')} onClick={() => select(member.id)}>
-    <span className="dt-team-node-head"><span className="dt-team-avatar"><Icon name={member.role === 'coordinator' ? 'queue' : 'user'} size={18} /></span>
+    <span className="dt-team-node-head"><span className="dt-team-avatar"><Icon name={member.role === 'coordinator' ? 'agent' : member.id === 'check' ? 'shield' : 'code'} size={18} /></span>
       <strong>{member.name}</strong><Icon name="chevron-right" size={14} /></span>
-    <TeamStatus state={member.state} member />
-    <span className="dt-team-node-action">{member.tools.findLast(tool => tool.state === 'running')?.detail
-      ?? (member.attention || member.summary || t('teamNoProgress'))}</span>
-    {member.model && <span className="dt-team-node-model">{member.model.model}</span>}
+    <span className="dt-team-node-role" title={member.instructions}>{member.role === 'coordinator' ? t('teamCoordinatorWork') : member.instructions}</span>
+    <span className="dt-team-node-bottom"><TeamStatus state={member.state} member />
+      <span className="dt-team-node-model" title={member.model ? `${member.model.model}${member.model.reasoningEffort ? ` · ${member.model.reasoningEffort}` : ''}` : t('teamModelInherit')}>{member.model?.model ?? t('teamModelInherit')}</span></span>
   </button>
   return <div className="dt-team-graph" ref={root} aria-label={t('teamGraph')}>
     <svg className="dt-team-lines" aria-hidden="true">{lines.map(line => <g key={line.id}><path d={line.path} data-dependency={line.dependency || undefined} data-active={line.active || undefined} />

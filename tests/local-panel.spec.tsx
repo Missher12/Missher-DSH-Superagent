@@ -409,8 +409,11 @@ it('adds the directory selected by the native picker and treats cancellation as 
   await click('工作区')
   await click('添加工作区')
   expect(server.requests.filter(item => item.method === 'POST' && item.path === 'local/workspaces')).toHaveLength(0)
+  await click('选择项目目录')
+  expect(server.requests.filter(item => item.method === 'POST' && item.path === 'local/workspaces')).toHaveLength(0)
   server.pickedDirectory = '/tmp/picked-project'
-  await click('添加工作区')
+  await click('选择项目目录')
+  await click(all('[role=dialog] button[type=submit]')[0]!)
   expect(text()).toContain('/tmp/picked-project')
   expect(server.requests.find(item => item.method === 'POST' && item.path === 'local/workspaces')?.body).toEqual({ directory: '/tmp/picked-project' })
 })

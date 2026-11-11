@@ -45,6 +45,11 @@ const ICON_PATHS = {
   running: 'M12 3a9 9 0 1 0 9 9',
   blocked: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM5.6 5.6l12.8 12.8',
   queue: 'M4 6h16M4 12h16M4 18h10',
+  file: 'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h6',
+  'sidebar-left': 'M3 4h18v16H3zM9 4v16',
+  'sidebar-right': 'M3 4h18v16H3zM15 4v16',
+  agent: 'M9 3h6v5H9zM3 16h6v5H3zM15 16h6v5h-6zM12 8v4M6 16v-4h12v4',
+  code: 'M8 6l-5 6 5 6M16 6l5 6-5 6M14 4l-4 16',
 } as const satisfies Record<string, string>
 export type IconName = keyof typeof ICON_PATHS
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
@@ -181,9 +186,9 @@ function trapTab(event: globalThis.KeyboardEvent, dialog: HTMLElement) {
   }
 }
 /** Accessible modal dialog with focus trapping, Escape/backdrop dismissal, and focus restoration. */
-export function Modal({ open, onClose, title, closeLabel, description, footer, className, children }: {
+export function Modal({ open, onClose, title, closeLabel, description, footer, className, children, icon }: {
   open: boolean; onClose: () => void; title: string; closeLabel: string; description?: string; footer?: ReactNode; className?: string
-  children?: ReactNode
+  children?: ReactNode; icon?: ReactNode
 }) {
   const dialog = useRef<HTMLDivElement>(null)
   // Keep `onClose` in a ref so parent re-renders (e.g., background polls) do not re-run the effect and reset focus.
@@ -208,6 +213,7 @@ export function Modal({ open, onClose, title, closeLabel, description, footer, c
     <div className="dt-modal-mask" aria-hidden="true" onClick={onClose} />
     <div ref={dialog} className={cx('dt-modal', className)} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
       <div className="dt-modal-header">
+        {icon && <span className="dt-modal-title-icon">{icon}</span>}
         <h2>{title}</h2>
         <button type="button" className="dt-modal-close" aria-label={closeLabel} onClick={onClose}><Icon name="close" size={14} /></button>
       </div>

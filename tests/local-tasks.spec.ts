@@ -287,6 +287,14 @@ it('registers an existing project as a DSH workspace without dispatching a task'
   expect(host.runtime.store.tickets.list()).toHaveLength(0)
   expect((await host.api('POST', 'local/workspaces', { directory: `${directory}/missing` })).status).toBeGreaterThanOrEqual(400)
 })
+it('registers an explicitly named project through the workspace form API', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const directory = join(host.directory, 'named-project'); mkdirSync(directory)
+  expect(await host.api('POST', 'local/workspaces', { directory, title: '协作项目' })).toMatchObject({ status: 200,
+    body: { title: '协作项目', directory: realpathSync(directory) } })
+  expect(host.runtime.local!.workspaces().find(item => item.directory === realpathSync(directory))?.title).toBe('协作项目')
+  expect(host.runtime.store.tickets.list()).toHaveLength(0)
+})
 it('removes only a workspace registration and retains completed tasks, session logs and files', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const directory = join(host.directory, 'removable-project'); mkdirSync(directory)

@@ -437,6 +437,8 @@ Local desktop adaptation additions:
 | `src/client/text.ts` | Copy by key and the wording of domain values, reasons, senders and times |
 | `src/client/marks.ts` | The marks of the states the views classify: a Ticket's or a Thread's stage, a Source's state and a Decision's outcome, each as a dot, an icon, a tone and a label |
 | `src/client/locales.ts` | All copy in both languages, and the glossary of [001 Domain model](001-domain.md) |
+| `src/client/composer.tsx`, `composer.css` | Shared C2 writing surfaces, form validation and responsive property grids |
+| `src/client/studio-layout.tsx`, `studio.css` | Shared project sidebar, persisted pane widths and collaboration layout |
 | `src/client/client.css`, `css.d.ts` | The panel's stylesheet, loaded as text |
 
 `src/sources/github.ts` and `src/sources/feishu.ts` are also the entries of the two Source plugins, built by `tsdown.config.ts` and exported in `package.json` as `./github-watch` and `./feishu-watch`. The bundle's `cordis.patch.yml` inserts the three plugins, with Feishu disabled.
@@ -453,6 +455,7 @@ Local desktop adaptation checks:
 | `tests/local-teams.spec.ts` | Actual dependency dispatch, planning/final-review separation, follow-ups, evidence, stop and restart recovery |
 | `tests/team-panel.spec.tsx` | Explicit team overview, member selection, task creation, native sessions and delivery previews |
 | `tests/client-registration.spec.ts` | Host-owned conversation slot contract and cold session initialization |
+| `tests/studio-panel.spec.tsx` | Inline task validation, workspace form registration and persisted sidebar resizing |
 | `tests/density.spec.tsx` | Immediate density changes and preference persistence |
 | `tests/select.spec.tsx` | Host menu selection, disabled choices, form validation, focus and local resize behavior |
 | `tests/plugin-tools.spec.ts` | Host tool enumeration and read-only Project Ops capability routing |

@@ -15,7 +15,8 @@ export function Select({ id, className = '', value, children, disabled, title, o
     if (!select) return
     setCaption(select.selectedOptions[0]?.label ?? String(value ?? ''))
     setItems([...select.options].map(option => ({ id: option.value, disabled: option.disabled || (option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled),
-      label: <span className="dt-choice-option" data-choice-owner={owner}>{option.label}</span> })))
+      label: <span className="dt-choice-option" data-choice-owner={owner} title={option.dataset.detail ? `${option.label} · ${option.dataset.detail}` : option.label}>
+        {option.dataset.detail ? <><strong>{option.label}</strong><small>{option.dataset.detail}</small></> : option.label}</span> })))
   }, [children, value, owner])
   useLayoutEffect(() => {
     if (!open) return
@@ -33,6 +34,7 @@ export function Select({ id, className = '', value, children, disabled, title, o
     if (trigger.current?.matches(':disabled')) { setOpen(false); return }
     const panel = menu()
     if (!panel) return
+    panel.dataset.superagentChoice = owner
     const size = () => {
       const width = Math.min(Math.max(trigger.current?.getBoundingClientRect().width ?? 0, 240), window.innerWidth - 24)
       if (width > 0 && panel.style.width !== `${width}px`) {
@@ -45,10 +47,13 @@ export function Select({ id, className = '', value, children, disabled, title, o
     const enabled = items.filter(item => 'label' in item && !item.disabled)
     const index = enabled.findIndex(item => item.id === String(value ?? ''))
     let disposed = false
-    queueMicrotask(() => { if (!disposed) (rows[index] ?? rows[0])?.focus({ preventScroll: true }) })
+    queueMicrotask(() => { if (!disposed) { const selected = rows[index] ?? rows[0]; selected?.focus({ preventScroll: true }); if (selected) panel.scrollTop = selected.offsetTop - (panel.clientHeight - selected.offsetHeight) / 2 } })
+    const scrolled = (event: Event) => { if (!(event.target instanceof Node) || !panel.contains(event.target)) close(true) }
+    const resized = () => close(true)
+    window.addEventListener('scroll', scrolled, true); window.addEventListener('resize', resized)
     const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(size)
     if (trigger.current) observer?.observe(trigger.current)
-    return () => { disposed = true; observer?.disconnect() }
+    return () => { disposed = true; observer?.disconnect(); window.removeEventListener('scroll', scrolled, true); window.removeEventListener('resize', resized) }
   }, [open])
   const choose = (next: string) => {
     if (!native.current || trigger.current?.matches(':disabled')) { close(); return }

@@ -86,10 +86,11 @@ export class LocalTasks {
     mkdirSync(directory, { recursive: true })
     await this.ctx.workspaceRegistry.create(realpathSync(directory), 'Superagent 工作区')
   }
-  async addWorkspace(directory: string): Promise<{ id: string; title: string; directory: string }> {
+  async addWorkspace(directory: string, title?: string): Promise<{ id: string; title: string; directory: string }> {
     directory = projectDirectory(directory)
     if (directory === realpathSync(this.runtime.machine.stateDir)) throw new LocalTaskError('这是调度数据目录，请选择项目目录')
-    const workspace = await this.ctx.workspaceRegistry.create(directory)
+    const workspace = await this.ctx.workspaceRegistry.create(directory, title)
+    if (title && workspace.title !== title) await workspace.setTitle(title)
     return { id: workspace.id, title: workspace.title || basename(directory), directory }
   }
   private ticket(id: string): Ticket {

@@ -28,7 +28,8 @@ function MemberActivity({ member }: { member: TeamMemberView }) {
   </div>
 }
 
-export function TeamDetails({ team, member, reload, view: selectedView, onView }: { team: TeamView; member: TeamMemberView; reload: () => Promise<void>;
+export function TeamDetails({ team, member, reload, view: selectedView, onView, onMember }: { team: TeamView; member: TeamMemberView; reload: () => Promise<void>;
+  onMember?: (id: string) => void;
   view?: 'activity' | 'conversation' | 'context' | 'delivery'; onView?: (view: 'activity' | 'conversation' | 'context' | 'delivery') => void }) {
   const { t, call, renderSession, renderContext, nativeSession, navigate } = usePanel()
   const [ownView, setOwnView] = useState<'activity' | 'conversation' | 'context' | 'delivery'>('conversation')
@@ -41,7 +42,7 @@ export function TeamDetails({ team, member, reload, view: selectedView, onView }
   for (let pass = 0; pass < team.members.length; pass++) for (const item of team.members) if (item.dependencies.some(id => affected.has(id))) affected.add(item.id)
   return <aside className="dt-team-details" data-stopped={team.state === 'stopped' || member.state === 'stopped' || undefined} tabIndex={-1} aria-label={t('teamDetails')}>
     <header className="dt-team-detail-head"><div className="dt-team-member-heading"><span className="dt-team-avatar"><Icon name={member.role === 'coordinator' ? 'queue' : 'user'} size={18} /></span>
-      <div><h2>{t('teamMemberSession', { name: member.name })}</h2><p className="dt-team-session-caption">{member.role === 'coordinator' ? t('teamCoordinatorWork') : shortText(member.instructions, 45)}</p></div></div>
+      <div><h2 title={team.name}>{team.name}</h2><p className="dt-team-session-caption" title={member.instructions}>{member.role === 'coordinator' ? t('teamCoordinatorWork') : shortText(member.instructions, 45)}</p></div></div>
       <div className="dt-actions dt-team-native-controls">
         {member.sessionId && renderContext && <Button variant="ghost" size="sm" aria-pressed={view === 'context'} onClick={() => setView('context')}>{t('sessionContextTitle')}</Button>}
         {team.directory && <OpenWorkspaceButton directory={team.directory} compact />}
@@ -49,7 +50,9 @@ export function TeamDetails({ team, member, reload, view: selectedView, onView }
         {view !== 'conversation' && <Button variant="ghost" size="sm" aria-label={t('teamOpenSession')} title={t('teamOpenSession')} disabled={!member.sessionId} icon={<Icon name="session" />} onClick={() => setView('conversation')} />}
       </div>
     </header>
-    <div className="dt-team-session-context"><TeamStatus state={member.state} member /><span>{team.name}</span></div>
+    <div className="dt-team-session-context">{onMember && <nav className="dt-studio-session-members" aria-label={t('teamMembers')}>{team.members.map(item => <button key={item.id} type="button"
+      aria-pressed={item.id === member.id} title={item.instructions} onClick={() => onMember(item.id)}><Icon size={13} name={item.role === 'coordinator' ? 'agent' : item.id === 'check' ? 'shield' : 'code'} />{item.name}</button>)}</nav>}
+      <TeamStatus state={member.state} member /></div>
     {(member.attention || member.state === 'failed') && <section className="dt-team-issue" role="status"><h3><Icon name="alert" />{t('teamNeedsHelp')}</h3>
       <p>{member.attention || member.summary}</p>{affected.size > 1 && <p>{t('teamImpact')}：{team.members.filter(item => item.id !== member.id && affected.has(item.id)).map(item => item.name).join('、')}</p>}
       {member.retry && <Button variant="outline" size="sm" disabled={retry.busy} onClick={() => { void retry.run() }}>{t('teamRetryMember')}</Button>}</section>}

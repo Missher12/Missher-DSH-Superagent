@@ -59,7 +59,7 @@ it('keeps the context plugin bound to the newly selected member', async () => {
 })
 it('creates a real editable team plan including member models and explicit delivery dependencies', async () => {
   await mount(); await click('新建任务')
-  expect(field<HTMLSelectElement>('协作方式').value).toBe('team')
+  expect(all('[role=tablist][aria-label=协作方式] [aria-selected=true]')[0]?.textContent).toBe('团队协作')
   await type(field<HTMLTextAreaElement>('任务要求'), '修复格式化函数并验证边界')
   await type(field<HTMLInputElement>('团队名称'), '格式化小队')
   const firstRole = all('.dt-team-plan-member')[0]!
@@ -237,4 +237,11 @@ it.each([true, false])('opens the native turn-changes summary with task files or
   expect(all('[role="dialog"]')).toHaveLength(1)
   expect(text()).toContain(reported ? 'current file' : '尚未记录为交付文件')
   expect(opened).toEqual([])
+})
+
+it('opens the selected team project from its sidebar instead of the shared control root', async () => {
+  at({ page: 'overview', query: { team: 'explicit-team', member: 'coordinator' } })
+  await mount(); await click(all('.dt-studio-project button')[0]!)
+  expect(server.requests.find(item => item.method === 'POST' && item.path === 'local/workspaces')?.body).toEqual({ directory: '/tmp/project' })
+  expect(server.openedWorkspaces).toEqual(['workspace-1'])
 })

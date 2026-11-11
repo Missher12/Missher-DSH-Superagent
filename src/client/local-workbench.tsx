@@ -1,16 +1,16 @@
 /** Multiple independently closable task views, with native conversations and their real teams. */
 import { useEffect, useRef, useState } from 'react'
 import type { TeamIndex } from '../teams/contracts.ts'
-import { usePoll } from './api.ts'
 import { Button, Icon, SegmentedTabs } from './controls.tsx'
-import { LocalTaskComposer } from './local.tsx'
 import { SingleWorkbench } from './local-single-workbench.tsx'
-import { useAction, usePanel, usePanelData } from './provider.tsx'
+import { usePanel, usePanelData } from './provider.tsx'
 import { TeamDetails } from './team-details.tsx'
 import { TeamCollaboration } from './team-collaboration.tsx'
 import { TeamStatus } from './team-ui.tsx'
 import { LoadState, When } from './widgets.tsx'
 import { shortText } from './text.ts'
+import { PaneDivider, usePaneWidth, useStudio } from './studio-layout.tsx'
+import { Select } from './select.tsx'
 
 interface WorkspaceView { kind: 'team' | 'session'; id: string; title: string; member?: string }
 const STORAGE = 'dsh-superagent/open-workspaces'
@@ -36,10 +36,10 @@ function TeamOverview({ teams, select }: { teams: TeamIndex[]; select: (id: stri
 
 export function LocalWorkbench({ sessionId, teamId, memberId = 'coordinator' }: { sessionId?: string; teamId?: string; memberId?: string }) {
   const root = useRef<HTMLElement>(null)
-  const { t, call, navigate, openWorkspace } = usePanel(), { state, restarts } = usePanelData()
-  const { data, error, reload } = usePoll(() => call('GET local/workbench', { query: { team: teamId, session: sessionId } }), [call, restarts, teamId, sessionId], 2000)
+  const { t, navigate } = usePanel(), { state } = usePanelData()
+  const { data, error, reload, contentWidth, compactTeam, rightHidden, pane, setPane } = useStudio()
+  const right = usePaneWidth('right', contentWidth - 340)
   const [views, setViews] = useState(openViews), [detail, setDetail] = useState<'activity' | 'conversation' | 'context' | 'delivery'>('conversation')
-  const [pane, setPane] = useState<'conversation' | 'team'>('conversation')
   const current = teamId ? `team:${teamId}` : sessionId ? `session:${sessionId}` : undefined
   const team = data?.team && data.team.id === teamId ? data.team : undefined
   const title = team?.name ?? data?.tasks.find(task => task.sessionId === sessionId || `worker-${task.id}` === sessionId)?.title
@@ -75,14 +75,7 @@ export function LocalWorkbench({ sessionId, teamId, memberId = 'coordinator' }: 
     if (key === current) selectView(remaining[Math.min(index, remaining.length - 1)])
   }
   const member = team?.members.find(member => member.id === memberId) ?? team?.members[0]
-  const open = useAction(async () => { if (data?.workspace) await openWorkspace(data.workspace.id) })
-  const singles = data?.tasks.filter(task => !data.teamTicketIds.includes(task.id)) ?? []
   return <section ref={root} className="dt-team-workbench dt-team-focus-workbench" aria-label={t('localWorkbench')}>
-    <header className="dt-team-toolbar"><div><h2>{team?.name ?? (current ? title : t('localWorkbench'))}</h2>
-      {team && <TeamStatus state={team.state} />}</div>
-      <div className="dt-actions"><Button variant="ghost" icon={<Icon name="folder" />} aria-label={t('workbenchOpenWorkspace')}
-        title={data?.workspace?.directory ?? t('workbenchOpenWorkspace')} disabled={!data?.workspace || open.busy}
-        onClick={() => { void open.run() }} /><LocalTaskComposer team paused={state?.paused} /></div></header>
     {state?.paused && <p className="dt-banner">{t('localPauseHint')}</p>}
     {Object.entries(state?.health ?? {}).filter(([, health]) => health.state === 'error').map(([id, health]) => <p className="dt-error" role="status" key={id}>{health.detail}</p>)}
     <nav className="dt-team-workspace-tabs" aria-label={t('teamWorkspaceTabs')}><div>{views.map(view => <div key={viewKey(view)} className="dt-team-workspace-tab" data-selected={viewKey(view) === current || undefined}>
@@ -94,22 +87,15 @@ export function LocalWorkbench({ sessionId, teamId, memberId = 'coordinator' }: 
         { value: 'conversation', label: t('workbenchConversation'), id: 'dt-compact-conversation', panelId: 'dt-team-workspace-content' },
         { value: 'team', label: t('teamCompactTeam'), id: 'dt-compact-team', panelId: 'dt-team-workspace-content' },
       ]} /></div>}
-      <label className="dt-team-compact-select"><span>{t('teamSelect')}</span><select className="dt-select" aria-label={t('teamSelect')} value={teamId ?? ''} onChange={event => event.target.value ? selectTeam(event.target.value) : selectView()}>
-        <option value="">{t('teamAll')}</option>{data.teams.map(team => <option value={team.id} key={team.id}>{team.name}</option>)}</select></label></div>
-      <div id="dt-team-workspace-content" data-compact-pane={pane} className={`dt-team-layout dt-team-focus-layout${!current ? ' dt-team-layout-overview' : ''}${sessionId ? ' dt-team-layout-single' : ''}`}>
-        <nav className="dt-team-sidebar" aria-label={t('teamList')}><div className="dt-team-list-heading"><strong>{t('teamTasks')}</strong><span className="dt-count">{data.teams.length}</span></div>
-          <button type="button" className="dt-team-nav-item" aria-pressed={!current} onClick={() => selectView()}><Icon name="history" /><strong>{t('teamAll')}</strong></button>
-          <ul>{data.teams.map(item => <li key={item.id}><button type="button" className="dt-team-nav-item" data-active={!!item.activeMembers || undefined} aria-pressed={teamId === item.id} onClick={() => selectTeam(item.id)} title={item.currentAction || item.name}>
-            <span><strong>{item.name}</strong><TeamStatus state={item.state} />{item.currentAction && <small className="dt-team-live-action">{item.currentAction}</small>}</span></button></li>)}</ul>
-          <div className="dt-team-singles"><button type="button" className="dt-team-nav-item" onClick={() => selectView({ kind: 'session', id: 'all-single', title: t('teamSingle') })}><Icon name="session" /><strong>{t('teamSingle')}</strong><span className="dt-count">{singles.length}</span></button>
-            <ul>{singles.slice(0, 8).map(task => <li key={task.id}><button type="button" className="dt-team-nav-item" onClick={() => selectView({ kind: 'session', id: task.sessionId || `worker-${task.id}`, title: task.title })}>{task.title}</button></li>)}</ul></div>
-          <Button size="sm" variant="ghost" icon={<Icon name="queue" />} onClick={() => selectView({ kind: 'session', id: data.members.find(member => member.role === 'orchestrator')?.id ?? 'all-single', title: t('teamDispatcher') })}>{t('teamDispatcher')}</Button>
-        </nav>
+      <label className="dt-team-compact-select"><span>{t('teamSelect')}</span><Select aria-label={t('teamSelect')} value={teamId ?? ''} onChange={event => event.target.value ? selectTeam(event.target.value) : selectView()}>
+        <option value="">{t('teamAll')}</option>{data.teams.map(team => <option value={team.id} key={team.id}>{team.name}</option>)}</Select></label></div>
+      <div id="dt-team-workspace-content" data-compact-pane={pane} data-compact-team={compactTeam || undefined} data-right-hidden={rightHidden || undefined}
+        style={{ gridTemplateColumns: !team || current === undefined || compactTeam || rightHidden ? 'minmax(0,1fr)' : `minmax(0,1fr) 6px ${right.width}px` }} className={`dt-team-layout dt-team-focus-layout${!current ? ' dt-team-layout-overview' : ''}${sessionId ? ' dt-team-layout-single' : ''}`}>
         {!current ? <section className="dt-team-empty-workspace"><div className="dt-team-open-invitation"><Icon name="folder" size={32} /><h2>{t('teamOpenInvitation')}</h2><p>{t('teamOpenInvitationHint')}</p></div>
           <TeamOverview teams={data.teams} select={selectTeam} /></section>
           : sessionId ? <div className="dt-team-single-space"><SingleWorkbench sessionId={sessionId === 'all-single' ? undefined : sessionId} /></div>
-            : team && member ? <><TeamDetails key={`${team.id}:${member.id}`} team={team} member={member} reload={reload} view={detail} onView={setDetail} />
-              <TeamCollaboration team={team} selected={member.id} select={selectMember} reload={reload} delivery={() => setDetail('delivery')} /></>
+            : team && member ? <><TeamDetails key={`${team.id}:${member.id}`} team={team} member={member} reload={reload} view={detail} onView={setDetail} onMember={selectMember} />
+              <PaneDivider pane={right} /><TeamCollaboration team={team} selected={member.id} select={selectMember} reload={reload} delivery={() => setDetail('delivery')} /></>
               : <LoadState loading={!error} error={error} />}
       </div></>}
   </section>

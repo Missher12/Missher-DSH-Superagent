@@ -44,7 +44,7 @@ export interface Api {
   'DELETE mcp/clients/:id': { response: Awaited<ReturnType<McpTasks['removeClient']>> }
   'GET local/board': { query: Paged & { column: LocalBoardColumn; q?: string }; response: TicketListView }
   'GET local/workspaces': { response: ReturnType<LocalTasks['workspaces']> }
-  'POST local/workspaces': { body: { directory: string }; response: Awaited<ReturnType<LocalTasks['addWorkspace']>> }
+  'POST local/workspaces': { body: { directory: string; title?: string }; response: Awaited<ReturnType<LocalTasks['addWorkspace']>> }
   'DELETE local/workspaces/:id': { response: Awaited<ReturnType<LocalTasks['removeWorkspace']>> }
   'GET local/capabilities': { response: ReturnType<import('./sessions.ts').Sessions['capabilities']> }
   'POST local/tasks': { body: LocalRequest; response: Awaited<ReturnType<LocalTasks['create']>> }

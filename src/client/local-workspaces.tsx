@@ -1,10 +1,12 @@
 /** Real DSH projects, their directories, and entry points into task execution. */
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { usePoll } from './api.ts'
 import { Button, Icon, Input } from './controls.tsx'
 import { selectLocalWorkspace } from './local.tsx'
 import { useAction, usePanel } from './provider.tsx'
 import { ConfirmButton, LoadState } from './widgets.tsx'
+import { ComposerField, ComposerForm, ComposerModal } from './composer.tsx'
+import { errorText } from './text.ts'
 
 export function OpenWorkspaceButton({ directory, compact = false }: { directory: string; compact?: boolean }) {
   const { t, call, openWorkspace } = usePanel()
@@ -23,15 +25,22 @@ export function LocalWorkspaces() {
   const search = query.trim().toLocaleLowerCase()
   const workspaces = data?.filter(workspace => `${workspace.title}\n${workspace.directory}`.toLocaleLowerCase().includes(search))
   const open = useAction(async (id: string) => { await openWorkspace(id) })
+  const form = useId(), [adding, setAdding] = useState(false), [draft, setDraft] = useState({ title: '', directory: '' }), [failure, setFailure] = useState<string>()
   const add = useAction(async () => {
-    const directory = await pickDirectory()
-    if (!directory) return
-    await call('POST local/workspaces', { body: { directory } })
-    await reload()
+    setFailure(undefined)
+    try {
+      await call('POST local/workspaces', { body: { directory: draft.directory.trim(), ...(draft.title.trim() ? { title: draft.title.trim() } : {}) } })
+      setAdding(false); setDraft({ title: '', directory: '' }); await reload()
+    } catch (error) { setFailure(errorText(error)); throw error }
+  })
+  const pick = useAction(async () => {
+    setFailure(undefined)
+    try { const directory = await pickDirectory(); if (directory) setDraft(current => ({ ...current, directory })) }
+    catch (error) { setFailure(errorText(error)); throw error }
   })
   return <section className="dt-local-workspaces" aria-label={t('localWorkspaces')}>
     <div className="dt-local-workspace-tools"><h2>{t('localWorkspaces')}{data && <span className="dt-count">{data.length}</span>}</h2><Button variant="primary" icon={<Icon name="plus" />}
-      disabled={add.busy} onClick={() => { void add.run() }}>{t('localAddWorkspace')}</Button></div>
+      disabled={add.busy} onClick={() => setAdding(true)}>{t('localAddWorkspace')}</Button></div>
     <Input type="search" icon={<Icon name="search" />} aria-label={t('localSearchWorkspaces')} placeholder={t('localSearchWorkspaces')}
       maxLength={200} value={query} onChange={event => setQuery(event.target.value)} />
     <LoadState error={error} loading={!data} />
@@ -53,5 +62,16 @@ export function LocalWorkspaces() {
     </li>)}</ul>}
     {data?.length === 0 && <p className="dt-hint">{t('localNoWorkspaces')}</p>}
     {!!data?.length && !workspaces?.length && <p className="dt-hint" role="status">{t('localNoWorkspaceMatches')}</p>}
+    <ComposerModal open={adding} title={t('localAddWorkspace')} kind="workspace" form={form} action={t('localAddWorkspace')} busy={add.busy || pick.busy}
+      close={() => setAdding(false)} note={t('studioWorkspaceNote')}>
+      <ComposerForm id={form} disabled={add.busy || pick.busy} failure={failure} onSubmit={() => { void add.run() }}>
+        <section className="dt-composer-brief"><ComposerField label={t('studioWorkspaceName')}><Input className="dt-composer-name" maxLength={80}
+          placeholder={t('studioWorkspaceNamePlaceholder')} value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} /></ComposerField></section>
+        <section className="dt-composer-properties"><ComposerField label={t('studioProjectDirectory')} required><Input required value={draft.directory}
+          placeholder="/Users/.../project" onChange={event => setDraft({ ...draft, directory: event.target.value })} /></ComposerField>
+          <Button variant="ghost" size="sm" icon={<Icon name="folder" />} disabled={add.busy || pick.busy}
+            onClick={() => { void pick.run() }}>{t('studioPickDirectory')}</Button></section>
+      </ComposerForm>
+    </ComposerModal>
   </section>
 }

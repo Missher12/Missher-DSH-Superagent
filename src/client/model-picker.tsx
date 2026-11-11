@@ -21,9 +21,9 @@ export function ModelSelect({ value, onChange, id, disabled, label, 'aria-label'
       onChange({ provider, model })
     }}>
     <option value="">{error ? t('modelPickerError') : defaultLabel ?? t('taskModelDefault')}</option>
-    {value && !listed && <option value={selected}>{value.provider} · {value.model}</option>}
+    {value && !listed && <option value={selected} data-detail={value.provider}>{value.model}</option>}
     {data?.groups.map(group => <optgroup label={group.name} key={group.id}>
-      {group.models.map(model => <option key={model.id} value={JSON.stringify([group.id, model.id])}>{group.name} · {model.name}</option>)}
+      {group.models.map(model => <option key={model.id} data-detail={group.name} value={JSON.stringify([group.id, model.id])}>{model.name}</option>)}
     </optgroup>)}
   </Select>
 }

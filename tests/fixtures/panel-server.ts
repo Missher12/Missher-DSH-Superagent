@@ -363,7 +363,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'POST local/workspaces': { body: true, answer: ({ body }) => {
     const existing = server.workspaceChoices.find(item => item.directory === body.directory)
     if (existing) return existing
-    const workspace = { id: `workspace-${server.workspaceChoices.length}`, title: body.directory.split('/').at(-1)!, directory: body.directory }
+    const workspace = { id: `workspace-${server.workspaceChoices.length}`, title: body.title ?? body.directory.split('/').at(-1)!, directory: body.directory }
     server.workspaceChoices.push(workspace)
     return workspace
   } },
