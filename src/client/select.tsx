@@ -19,6 +19,17 @@ export function Select({ id, className = '', value, children, disabled, title, o
   }, [children, value, owner])
   useLayoutEffect(() => {
     if (!open) return
+    // Host portals need not bubble through this plugin's React tree.
+    const escape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.isComposing || event.keyCode === 229) return
+      if (!menu()?.contains(document.activeElement) && event.target !== trigger.current) return
+      event.preventDefault(); event.stopImmediatePropagation(); close(true)
+    }
+    document.addEventListener('keydown', escape, true)
+    return () => document.removeEventListener('keydown', escape, true)
+  }, [open])
+  useLayoutEffect(() => {
+    if (!open) return
     if (trigger.current?.matches(':disabled')) { setOpen(false); return }
     const panel = menu()
     if (!panel) return

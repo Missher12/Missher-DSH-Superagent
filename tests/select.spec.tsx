@@ -85,6 +85,27 @@ it('does not open or mutate values inside a disabled settings group', async () =
   expect(container.querySelector('select')!.value).toBe('a')
 })
 
+it('handles host-level Escape for a focused menu before dismissing its task dialog', async () => {
+  function Form() {
+    const [open, setOpen] = useState(true), [value, setValue] = useState('high')
+    return <Modal open={open} title="新建任务" closeLabel="关闭" onClose={() => setOpen(false)}>
+      <Select aria-label="推理强度" value={value} onChange={event => setValue(event.target.value)}><option value="high">高</option></Select>
+    </Modal>
+  }
+  await mount(<Form />)
+  const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="推理强度"]')!
+  await act(async () => trigger.click())
+  expect(document.activeElement?.getAttribute('role')).toBe('menuitem')
+  // Host overlays can route keys at document level rather than through the plugin's React parent.
+  const escape = () => act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
+  await escape()
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+  expect(document.querySelector('[role="menu"]')).toBeNull()
+  expect(document.activeElement).toBe(trigger)
+  await escape()
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+})
+
 it.each([[390, 240], [220, 196]])('gives narrow model choices room while staying within a %i px viewport', async (viewport, width) => {
   vi.stubGlobal('innerWidth', viewport)
   onTestFinished(() => { vi.unstubAllGlobals() })
