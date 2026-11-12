@@ -52,6 +52,7 @@ export interface TeamRecord {
   members: { plan: TeamMember; ticketId?: string; dependencyVersion?: string }[]
   handoffs: { id: string; from: string; to: string; ticketId: string; at: string; version: string }[]
   finalVersion?: string; finalBaseline?: string; finalAssignment?: string
+  continuations?: Record<string, { cycle: string; attempts: number; version: string }>
   stoppedAt?: string; error?: string
 }
 

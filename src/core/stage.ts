@@ -12,6 +12,9 @@ export function ticketStage(ticket: Ticket): TicketStage {
   if (ticket.attention) return { stage: 'person', action: 'answer' }
   const assignment = latestAssignment(ticket)
   const report = assignment?.report?.state
+  // A newer request has resumed this assignment; its previous ready/waiting report is no longer the current stage.
+  if (assignment?.state === 'running' && assignment.report && ticket.inputs.some(input => input.kind === 'trigger'
+    && input.human && !input.context && input.at > assignment.report!.at)) return { stage: 'working' }
   if (report === 'ready') return { stage: 'person', action: 'review' }
   // A human follow-up after a blocked or failed report returns the ticket to the executor.
   if ((report === 'blocked' || report === 'failed') && waitsForPerson(ticket)) return { stage: 'person', action: report }

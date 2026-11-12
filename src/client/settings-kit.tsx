@@ -72,9 +72,11 @@ function SwitchRow({ label, hint, checked,
 type RoleModel = Settings['eval']['model']
 /** The same model and reasoning controls as task creation; manual IDs stay available on demand. */
 export function ModelField({ id, value, onChange, label }: { id: string; value: RoleModel; onChange: (next: RoleModel) => void; label?: string }) {
-  const { t } = usePanel()
+  const { t, call } = usePanel()
+  const { data } = usePoll(() => call('GET models'), [call], 60_000)
+  const effective = value ?? data?.default
   const set = (part: Partial<NonNullable<RoleModel>>) => {
-    const next = { provider: value?.provider ?? '', model: value?.model ?? '', ...value, ...part }
+    const next = { provider: effective?.provider ?? '', model: effective?.model ?? '', ...effective, ...part }
     onChange(next.provider.trim() || next.model.trim() || next.reasoningEffort?.trim() ? next : null)
   }
   return <div className="dt-model" data-model-field={id}>
@@ -82,14 +84,34 @@ export function ModelField({ id, value, onChange, label }: { id: string; value: 
       onChange={model => onChange(model ?? null)} /></Field>
     <Field label={t('modelEffort')}><ReasoningSelect value={value} inherit="dsh" onChange={model => onChange(model ?? null)} /></Field>
     <details className="dt-model-manual"><summary>{t('modelManual')}</summary>
-      <Field label={t('modelProvider')}><Input value={value?.provider ?? ''} spellCheck={false}
-        onChange={event => set({ provider: event.target.value })} /></Field>
-      <Field label={t('modelId')}><Input value={value?.model ?? ''} spellCheck={false}
+      <Field label={t('modelProvider')}><ProviderField value={effective?.provider ?? ''} providers={data?.groups ?? []}
+        onChange={provider => set({ provider })} /></Field>
+      <Field label={t('modelId')}><Input value={effective?.model ?? ''} spellCheck={false}
         onChange={event => set({ model: event.target.value })} /></Field>
-      <Field label={t('modelEffortId')}><Input value={value?.reasoningEffort ?? ''} spellCheck={false}
+      <Field label={t('modelEffortId')}><Input value={effective?.reasoningEffort ?? ''} spellCheck={false}
         onChange={event => set({ reasoningEffort: event.target.value || undefined })} /></Field>
     </details>
   </div>
+}
+
+function ProviderField({ id, value, providers, onChange, 'aria-label': label }: {
+  id?: string; value: string; providers: readonly { id: string; name: string }[]; onChange: (value: string) => void; 'aria-label'?: string
+}) {
+  const { t } = usePanel()
+  const [manual, setManual] = useState(false)
+  if (manual) return <div className="dt-provider-custom">
+    <Input id={id} aria-label={label} value={value} spellCheck={false} onChange={event => onChange(event.target.value)} />
+    <Button variant="ghost" size="sm" aria-label={t('modelChooseList')} icon={<Icon name="chevron-down" />} onClick={() => setManual(false)} />
+  </div>
+  return <Select id={id} aria-label={label} value={value} onChange={event => {
+    if (event.target.value === ':manual:') setManual(true)
+    else onChange(event.target.value)
+  }}>
+    {!value && <option value="">{t('defaultModelUnavailable')}</option>}
+    {value && !providers.some(provider => provider.id === value) && <option value={value}>{value}</option>}
+    {providers.map(provider => <option key={provider.id} value={provider.id} data-detail={provider.id}>{provider.name}</option>)}
+    <option value=":manual:">{t('modelCustomValue')}</option>
+  </Select>
 }
 
 type HistoryChange = NonNullable<HistoryView['items'][number]['changes']>[number]
@@ -202,7 +224,7 @@ function RowsField({ field, value, saved, onChange, labels, refreshLabels }: {
       required={!column.optional} pattern={column.pattern} spellCheck={false} value={row[column.key] ?? ''}
         onChange={event => change(event.target.value)} />
   }
-  return <div className="dt-field">
+  return <div className="dt-field dt-rows-field">
     <div className="dt-subhead">
       <span className="dt-field-head">{label}{hint && <InfoTip text={hint} />}<span className="dt-count">{rows.length || ''}</span></span>
       <span className="dt-subhead-actions">

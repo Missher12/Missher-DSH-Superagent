@@ -210,5 +210,5 @@ it('shows the GitHub Source\'s switches for what it receives across the reposito
   expect(rows).toEqual([['New Issues', 3], ['New pull requests', 1], ['Comments', 3], ['Default branch CI', 1]])
   // CI has no sender: its one cell is that of a message off the list that does not mention the agent.
   expect(field('Default branch CI · Not on the list · no mention')).toBeTruthy()
-  expect(all('.dt-admission thead th').map(cell => cell.textContent)).toContain(en.admissionAddressed)
+  expect(all('.dt-admission thead th').some(cell => cell.textContent?.includes(en.admissionAddressed))).toBe(true)
 })

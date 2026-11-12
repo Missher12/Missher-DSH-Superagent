@@ -172,10 +172,10 @@ export class LocalTasks {
       return this.get(decision.ticketId)
     })
   }
-  async followup(id: string, requestId: string, text: string) {
-    return this.receiveFollowup(id, requestId, text)
+  async followup(id: string, requestId: string, text: string, automatic = false) {
+    return this.receiveFollowup(id, requestId, text, undefined, automatic)
   }
-  private receiveFollowup(id: string, requestId: string, text: string, nativeInput?: UserMessage) {
+  private receiveFollowup(id: string, requestId: string, text: string, nativeInput?: UserMessage, automatic = false) {
     const ticket = this.ticket(id)
     if (ticket.ended?.by === 'human') throw new LocalTaskError('任务已被你停止；需要继续时请新建任务')
     const input = z.object({ requestId: z.string().min(1).max(200), text: z.string().trim().min(1).max(64000) }).parse({ requestId, text })
@@ -193,7 +193,7 @@ export class LocalTasks {
       this.runtime.receive(trigger)
       if (origin.source !== 'local' && !this.runtime.store.triggers.disposition(trigger.id)?.fanout?.includes(id)) this.runtime.engine.attach(id, trigger.id)
     })
-    this.runtime.teams?.inputReceived(id)
+    this.runtime.teams?.inputReceived(id, automatic)
     return this.get(id)
   }
   stop(id: string) { this.ticket(id); this.runtime.engine.stopTicket(id); return this.get(id) }

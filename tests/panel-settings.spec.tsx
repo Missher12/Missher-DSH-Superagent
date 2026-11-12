@@ -64,6 +64,7 @@ it('preserves custom model IDs and can return them to inherited defaults without
   await click(zh['tab.eval'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
   await click(all('.dt-model-manual summary')[0]!)
+  await type(field<HTMLSelectElement>(zh.modelProvider), ':manual:')
   await type(field<HTMLInputElement>(zh.modelProvider), 'custom-provider')
   await type(field<HTMLInputElement>('模型 ID'), 'custom-model')
   await click(zh.save)
@@ -71,6 +72,25 @@ it('preserves custom model IDs and can return them to inherited defaults without
   await type(field<HTMLSelectElement>(zh.modelName), '')
   await click(zh.save)
   expect(server.settings.eval.model).toBeNull()
+})
+
+it('fetches provider names from DSH for manual model settings without changing inherited defaults on load', async () => {
+  server.settings.eval.model = null
+  server.models = { default: { provider: 'worker-provider', model: 'worker-model' }, routableProviders: [], failures: [],
+    groups: [{ id: 'worker-provider', name: 'Worker provider', models: [{ id: 'worker-model', name: 'Worker model' }] },
+      { id: 'other-provider', name: 'Other provider', models: [] }] }
+  await mount(); await click(zh['tab.eval']); await click(find(zh['tab.settings'], '.dt-status-head button'))
+  await click(all('.dt-model-manual summary')[0]!)
+  const provider = field<HTMLSelectElement>(zh.modelProvider)
+  expect(provider.tagName).toBe('SELECT')
+  expect(provider.value).toBe('worker-provider')
+  expect([...provider.options].map(option => option.textContent)).toEqual(expect.arrayContaining(['Worker provider', 'Other provider']))
+  expect(field<HTMLInputElement>('模型 ID').value).toBe('worker-model')
+  expect(server.requests.some(request => request.method === 'PUT')).toBe(false)
+  expect(document.querySelector('.dt-savebar')).toBeNull()
+  await type(provider, 'other-provider'); await click(zh.save)
+  expect(server.settings.eval.model).toEqual({ provider: 'other-provider', model: 'worker-model' })
+  expect(server.models.default).toEqual({ provider: 'worker-provider', model: 'worker-model' })
 })
 
 it('lets settings select reasoning for the inherited DSH model and saves its complete identity', async () => {

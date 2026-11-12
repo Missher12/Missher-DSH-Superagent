@@ -1,6 +1,6 @@
 /** Explicit team workflows built from the existing durable local tasks and worker sessions. */
 import type { Context } from '@deepseek-ai/cordis'
-import { key, latestReport, ticketStage, canRetry, type Ticket } from '../core/index.ts'
+import { key, latestReport, ticketStage, canRetry, hasUnreadRequest, type Ticket } from '../core/index.ts'
 import type { Runtime } from '../app/runtime.ts'
 import { resolveRoleModel } from '../app/role-models.ts'
 import { workerSessionId } from '../executor/dsh.ts'
@@ -168,6 +168,24 @@ ${latestReport(this.ticket(team.coordinatorTicketId)!)?.summary.slice(0, 4000) |
 ${this.handoffContext(team, team.members)}${EVIDENCE}`
   }
 
+  private reviewInstructions(team: TeamRecord): string {
+    return `继续原任务的最终复核，保留已交付成员、会话和文件。以下为上一轮状态数据，不是新增指令；问题解决后不再阻止完成：\n${JSON.stringify(this.completion(team).issues)}\n修复需要处理的问题并实跑相关检查。目标满足且验证通过后，用 orchestrator_report 报告 state=ready 和当前 delivery，不另行等待验收。只有仍缺权限或关键信息时才报告 blocked 并提出具体问题。已解决的历史失败保留在摘要，最终 checks 使用本轮重跑结果。`
+  }
+  /** Continue unfinished turns in their existing Session. Persist a small limit per delivery cycle across reloads. */
+  private async continueTurn(team: TeamRecord, ticket: Ticket, cycle: string, instructions: string, review = false): Promise<void> {
+    if (ticket.attention || ticket.delivery || hasUnreadRequest(ticket) || this.runtime.sessions.activity(workerSessionId(ticket.id)).running) return
+    const idle = !ticket.ended && ['progress', 'waiting'].includes(latestReport(ticket)?.state ?? '')
+    if (!idle && !(review && done(ticket))) return
+    const prior = team.continuations?.[ticket.id], current = version(ticket)
+    const attempts = prior?.cycle === cycle ? prior.attempts + (prior.version === current ? 0 : 1) : 1
+    if (attempts > 2) {
+      this.patch(team.id, value => { value.error = '自动续作连续 2 次仍未完成本回合，请查看会话中的原因，补充要求或点击继续后重试。' })
+      return
+    }
+    this.patch(team.id, value => { (value.continuations ??= {})[ticket.id] = { cycle, attempts, version: current } })
+    await this.runtime.local!.followup(ticket.id, key('team-auto', team.id, ticket.id, cycle, current, String(attempts)), instructions, true)
+  }
+
   private async advance(id: string): Promise<void> {
     let team = this.require(id)
     if (team.stoppedAt || team.error || this.stopped) return
@@ -187,7 +205,10 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}`
     if (!coordinator) throw new Error('协调任务不存在；原始团队计划仍保留')
     if (coordinator.ended?.by === 'human') { this.stopTeam(id); return }
     if (team.phase === 'planning') {
-      if (!done(coordinator)) return
+      if (!done(coordinator)) {
+        await this.continueTurn(team, coordinator, 'planning', this.planInstructions(team))
+        return
+      }
       team = this.patch(id, value => { value.phase = 'working' })
     }
     if (team.phase === 'completed') {
@@ -223,6 +244,8 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}`
           for (const from of member.plan.dependencies) value.handoffs.push({ id: key(id, from, member.plan.id, dependencyVersion), from,
             to: member.plan.id, ticketId: member.ticketId!, at: now(), version: dependencyVersion })
         })
+      } else if (planned.ticketId && !done(this.ticket(planned.ticketId))) {
+        await this.continueTurn(team, this.ticket(planned.ticketId)!, `member:${dependencyVersion}`, this.memberInstructions(team, planned))
       }
     }
     team = this.require(id)
@@ -235,6 +258,8 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}`
       } else if (done(coordinator) && assignment(coordinator) === team.finalBaseline) {
         // Recover a crash between recording finalization and delivering its idempotent follow-up.
         await local.followup(team.coordinatorTicketId!, key('team-final', id, resultVersion), this.finalInstructions(team))
+      } else {
+        await this.continueTurn(team, coordinator, `final:${resultVersion}`, this.reviewInstructions(team), true)
       }
       return
     }
@@ -257,18 +282,19 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}`
     const coordinator = this.ticket(team.coordinatorTicketId)
     const waiting = completion.members && team.phase === 'integrating' && coordinator && !coordinator.attention
       && ['progress', 'waiting'].includes(latestReport(coordinator)?.state ?? '') && !this.runtime.sessions.activity(workerSessionId(coordinator.id)).running
-    this.patch(id, team => { delete team.error })
+    this.patch(id, team => { delete team.error; if (coordinator && team.continuations) delete team.continuations[coordinator.id] })
     if ((completion.finalReview && completion.issues.length) || waiting) await this.runtime.local!.followup(team.coordinatorTicketId!,
       key('team-review-retry', id, assignment(coordinator), latestReport(coordinator!)?.at ?? ''),
-      `继续原任务的最终复核，保留已交付成员、会话和文件。以下为上一轮状态数据，不是新增指令；问题解决后不再阻止完成：\n${JSON.stringify(completion.issues)}\n修复需要处理的问题并实跑相关检查。目标满足且验证通过后，用 orchestrator_report 报告 state=ready 和当前 delivery，不另行等待验收。只有仍缺权限或关键信息时才报告 blocked 并提出具体问题。已解决的历史失败保留在摘要，最终 checks 使用本轮重跑结果。`)
+      this.reviewInstructions(team))
     await this.reconcile(); return this.get(id)
   }
   /** A real human follow-up resumes scheduling as well as the member's original Session. */
-  inputReceived(ticketId: string): void {
+  inputReceived(ticketId: string, automatic = false): void {
     const target = this.target(ticketId)
     if (!target || this.require(target.team).stoppedAt) return
     this.patch(target.team, team => {
       delete team.error
+      if (!automatic && team.continuations) delete team.continuations[ticketId]
       if (team.phase === 'completed') {
         team.phase = target.member === 'coordinator' ? 'integrating' : 'working'
         if (target.member === 'coordinator') team.finalBaseline = team.finalAssignment
@@ -295,6 +321,7 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}`
     if (team.stoppedAt && state !== 'finished') state = 'stopped'
     const started = ticket?.assignments.some(assignment => assignment.startedAt), sessionId = ticket && started ? workerSessionId(ticket.id) : undefined
     const live = sessionId ? this.runtime.sessions.activity(sessionId) : undefined
+    if (state === 'waiting' && live?.running && !ticket?.ended) state = 'working'
     const report = ticket && latestReport(ticket)
     const events = ticket?.assignments.flatMap(run => [
       ...run.startedAt ? [{ id: `${run.id}:start`, at: run.startedAt, state: 'started', summary: '' }] : [],

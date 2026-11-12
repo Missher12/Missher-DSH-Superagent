@@ -1,6 +1,6 @@
 import { Select } from './select.tsx'
 /** Eval status view (Decision log) and Eval settings group (Policy rules, per-Source admission, and assessor settings). */
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { ADMISSION_DEFAULTS, ADMISSION_OPTIONS, type Admission, type AdmissionCell } from '../admission.ts'
 import type { AdmissionRowView } from '../sources/kind.ts'
 import { LIMITS } from '../limits.ts'
@@ -108,7 +108,7 @@ function AdmissionTable({ rows, labels, table, explicit, onChange }: {
   const select = (row: AdmissionRowView, cell: AdmissionCell) => {
     const value = table[row.id]?.[cell] ?? ADMISSION_DEFAULTS[cell]
     // Reserve a fixed-width slot for the warning icon so selecting a value never shifts column widths.
-    return <td key={cell}><span className="dt-admission-cell">
+    return <td key={cell} data-label={t(`admissionCell.${cell}`)}><span className="dt-admission-cell">
       <Select className="dt-select" aria-label={`${name(row)} · ${t(`admissionCell.${cell}`)}`} value={value} onChange={event => set(row.id,
         cell, event.target.value as Admission)}>
         {ADMISSION_OPTIONS[cell].map(option => <option key={option} value={option}>{t(`admissionValue.${option}`)}</option>)}
@@ -121,12 +121,14 @@ function AdmissionTable({ rows, labels, table, explicit, onChange }: {
     <Hint>{explicit}</Hint>
     <table className="dt-table dt-admission">
       <thead>
-        <tr><th rowSpan={2}>{t('admissionScope')}</th><th>{t('admissionListed')}</th><th colSpan={2}>{t('admissionUnlisted')}</th></tr>
-        <tr><th>{t('admissionUnaddressed')}</th><th>{t('admissionAddressed')}</th><th>{t('admissionUnaddressed')}</th></tr>
+        <tr><th scope="col">{t('admissionScope')}</th>
+          <th scope="col">{t('admissionListed')}<small>{t('admissionUnaddressed')}</small></th>
+          <th scope="col">{t('admissionUnlisted')}<small>{t('admissionAddressed')}</small></th>
+          <th scope="col">{t('admissionUnlisted')}<small>{t('admissionUnaddressed')}</small></th></tr>
       </thead>
       <tbody>{rows.map(row => <tr key={row.id}>
         <td className="dt-admission-scope">{name(row)}<small>{localized(t, row.note)}</small></td>
-        {CELLS.map(cell => row.cells[cell] ? select(row, cell) : <td key={cell} className="dt-admission-na"
+        {CELLS.map(cell => row.cells[cell] ? select(row, cell) : <td key={cell} className="dt-admission-na" data-label={t(`admissionCell.${cell}`)}
           aria-label={t('admissionNotReceived')}>—</td>)}
       </tr>)}</tbody>
     </table>
@@ -136,6 +138,7 @@ function AdmissionTable({ rows, labels, table, explicit, onChange }: {
 
 function PolicyBlock({ include }: { include?: readonly string[] }) {
   const { t } = usePanel()
+  const sourceTabs = useId()
   const { settings: { blocks, sources, policyVersion }, reload } = useSettings()
   const draft = useBlockDraft('policy', blocks.policy.value, blocks.policy.revision)
   const policy = draft.value
@@ -171,16 +174,29 @@ function PolicyBlock({ include }: { include?: readonly string[] }) {
             : <Hint>{t('rulesEmpty')}</Hint>}
       </Section>
       {current && <Section title={t('policyPerSource')} hint={t('policyPerSourceHint')}>
-        {parts.length > 1 && <div className="dt-subtabs" role="tablist" aria-label={t('policyPerSource')}>
-          {parts.map(source => <button key={source.id} type="button" role="tab" aria-selected={source === current} className="dt-subtab"
-            onClick={() => setTab(source.id)}>
-            {localized(t, source.title)}
-          </button>)}
-        </div>}
-        <SourcePart key={current.id} source={current} part={part(current.id)}
-          saved={(blocks.policy.value.sources[current.id] ?? {}) as Part} dirty={draft.dirty}
-          reload={reload} onChange={next => edit({ sources: { ...policy.sources,
-            [current.id]: next as typeof policy.sources[string] } })} />
+        <div className="dt-source-policy-layout"><div className="dt-source-policy">
+          <div className="dt-source-policy-nav" role="tablist" aria-label={t('policyPerSource')} aria-orientation="vertical">
+            {parts.map((source, index) => <button key={source.id} id={`${sourceTabs}-${source.id}`} type="button" role="tab"
+              aria-selected={source === current} aria-controls={`${sourceTabs}-body`} tabIndex={source === current ? 0 : -1} className="dt-subtab"
+              onClick={() => setTab(source.id)} onKeyDown={event => {
+                const next = event.key === 'Home' ? 0 : event.key === 'End' ? parts.length - 1
+                  : ['ArrowDown', 'ArrowRight'].includes(event.key) ? (index + 1) % parts.length
+                    : ['ArrowUp', 'ArrowLeft'].includes(event.key) ? (index + parts.length - 1) % parts.length : undefined
+                if (next === undefined) return
+                event.preventDefault(); setTab(parts[next]!.id)
+                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+              }}>
+              <Icon name={source.id === 'github' ? 'code' : 'message'} />{localized(t, source.title)}
+            </button>)}
+          </div>
+          <div className="dt-source-policy-body" role="tabpanel" id={`${sourceTabs}-body`} aria-labelledby={`${sourceTabs}-${current.id}`}>
+            <h4 className="dt-source-policy-title">{localized(t, current.title)}</h4>
+            <SourcePart key={current.id} source={current} part={part(current.id)}
+              saved={(blocks.policy.value.sources[current.id] ?? {}) as Part} dirty={draft.dirty}
+              reload={reload} onChange={next => edit({ sources: { ...policy.sources,
+                [current.id]: next as typeof policy.sources[string] } })} />
+          </div>
+        </div></div>
       </Section>}
     </Fields>
     <SaveBar {...draft} onDiscard={draft.discard} />

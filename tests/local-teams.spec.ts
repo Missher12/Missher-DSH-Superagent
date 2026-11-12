@@ -78,7 +78,7 @@ it('adds an idempotent member to an existing team and preserves earlier sessions
   expect((await host.api('POST', `local/teams/${team.id}/members`, { ...plan, id: 'later' })).status).toBe(400)
 }, 40_000)
 
-it('keeps finalization open until the coordinator supplies delivery evidence', async () => {
+it('automatically resumes an incomplete final review in the same session until real delivery evidence is supplied', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
   await complete(team.coordinatorTicketId!)
@@ -89,26 +89,70 @@ it('keeps finalization open until the coordinator supplies delivery evidence', a
   const agent = host.agents.get(session)!; agent.status = 'idle'; host.ctx.emit('agent/status', { agent, status: 'idle' } as never)
   await settle()
   let view = host.runtime.teams!.get(team.id)
-  expect(view.state).toBe('attention')
-  expect(view.completion?.issues.join(' ')).toContain('交付记录')
-  const prior = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.assignments.length
-  expect((await host.api('POST', `local/teams/${team.id}/retry`, {})).status).toBe(200)
-  await settle()
+  expect(view.state).toBe('working')
   expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.ended).toBeUndefined()
-  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.assignments).toHaveLength(prior + 1)
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.assignments).toHaveLength(3)
   expect(host.runtime.teams!.get(team.id).members[0]!.sessionId).toBe(session)
   await readySession(team.coordinatorTicketId!)
   await host.runTool(session, 'orchestrator_report', { state: 'progress', summary: '检查已通过，仍在等待验收', delivery: { files: [], checks: [], unverified: [] } })
+  const inputs = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs.length
   const waiting = host.agents.get(session)!; waiting.status = 'idle'; host.ctx.emit('agent/status', { agent: waiting, status: 'idle' } as never)
   await settle()
-  expect(host.runtime.teams!.get(team.id).state).toBe('waiting')
-  const inputs = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs.length
-  expect((await host.api('POST', `local/teams/${team.id}/retry`, {})).status).toBe(200)
   expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs.length).toBeGreaterThan(inputs)
+  const continued = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs.length
+  await settle(); await settle()
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs).toHaveLength(continued)
   await complete(team.coordinatorTicketId!, '最终复核完成', { files: [], checks: [], unverified: ['没有运行浏览器检查'] })
   view = host.runtime.teams!.get(team.id)
   expect(view.state).toBe('completed')
   expect(view.completion?.unverified).toContain('没有运行浏览器检查')
+}, 40_000)
+
+it('continues idle planning and member turns, but preserves genuine questions and bounds repeated incomplete turns', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const session = await readySession(team.coordinatorTicketId!)
+  const idle = async () => {
+    const agent = host!.agents.get(session)!; agent.status = 'idle'; host!.ctx.emit('agent/status', { agent, status: 'idle' } as never)
+    await settle()
+  }
+  await host.runTool(session, 'orchestrator_report', { state: 'blocked', summary: '缺少目标文件名', human_action: '请提供文件名' })
+  await idle()
+  const prior = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs.length
+  await settle()
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs).toHaveLength(prior)
+  expect(host.runtime.teams!.get(team.id).members[0]!.attention).toBe('请提供文件名')
+  await host.runtime.teams!.followup(team.id, 'coordinator', 'real-answer', '使用 result.txt')
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await readySession(team.coordinatorTicketId!)
+    await host.runTool(session, 'orchestrator_report', { state: 'progress', summary: '目标明确，稍后继续' })
+    await idle()
+  }
+  expect(host.runtime.teams!.get(team.id)).toMatchObject({ state: 'attention', error: expect.stringContaining('连续 2 次') })
+  const bounded = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs.length
+  await settle(); await settle()
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs).toHaveLength(bounded)
+  const directory = host.directory
+  await host.runtime.stop(); host = await startRuntime(undefined, { mode: 'local', stateDir: directory })
+  await settle()
+  expect(host.runtime.teams!.get(team.id)).toMatchObject({ state: 'attention', error: expect.stringContaining('连续 2 次') })
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs).toHaveLength(bounded)
+  // A real answer clears the exhausted continuation cycle, without granting new permissions or changing the session.
+  await host.runtime.teams!.followup(team.id, 'coordinator', 'resume', '请继续核对已明确的原目标')
+  await readySession(team.coordinatorTicketId!)
+  const resumed = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs.length
+  await host.runTool(session, 'orchestrator_report', { state: 'progress', summary: '已收到补充，本回合还未完成' })
+  await idle()
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs.length).toBeGreaterThan(resumed)
+  await complete(team.coordinatorTicketId!)
+  const member = host.runtime.teams!.get(team.id).members.find(m => m.id === 'build')!
+  const worker = await readySession(member.ticketId!)
+  await host.runTool(worker, 'orchestrator_report', { state: 'progress', summary: '实现尚未结束' })
+  const inputs = host.runtime.store.tickets.get(member.ticketId!)!.inputs.length
+  const agent = host.agents.get(worker)!; agent.status = 'idle'; host.ctx.emit('agent/status', { agent, status: 'idle' } as never)
+  await settle()
+  expect(host.runtime.store.tickets.get(member.ticketId!)!.inputs.length).toBeGreaterThan(inputs)
+  expect(host.runtime.teams!.get(team.id).error).toBeUndefined()
 }, 40_000)
 
 it('creates an explicit plan once, starts a real coordinator, and does not call a planning round a completed goal', async () => {

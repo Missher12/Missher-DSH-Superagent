@@ -137,6 +137,8 @@ div.dt-preview-head { color: var(--dsw-alias-label-secondary); }
 .dt-row-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
 .dt-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .dt-rows-item { display: grid; grid-template-columns: repeat(var(--dt-columns), minmax(0, 1fr)) auto; gap: 8px; align-items: center; }
+.dt-field.dt-rows-field { display: block; }
+.dt-rows-field > .dt-subhead { margin-bottom: 8px; }
 .dt-filter-gap { flex: 1; }
 .dt-page-head { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .dt-page-head > .dt-btn { margin-left: -10px; }
@@ -390,6 +392,37 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-admission-cell { display: flex; align-items: center; gap: 4px; }
 .dt-admission-cell .dt-select { flex: 1; min-width: 0; }
 .dt-admission-slot { display: inline-flex; flex: none; width: 16px; }
+.dt-source-policy-layout { container: source-policy / inline-size; min-width: 0; }
+.dt-source-policy { display: grid; grid-template-columns: 124px minmax(0,1fr); gap: 24px; align-items: start; min-width: 0; }
+.dt-source-policy-nav { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dt-source-policy-nav .dt-subtab { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 7px 10px; border-radius: 7px; text-align: left; white-space: normal; }
+.dt-source-policy-nav .dt-subtab:hover { background: var(--dsw-alias-bg-module-platform); }
+.dt-source-policy-nav .dt-subtab[aria-selected='true'] { background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-primary); box-shadow: none; }
+.dt-source-policy-nav .dt-subtab:focus-visible { outline: 2px solid var(--dsw-alias-border-focus, var(--dsw-alias-label-primary)); outline-offset: 2px; }
+.dt-source-policy-body { container: source-policy-body / inline-size; min-width: 0; padding-inline-start: 24px; border-inline-start: .5px solid var(--dsw-alias-border-l3); }
+.dt-source-policy-title { margin: 3px 0 12px; font-size: 14px; font-weight: 600; line-height: 22px; }
+.dt-source-policy .dt-part { min-width: 0; gap: 16px; }
+.dt-source-policy .dt-admission { table-layout: fixed; }
+.dt-source-policy .dt-admission th { padding-block: 8px; white-space: normal; color: var(--dsw-alias-label-secondary); font-weight: 500; }
+.dt-source-policy .dt-admission th small { display: block; color: var(--dsw-alias-label-caption); font-size: 11px; font-weight: 400; }
+.dt-source-policy .dt-admission td { padding-block: 10px; }
+.dt-source-policy .dt-admission tr > :last-child { padding-inline-end: 0; }
+@container source-policy (max-width: 700px) {
+  .dt-source-policy { grid-template-columns: minmax(0,1fr); gap: 16px; }
+  .dt-source-policy-nav { flex-direction: row; flex-wrap: wrap; }
+  .dt-source-policy-nav .dt-subtab { width: auto; min-width: 112px; }
+  .dt-source-policy-body { padding-inline-start: 0; border-inline-start: 0; }
+}
+@container source-policy-body (max-width: 500px) {
+  .dt-admission, .dt-admission tbody { display: block; }
+  .dt-admission thead { position: absolute; width: 1px; height: 1px; padding: 0; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+  .dt-admission tbody tr { display: grid; grid-template-columns: minmax(0,1fr); padding: 8px 0; border-top: .5px solid var(--dsw-alias-border-l3); }
+  .dt-admission tbody td { display: grid; grid-template-columns: minmax(0,1fr) minmax(100px,48%); align-items: center; gap: 12px; padding: 6px 0; border: 0; }
+  .dt-admission tbody td[data-label]::before { content: attr(data-label); font-size: 12px; }
+  .dt-admission tbody .dt-admission-scope { display: block; margin-bottom: 2px; font-weight: 500; }
+  .dt-admission-scope small { display: inline; margin-inline-start: 8px; font-weight: 400; }
+  .dt-admission tbody .dt-admission-na { display: none; }
+}
 .dt-info-warn { color: var(--dsw-alias-state-warn-primary); }
 .dt-field-segmented { max-width: 240px; }
 
@@ -595,6 +628,9 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-model-manual { min-width: 0; margin-top: 6px; }
 .dt-model-manual > summary { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 24px; cursor: pointer; }
 .dt-model-manual[open] > summary { margin-bottom: 4px; }
+.dt-provider-custom { position: relative; min-width: 0; }
+.dt-provider-custom .dt-input input { padding-inline: 32px; }
+.dt-provider-custom > .dt-btn { position: absolute; inset-inline-end: 0; top: 0; width: 32px; height: 32px; }
 .dt-settings-revision { font-size: 11px; line-height: 18px; font-weight: 400; color: var(--dsw-alias-label-tertiary); }
 .dt-local-page .dt-local-form .dt-fieldset { gap: 12px; }
 .dt-local-form .dt-fieldset > .dt-actions { justify-content: flex-end; }
