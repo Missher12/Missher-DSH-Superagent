@@ -51,6 +51,7 @@ export class LocalTeams {
       if (existing.encoded !== encoded) throw new LocalTaskError('同一个 requestId 不能用于不同的团队任务')
       return this.get(id)
     }
+    const permissionPreset = this.runtime.local!.resolvePermissionPreset(request.permissionPreset)
     // Validate every requested model before writing a plan or starting its coordinator.
     for (const model of [request.model, ...request.members.map(member => member.model)]) if (model) {
       try { await resolveRoleModel(this.context, model) } catch { throw new LocalTaskError('成员模型暂不可用，请重新选择后派单') }
@@ -59,7 +60,7 @@ export class LocalTeams {
     this.runtime.store.atomic(() => {
       const concurrent = this.runtime.store.get(records(id))
       if (concurrent) { if (concurrent.encoded !== encoded) throw new LocalTaskError('同一个 requestId 不能用于不同的团队任务'); return }
-      this.runtime.store.set(records(id), { id, request, encoded, phase: 'creating', createdAt: now(), updatedAt: now(),
+      this.runtime.store.set(records(id), { id, request, encoded, permissionPreset, phase: 'creating', createdAt: now(), updatedAt: now(),
         members: request.members.map(plan => ({ plan })), handoffs: [] })
     })
     await this.reconcile()
@@ -172,7 +173,8 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}`
     const local = this.runtime.local!
     if (!team.coordinatorTicketId) {
       const task = await local.create({ requestId: `team:${id}:coordinator`, title: `${team.request.title} · ${team.request.coordinatorName}`.slice(0, 160),
-        instructions: this.planInstructions(team), directory: team.request.directory, model: team.request.model })
+        instructions: this.planInstructions(team), directory: team.request.directory, model: team.request.model },
+      team.permissionPreset ? { permissionPreset: team.permissionPreset } : undefined)
       const ticket = this.ticket(task.ticketId)!, trigger = this.runtime.store.triggers.get(ticket.origin.triggerId)!
       team = this.patch(id, value => {
         value.coordinatorTicketId = task.ticketId; value.directory = String(trigger.meta.directory); value.permissionPreset = String(trigger.meta.permissionPreset); value.phase = 'planning'

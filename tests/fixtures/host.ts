@@ -254,7 +254,10 @@ export async function startRuntime(seed?: (store: Store) => void, machine: Parti
       if (!workspaces.has(cwd)) workspaces.set(cwd, workspace(cwd, title ?? cwd.split('/').at(-1)!))
       return workspaces.get(cwd)!
     }, get: (id: string) => workspaces.get(id), list: () => [...workspaces.values()], delete: async (id: string) => workspaces.delete(id) },
-    permissionPresets: { defaultPreset: 'workspace-write', current: (session: { id: string }) => permission.get(session.id) ?? 'workspace-write',
+    permissionPresets: { defaultPreset: 'workspace-write', names: ['read-only', 'workspace-write', 'danger-full-access'],
+      catalog: () => ({ options: ['read-only', 'workspace-write', 'danger-full-access'].map(value => ({ value, name: value })),
+        defaultOptions: ['read-only', 'workspace-write', 'danger-full-access'].map(value => ({ value, name: value })), defaultPreset: 'workspace-write' }),
+      current: (session: { id: string }) => permission.get(session.id) ?? 'workspace-write',
       set: (session: { id: string }, preset: string) => { permission.set(session.id, preset) } },
     tools: { register: (tool: RegisteredTool) => { rootTools.set(tool.name, tool); return () => { rootTools.delete(tool.name) } }, get: (name: string) => rootTools.get(name) }, subprocess, webServer,
     jobs: jobs.service, subagents: subagents.service }

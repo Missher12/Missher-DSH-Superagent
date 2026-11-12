@@ -61,12 +61,13 @@ it('creates a real editable team plan including member models and explicit deliv
   await mount(); await click('新建任务')
   expect(all('[role=tablist][aria-label=协作方式] [aria-selected=true]')[0]?.textContent).toBe('团队协作')
   await type(field<HTMLTextAreaElement>('任务要求'), '修复格式化函数并验证边界')
+  await type(field<HTMLSelectElement>('执行权限'), 'workspace-write')
   await type(field<HTMLInputElement>('团队名称'), '格式化小队')
   const firstRole = all('.dt-team-plan-member')[0]!
   await type(firstRole.querySelector('textarea')!, '实现 formatLabel')
   await type(firstRole.querySelector('select')!, JSON.stringify(['worker-provider', 'worker-model']))
   await click('派出任务')
-  expect(server.requests.find(item => item.path === 'local/teams' && item.method === 'POST')?.body).toMatchObject({ name: '格式化小队',
+  expect(server.requests.find(item => item.path === 'local/teams' && item.method === 'POST')?.body).toMatchObject({ name: '格式化小队', permissionPreset: 'workspace-write',
     members: [{ id: 'build', instructions: '实现 formatLabel', model: { provider: 'worker-provider', model: 'worker-model' } }, { id: 'check', dependencies: ['build'] }] })
   expect(all('[role="dialog"]')).toHaveLength(0)
   expect(all('.dt-team-node')).toHaveLength(3)

@@ -7,7 +7,7 @@
 <p>派出项目任务，回来查看进度、执行过程与结果。</p>
 
 <p>
-  <a href="https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.9.3"><img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.9.3-4D6BFE?style=flat-square" alt="版本: 1.9.3"></a>
+  <a href="https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.9.4"><img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.9.4-4D6BFE?style=flat-square" alt="版本: 1.9.4"></a>
   <a href="https://github.com/Missher12/Missher-DSH-Superagent"><img src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-%E4%B8%AD%E6%96%87-4D6BFE?style=flat-square" alt="文档: 中文"></a>
   <a href="https://github.com/Missher12/Missher-DSH-Superagent/blob/main/LICENSE"><img src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF-MIT-6B7280?style=flat-square" alt="许可: MIT"></a>
 </p>
@@ -19,7 +19,7 @@
 ---
 
 <!-- current-source -->
-当前版本：**1.9.3** · [分支 `main`](https://github.com/Missher12/Missher-DSH-Superagent/tree/main) · [Release 与安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.9.3)。
+当前版本：**1.9.4** · [分支 `main`](https://github.com/Missher12/Missher-DSH-Superagent/tree/main) · [Release 与安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.9.4)。
 <!-- /current-source -->
 
 ## 功能一览
@@ -37,7 +37,7 @@
 
 ## 快速开始
 
-1. 从 [Releases](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.9.3) 下载对应版本的 `.tgz` 安装包。
+1. 从 [Releases](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.9.4) 下载对应版本的 `.tgz` 安装包。
 2. 在 DSH **插件 → 添加插件** 中选择下载的文件，安装并启用；按宿主提示重新加载或正常重启。
 3. 打开侧栏 **Superagent → 任务 → 新建任务**，或在聊天中明确要求派单。
 
@@ -124,7 +124,7 @@
 <details>
 <summary>模型、并发和权限如何决定？</summary>
 
-默认使用 DSH 模型，插件设置可调整后续新任务的模型与并发。同一项目的任务依次执行；聊天派单继承来源会话的具名权限，不自行扩权。
+默认使用 DSH 模型，插件设置可调整后续新任务的模型与并发。同一项目的任务依次执行；新建任务可选择 DSH 权限，默认跟随 DSH，团队成员继承任务权限；聊天派单继承来源会话权限。
 
 </details>
 

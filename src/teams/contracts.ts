@@ -11,6 +11,7 @@ export const TeamRequestSchema = z.object({
   requestId: z.string().trim().min(1).max(200), title: z.string().trim().min(1).max(160),
   name: z.string().trim().min(1).max(80).optional(), instructions: z.string().trim().min(1).max(24000),
   directory: z.string().min(1).optional(), model: RoleModelSchema.optional(),
+  permissionPreset: z.string().trim().min(1).max(200).optional(),
   coordinatorName: z.string().trim().min(1).max(60).default('协调'),
   members: z.array(TeamMemberSchema).min(2).max(6),
 }).strict().superRefine((request, context) => {

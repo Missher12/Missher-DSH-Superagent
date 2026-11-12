@@ -6,6 +6,22 @@ import { server, ticketSummary } from './fixtures/panel-server.ts'
 
 usePanel()
 beforeEach(() => at({ page: 'execution' }))
+it('keeps a chosen execution permission through closing, reopening and restoring a task draft', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  await mount(); await click('新建任务')
+  expect(field<HTMLSelectElement>('执行权限').value).toBe('')
+  const control = all('button[aria-haspopup="menu"]').find(button => button.getAttribute('aria-label') === '执行权限')!
+  expect(control.textContent).toContain('跟随 DSH')
+  await click(control)
+  await click(all('[role="menuitem"]').find(item => item.textContent?.includes('只读'))!)
+  await type(field<HTMLTextAreaElement>('任务要求'), '只读检查现有代码')
+  await click('取消'); await click('新建任务'); await remount()
+  expect(field<HTMLSelectElement>('执行权限').value).toBe('read-only')
+  await click('派出任务')
+  expect(server.requests.find(item => item.path === 'local/tasks' && item.method === 'POST')?.body)
+    .toMatchObject({ permissionPreset: 'read-only' })
+})
+
 it('keeps model reasoning effort through draft restoration and dispatch', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   await mount(); await click('新建任务')
@@ -18,6 +34,7 @@ it('keeps model reasoning effort through draft restoration and dispatch', async 
   expect(server.requests.find(item => item.path === 'local/tasks' && item.method === 'POST')?.body).toMatchObject({
     model: { provider: 'worker-provider', model: 'worker-model', reasoningEffort: 'high' },
   })
+  expect(server.requests.find(item => item.path === 'local/tasks' && item.method === 'POST')?.body).not.toHaveProperty('permissionPreset')
 })
 
 it('uses labelled host menus for task models and reasoning without losing the selected model', async () => {

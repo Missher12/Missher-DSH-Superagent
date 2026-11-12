@@ -24,6 +24,7 @@ export const LocalRequestSchema = z.object({
   instructions: z.string().trim().min(1).max(64000), directory: z.string().min(1).optional(),
   originSessionId: z.string().min(1).optional(),
   model: RoleModelSchema.optional(),
+  permissionPreset: z.string().trim().min(1).max(200).optional(),
 }).strict()
 export type LocalRequest = z.infer<typeof LocalRequestSchema>
 export type LocalMessage = TaskMessage
@@ -72,6 +73,14 @@ export class LocalTasks {
       .map(workspace => ({ id: workspace.id, title: workspace.title, directory: workspace.path,
         activeTasks: active.filter(ticket => workspaceOf(this.runtime.store, ticket)?.directory === workspace.path).length,
         protected: workspace.path === root }))
+  }
+  permissions() { return { ...this.ctx.permissionPresets.catalog(), defaultPreset: this.ctx.permissionPresets.defaultPreset } }
+  /** Resolve the user's choice against the host's live catalog before admitting work. */
+  resolvePermissionPreset(choice?: string): string {
+    const preset = choice ?? this.ctx.permissionPresets.defaultPreset
+    if (!preset || preset === 'custom') throw new LocalTaskError('请先在 DSH 选择一个具名权限预设，再派出任务；插件不会自行扩大权限')
+    if (!this.ctx.permissionPresets.names.includes(preset)) throw new LocalTaskError('所选执行权限已不可用，请重新选择后派单')
+    return preset
   }
   /** Remove only the host's registration. The host retains its directory and every session log. */
   async removeWorkspace(id: string): Promise<{ removed: boolean }> {
@@ -123,14 +132,15 @@ export class LocalTasks {
     if (request.directory) request.directory = projectDirectory(request.directory)
     const { store } = this.runtime
     const ctx = this.ctx
-    let preset = inherited?.permissionPreset ?? ctx.permissionPresets.defaultPreset
+    let preset = inherited?.permissionPreset ?? request.permissionPreset ?? ctx.permissionPresets.defaultPreset
     if (request.originSessionId) {
+      if (request.permissionPreset) throw new LocalTaskError('聊天派单沿用来源会话权限，请在来源会话中调整')
       const resolved = await ctx.sessionController.resolveAgent(request.originSessionId as SessionId)
       if ('error' in resolved) throw new LocalTaskError('来源会话不存在，请重新从该会话派单')
       this.caller(resolved.agent.id)
       preset = ctx.permissionPresets.current(resolved.agent.session)
     }
-    if (!preset || preset === 'custom') throw new LocalTaskError('请先在 DSH 选择一个具名权限预设，再派出任务；插件不会自行扩大权限')
+    preset = this.resolvePermissionPreset(preset)
     if (!request.directory && !store.settings().paused) await this.ensureWorkspace()
     const requestKey = key('local', request.originSessionId ?? 'panel', request.requestId)
     const encoded = JSON.stringify(request)

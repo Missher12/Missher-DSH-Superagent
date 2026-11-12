@@ -7,6 +7,36 @@ let host: Host | undefined
 afterEach(async () => { await host?.stop(); host = undefined })
 
 describe('DSH local task source', () => {
+  it('uses the selected DSH preset for the real worker and resolves an omitted choice at dispatch time', async () => {
+    host = await startRuntime(undefined, { mode: 'local' })
+    const response = await host.api('POST', 'local/tasks', { requestId: 'chosen-permission', title: '只读检查',
+      instructions: '检查项目文件', directory: host.directory, permissionPreset: 'read-only' })
+    expect(response.status).toBe(200)
+    const task = response.body as { ticketId: string; sessionId: string }
+    await host.runtime.idle()
+    expect(host.ctx.permissionPresets.current((host.agents.get(task.sessionId) as unknown as { session: import('@deepseek-ai/dsh-session').Session }).session)).toBe('read-only')
+    host.runtime.local!.stop(task.ticketId); await host.runtime.idle()
+    Object.defineProperty(host.ctx.permissionPresets, 'defaultPreset', { value: 'danger-full-access', configurable: true })
+    const defaults = await host.api('GET', 'local/permissions')
+    expect(defaults).toMatchObject({ status: 200, body: { defaultPreset: 'danger-full-access', options: [
+      { value: 'read-only' }, { value: 'workspace-write' }, { value: 'danger-full-access' },
+    ] } })
+    const next = await host.runtime.local!.create({ requestId: 'default-permission', title: '跟随默认', instructions: '检查项目文件', directory: host.directory })
+    await host.runtime.idle()
+    expect(host.ctx.permissionPresets.current((host.agents.get(next.sessionId) as unknown as { session: import('@deepseek-ai/dsh-session').Session }).session)).toBe('danger-full-access')
+  })
+
+  it.each(['custom', 'removed-preset'])('rejects unavailable permission %s before creating a task or team', async permissionPreset => {
+    host = await startRuntime(undefined, { mode: 'local' })
+    const input = { requestId: 'invalid-permission', title: '权限检查', instructions: '检查文件', directory: host.directory, permissionPreset }
+    expect((await host.api('POST', 'local/tasks', input)).status).toBe(400)
+    expect((await host.api('POST', 'local/teams', { ...input, members: [
+      { id: 'build', name: '实施', instructions: '实现功能' }, { id: 'check', name: '验证', instructions: '检查功能', dependencies: ['build'] },
+    ] })).status).toBe(400)
+    expect(host.runtime.store.tickets.list()).toHaveLength(0)
+    expect(host.runtime.teams!.list()).toHaveLength(0)
+  })
+
   it('adopts a native composer message once and keeps its original inbox message until it is read', async () => {
     host = await startRuntime(undefined, { mode: 'local' })
     const task = await host.runtime.local!.create({ requestId: 'native-composer', title: '原生输入', instructions: '实现原要求', directory: host.directory })
@@ -253,6 +283,8 @@ describe('DSH local task source', () => {
     await host.controller.create({ sessionId: 'permission-origin' })
     const origin = host.agents.get('permission-origin') as unknown as { session: import('@deepseek-ai/dsh-session').Session }
     host.ctx.permissionPresets.set(origin.session, 'danger-full-access')
+    await expect(host.runtime.local!.create({ requestId: 'override-origin', title: '检查', instructions: '检查说明', directory: host.directory,
+      originSessionId: 'permission-origin', permissionPreset: 'workspace-write' })).rejects.toThrow('来源会话')
     const task = await host.runtime.local!.create({ requestId: 'permissions', title: '检查', instructions: '检查说明', directory: host.directory, originSessionId: 'permission-origin' })
     await host.runtime.idle()
     const worker = host.agents.get(`worker-${task.ticketId}`) as unknown as { session: import('@deepseek-ai/dsh-session').Session }

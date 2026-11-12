@@ -10,10 +10,11 @@ import type { RoleModel } from '../policy.ts'
 import type { TeamMember } from '../teams/contracts.ts'
 import { defaultMembers, TeamMembersEditor } from './team-members-editor.tsx'
 import { Select } from './select.tsx'
+import { usePoll } from './api.ts'
 
 const DRAFT = 'dsh-superagent/local-draft'
 const DRAFT_CHANGED = 'dsh-superagent/task-draft-changed'
-interface TaskDraft { requestId: string; title: string; directory: string; instructions: string; open: boolean; existing: boolean; model?: RoleModel; mode: 'single' | 'team'; teamName: string; members?: TeamMember[] }
+interface TaskDraft { requestId: string; title: string; directory: string; instructions: string; open: boolean; existing: boolean; model?: RoleModel; permissionPreset?: string; mode: 'single' | 'team'; teamName: string; members?: TeamMember[] }
 const blank = (): TaskDraft => ({ requestId: crypto.randomUUID(), title: '', directory: '', instructions: '', open: false, existing: false, mode: 'single', teamName: '' })
 function readDraft() {
   const fallback = blank()
@@ -24,6 +25,7 @@ function readDraft() {
       title: typeof value.title === 'string' ? value.title : '', directory: typeof value.directory === 'string' ? value.directory : '',
       instructions: typeof value.instructions === 'string' ? value.instructions : '', open: value.open === true,
       existing: typeof value.existing === 'boolean' ? value.existing : !!value.directory,
+      permissionPreset: typeof value.permissionPreset === 'string' && value.permissionPreset.trim() ? value.permissionPreset.trim() : undefined,
       mode: value.mode === 'team' ? 'team' as const : 'single' as const, teamName: typeof value.teamName === 'string' ? value.teamName : '',
       members: Array.isArray(value.members) && value.members.length >= 2 && value.members.length <= 6 && value.members.every(member => member
         && typeof member.id === 'string' && typeof member.name === 'string' && typeof member.instructions === 'string'
@@ -47,6 +49,26 @@ export function selectLocalWorkspace(directory: string) {
   rememberDraft({ ...readDraft(), directory, open: true, existing: true }); window.dispatchEvent(new Event(DRAFT_CHANGED))
 }
 
+function PermissionSelect({ value, onChange, id, 'aria-label': label }: {
+  value?: string; onChange: (preset: string | undefined) => void; id?: string; 'aria-label'?: string
+}) {
+  const { t, call } = usePanel()
+  const { data, error } = usePoll(() => call('GET local/permissions'), [call], 30_000)
+  const labels: Record<string, string> = { 'read-only': t('localPermissionReadOnly'), 'workspace-write': t('localPermissionWorkspace'),
+    'danger-full-access': t('localPermissionFull'), auto: t('localPermissionAuto') }
+  const name = (value: string) => {
+    const option = data?.options.find(option => option.value === value)
+    return option?.name && option.name !== value ? option.name : labels[value] ?? option?.name ?? value
+  }
+  const listed = data?.options.some(option => option.value === value)
+  return <Select id={id} aria-label={label} value={value ?? ''} disabled={!data}
+    title={error ? t('localPermissionLoadError') : undefined} onChange={event => onChange(event.target.value || undefined)}>
+    <option value="">{data ? t('localPermissionDefault', { preset: name(data.defaultPreset) }) : t('localInheritDefault')}</option>
+    {value && !listed && <option value={value} disabled>{name(value)}{data ? ` · ${t('localPermissionUnavailable')}` : ''}</option>}
+    {data?.options.map(option => <option key={option.value} value={option.value} data-detail={option.description}>{name(option.value)}</option>)}
+  </Select>
+}
+
 export function LocalTaskComposer({ paused = false, team = false }: { paused?: boolean; team?: boolean }) {
   const { t, call, navigate, renderSession } = usePanel()
   const formId = useId()
@@ -66,6 +88,7 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
     try {
       const title = draft.title.trim() || draft.instructions.trim().split('\n')[0]!.slice(0, 80)
       const body = { requestId: draft.requestId, title, ...(draft.existing ? { directory: draft.directory.trim() } : {}),
+        ...(draft.permissionPreset ? { permissionPreset: draft.permissionPreset } : {}),
         ...(draft.model ? { model: draft.model } : {}), instructions: draft.instructions.trim() }
       const task = draft.mode === 'team' ? await call('POST local/teams', { body: { ...body, coordinatorName: t('teamCoordinator'),
         ...(draft.teamName.trim() ? { name: draft.teamName.trim() } : {}), members: draft.members ?? defaultMembers(t) } })
@@ -98,6 +121,9 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
             options={[{ value: 'team', label: t('teamModeTeam') }, { value: 'single', label: t('teamModeSingle') }]} /></ComposerField>
           <ComposerField label={t('localTaskModel')}><ModelSelect value={draft.model} onChange={model => edit({ model })} /></ComposerField>
           <ComposerField label={t('modelEffort')}><ReasoningSelect value={draft.model} onChange={model => edit({ model })} /></ComposerField>
+          <div className="dt-composer-full"><ComposerField label={t('localPermissionTitle')}>
+            <PermissionSelect value={draft.permissionPreset} onChange={permissionPreset => edit({ permissionPreset })} />
+          </ComposerField></div>
           {draft.existing && <div className="dt-composer-project dt-composer-full">
             <ComposerField label={t('localDirectory')} required><Input required value={draft.directory} placeholder="/Users/.../project"
               onChange={event => edit({ directory: event.target.value })} /></ComposerField>

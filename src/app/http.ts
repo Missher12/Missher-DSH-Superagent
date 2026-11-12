@@ -213,6 +213,10 @@ function routes(runtime: HttpHost): Routes {
       return runtime.local.workspaces()
     },
     'GET local/capabilities': () => runtime.sessions.capabilities(),
+    'GET local/permissions': () => {
+      if (!runtime.local) throw new RouteError(404, 'Local task intake is not enabled')
+      return runtime.local.permissions()
+    },
     'POST local/workspaces': async ({ body }) => {
       if (!runtime.local) throw new RouteError(404, 'Local task intake is not enabled')
       const request = z.object({ directory: z.string().trim().min(1).max(4096), title: z.string().trim().min(1).max(80).optional() }).strict().parse(await body(32 * 1024))

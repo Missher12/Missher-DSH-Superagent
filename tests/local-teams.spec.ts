@@ -31,6 +31,20 @@ async function complete(ticketId: string, summary = '本成员分工完成', del
   await settle()
 }
 
+it('pins the selected permission for both the coordinator and dependent members', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const result = await host.api('POST', 'local/teams', { ...request(), directory: host.directory, permissionPreset: 'read-only' })
+  expect(result.status).toBe(200)
+  const team = result.body as { id: string; coordinatorTicketId: string }
+  const coordinator = await readySession(team.coordinatorTicketId)
+  expect(host.ctx.permissionPresets.current((host.agents.get(coordinator) as unknown as { session: import('@deepseek-ai/dsh-session').Session }).session)).toBe('read-only')
+  Object.defineProperty(host.ctx.permissionPresets, 'defaultPreset', { value: 'danger-full-access', configurable: true })
+  await complete(team.coordinatorTicketId)
+  const member = host.runtime.teams!.get(team.id).members.find(item => item.id === 'build')!
+  const session = await readySession(member.ticketId!)
+  expect(host.ctx.permissionPresets.current((host.agents.get(session) as unknown as { session: import('@deepseek-ai/dsh-session').Session }).session)).toBe('read-only')
+}, 20_000)
+
 it('adds an idempotent member to an existing team and preserves earlier sessions and dependency handoffs', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
