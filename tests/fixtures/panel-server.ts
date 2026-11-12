@@ -85,6 +85,8 @@ export const MACHINE = { stateDir: '/srv/dsh-superagent', promptMaxChars: 100000
 
 type Settings = ReturnType<typeof SettingsSchema.parse>
 export interface PanelServer {
+  additionalSources?: SourceView[]
+  mcp?: ApiResponse<'GET mcp'>
   installedSources?: string[]
   enableSource?: (id: 'github' | 'feishu') => Promise<void>
   renderSessions?: boolean
@@ -182,7 +184,11 @@ const settingsView = (): ApiResponse<'GET settings'> => ({
   blocks: { policy: { value: server.settings.policy, revision: server.revisions.policy ?? 0 },
     eval: { value: server.settings.eval, revision: server.revisions.eval ?? 0 },
     executor: { value: server.settings.executor, revision: server.revisions.executor ?? 0 } },
-  sources: sourceSettings(),
+  sources: [...sourceSettings(), ...server.setup.mode === 'local' && !server.additionalSources?.some(source => source.id === 'mcp') ? [{
+    id: 'mcp', kind: 'mcp', title: { zh: 'MCP 外部派单', en: 'MCP task intake' }, description: { zh: '', en: '' },
+    installed: true, state: server.mcp?.enabled ? 'ready' as const : 'off' as const,
+    value: { enabled: server.mcp?.enabled ?? false, config: {} }, revision: 0, restarts: [], fields: [], facts: {}, labels: {},
+  }] : [], ...server.additionalSources ?? []],
   environment: { root: '/srv/dsh-superagent/work', variables: [
     { owner: 'executor', enabled: true, variables: [{ key: 'DSH_SUPERAGENT_DIR', description: { zh: '工单的执行目录',
       en: 'The ticket directory' } },
@@ -345,9 +351,19 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     server.sessionModels[params.id] = model
     return model
   } },
-  'GET mcp': { answer: () => ({ url: 'http://127.0.0.1:3082/superagent/mcp', enabled: false, clients: [] }) },
+  'GET mcp': { answer: () => server.mcp ?? ({ url: 'http://127.0.0.1:3082/superagent/mcp', enabled: false, clients: [] }) },
   'POST mcp/clients': { body: true, answer: () => refuse(400, 'Connect using the running DSH instance') },
-  'PUT mcp/clients/:id': { body: true, answer: () => refuse(404, 'Connection not found') },
+  'PUT mcp/clients/:id': { body: true, answer: ({ params, body }) => {
+    const client = server.mcp?.clients.find(client => client.id === params.id)
+    if (!client) return refuse(404, 'Connection not found')
+    client.name = body.name
+    client.projects = body.workspaceIds.map(id => {
+      const project = server.workspaceChoices.find(project => project.id === id)
+      if (!project) throw new Error('Unknown test workspace')
+      return { id: project.id, title: project.title, directory: project.directory }
+    })
+    return server.mcp!
+  } },
   'POST mcp/clients/:id/token': { answer: () => refuse(404, 'Connection not found') },
   'POST mcp/clients/:id/test': { body: true, answer: () => refuse(404, 'Connection not found') },
   'POST mcp/clients/:id/enabled': { body: true, answer: () => refuse(404, 'Connection not found') },

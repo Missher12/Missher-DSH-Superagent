@@ -11,32 +11,41 @@ import { SourceSettings } from './source.tsx'
 import { EvalSettings } from './eval.tsx'
 import { Section } from './widgets.tsx'
 import { sourceMark } from './marks.ts'
+import { localized } from './text.ts'
 
-type ConnectionSource = 'mcp' | 'github' | 'feishu'
+type ConnectionSource = string
 type ConnectionPage = 'setup' | 'policy'
 function Connections({ selected, onSelect, page, onPage }: { selected: ConnectionSource; onSelect: (source: ConnectionSource) => void;
   page: ConnectionPage; onPage: (page: ConnectionPage) => void }) {
   const { t } = usePanel(), { settings: { sources } } = useSettings()
+  const connections = sources.filter(source => source.id !== 'local').map(source => ({
+    id: source.id, name: source.id === 'mcp' ? 'MCP' : localized(t, source.title) || source.id,
+    state: source.state, policy: !!source.policy,
+  }))
+  // Bundled connectors remain available for setup even when their host components are disabled.
+  for (const id of ['github', 'feishu'] as const) if (!connections.some(source => source.id === id))
+    connections.push({ id, name: t(`source.${id}`), state: 'missing', policy: false })
+  connections.sort((a, b) => Number(b.id === 'mcp') - Number(a.id === 'mcp'))
+  const current = connections.find(source => source.id === selected) ?? connections[0]
   return <div className="dt-connections">
     <SegmentedTabs className="dt-subtabs" label={t('localConnectionPages')} value={page} onChange={onPage}
       items={(['setup', 'policy'] as const).map(value => ({ value, label: t(value === 'setup' ? 'localConnectionsSetup' : 'localExternalPolicy'),
         id: `dt-connections-tab-${value}`, panelId: `dt-connections-panel-${value}` }))} />
     <div className="dt-connections-panel" id={`dt-connections-panel-${page}`} role="tabpanel" aria-labelledby={`dt-connections-tab-${page}`}>
-    {page === 'policy' ? <EvalSettings include={['github', 'feishu']} /> : <>
+    {page === 'policy' ? <EvalSettings layout="local" /> : <>
     <nav className="dt-connections-nav" aria-label={t('localConnectionSources')}>
-      {(['mcp', 'github', 'feishu'] as const).map(id => {
-        const source = sources.find(source => source.id === id)
-        const status = source && sourceMark(t, source.state)
-        const name = id === 'mcp' ? 'MCP' : t(`source.${id}`)
-        return <button type="button" key={id} aria-label={name} aria-current={selected === id ? 'page' : undefined}
+      {connections.map(source => {
+        const id = source.id, status = sourceMark(t, source.state)
+        const name = source.name
+        return <button type="button" key={id} aria-label={name} aria-current={current?.id === id ? 'page' : undefined}
           aria-controls="dt-connection-content" onClick={() => onSelect(id)}>
-          <Icon name={id === 'mcp' ? 'agent' : id === 'github' ? 'pull' : 'message'} size={18} />
+          <Icon name={id === 'mcp' ? 'agent' : id === 'github' ? 'pull' : source.policy ? 'message' : 'agent'} size={18} />
           <span><strong>{name}</strong><small data-state={status?.dot}>{id === 'mcp' ? 'HTTP · stdio' : status?.label ?? t('sourceNotInstalled')}</small></span>
         </button>
       })}
     </nav>
-    <div id="dt-connection-content" className="dt-connections-body" key={selected}>
-      {selected === 'mcp' ? <McpSettings /> : <SourceSettings include={[selected]} />}
+    <div id="dt-connection-content" className="dt-connections-body" key={current?.id}>
+      {current?.id === 'mcp' ? <McpSettings /> : current ? <SourceSettings include={[current.id]} /> : null}
     </div>
     </>}
     </div>

@@ -308,6 +308,7 @@ it('keeps task policy inside MCP services and retains its draft when switching b
   await mount(); await click(zh.localConnections)
   expect(all('.dt-connections-nav button')).toHaveLength(3)
   await click(zh.localExternalPolicy)
+  await click('研判设置')
   await type(field<HTMLSelectElement>(zh.acceptMode), 'observe')
   await click('接入')
   expect(all('.dt-connections-nav button')).toHaveLength(3)
@@ -315,6 +316,7 @@ it('keeps task policy inside MCP services and retains its draft when switching b
     'workspace_list', 'task_create', 'task_get', 'task_list', 'task_followup', 'task_stop', 'task_retry',
   ])
   await click(zh.localExternalPolicy)
+  await click('研判设置')
   expect(field<HTMLSelectElement>(zh.acceptMode).value).toBe('observe')
   expect(server.requests.some(request => request.method === 'PUT')).toBe(false)
 })

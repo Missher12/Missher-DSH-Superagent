@@ -53,7 +53,7 @@ function CredentialDialog({ credential, onClose }: { credential: Credential; onC
   </Modal>
 }
 
-export function McpSettings() {
+export function McpSettings({ permissions = false }: { permissions?: boolean }) {
   const { call, t } = usePanel()
   const formId = useId()
   const { data, error, reload } = usePoll(() => call('GET mcp'), [call])
@@ -85,11 +85,11 @@ export function McpSettings() {
       setEditing(undefined)
     })
   }
-  return <Section title={t('mcpTitle')} hint={t('mcpHint')} action={<Button variant="outline" size="sm" icon={<Icon name="plus" size={14} />}
+  return <Section title={t(permissions ? 'mcpDispatchPermissions' : 'mcpTitle')} hint={t(permissions ? 'mcpDispatchPermissionsHint' : 'mcpHint')} action={<Button variant="outline" size="sm" icon={<Icon name="plus" size={14} />}
     disabled={!data || busy} onClick={() => open()}>{t('mcpAdd')}</Button>}>
-    <div className="dt-mcp-capabilities"><span>{t('mcpToolsTitle')}</span><ul className="dt-mcp-tools">
+    {!permissions && <div className="dt-mcp-capabilities"><span>{t('mcpToolsTitle')}</span><ul className="dt-mcp-tools">
       {Object.entries(TOOL_LABELS).map(([tool, label]) => <li key={tool} title={tool}>{t(label)}</li>)}
-    </ul></div>
+    </ul></div>}
     {(error || workspaceError || failure) && <p className="dt-error" role="status">{failure ?? error?.message ?? workspaceError?.message}</p>}
     {data && !data.clients.length && <p className="dt-hint dt-mcp-empty">{t('mcpEmpty')}</p>}
     <Fields disabled={busy}>
@@ -105,12 +105,12 @@ export function McpSettings() {
         </div>
       </div>)}
     </Fields>
-    <Modal className="dt-mcp-dialog" open={!!editing} title={editing?.id ? t('mcpConfigure') : t('mcpAdd')} closeLabel={t('close')}
+    <Modal className="dt-mcp-dialog" open={!!editing} title={editing?.id ? t('mcpEditApplication', { name: data?.clients.find(client => client.id === editing.id)?.name ?? '' }) : t('mcpAdd')} closeLabel={t('close')}
       onClose={() => { if (!busy) setEditing(undefined) }} footer={<>
         <Button disabled={busy} onClick={() => setEditing(undefined)}>{t('cancel')}</Button>
         <Button type="submit" form={formId} variant="primary" disabled={busy || !editing?.name.trim() || !editing.workspaceIds.length}>{t('save')}</Button>
       </>}>
-      {editing && <form id={formId} className="dt-form dt-mcp-form" onSubmit={event => { event.preventDefault(); void save() }}>
+      {editing && <form id={formId} className="dt-form dt-mcp-form" onSubmit={event => { event.preventDefault(); event.stopPropagation(); void save() }}>
         <Fields disabled={busy}>
           <Field label={t('mcpName')}><Input value={editing.name} required maxLength={100}
             onChange={event => setEditing({ ...editing, name: event.target.value })} /></Field>
