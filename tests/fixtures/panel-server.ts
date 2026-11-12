@@ -426,7 +426,8 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   } },
   'POST tickets/:id/stop': { answer: ({ params }) => {
     if (!ticketOf(params.id)) return refuse(404, 'Ticket not found')
-    server.tickets.open = []; server.person = server.person.filter(ticket => ticket.id !== params.id)
+    server.tickets.open = server.tickets.open.filter(ticket => ticket.id !== params.id)
+    server.person = server.person.filter(ticket => ticket.id !== params.id)
     return { stopped: true }
   } },
   'POST executor/pause': { body: true, answer: ({ body }) => {

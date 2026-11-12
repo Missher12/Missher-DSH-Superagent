@@ -236,6 +236,72 @@ it('lets the user dispatch a local task and sends follow-up requirements to that
   expect(server.requests.find(item => item.path === 'local/tasks/local-test/followup')?.body).toMatchObject({ text: '保持现有配色' })
 })
 
+it('puts pending-task replies and stop confirmation on the card, and refreshes after stopping only that task', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  const waiting = ticketSummary({ id: 'needs-answer', title: '需要补充的任务', sessionId: 'worker-needs-answer' }, { stage: 'person', action: 'answer' })
+  server.person = [waiting]
+  await mount()
+  const card = all('.dt-board-card').find(card => card.textContent?.includes(waiting.title))!
+  await click([...card.querySelectorAll('button')].find(button => button.textContent?.includes('回复任务'))!)
+  expect(server.opened).toEqual([waiting.sessionId])
+  const stop = [...card.querySelectorAll('button')].find(button => button.textContent?.trim() === '停止')!
+  await click(stop)
+  expect(all('[role="dialog"]')[0]?.textContent).toContain('Session 和执行目录保留')
+  expect(server.requests.some(request => request.method === 'POST' && request.path.endsWith('/stop'))).toBe(false)
+  await click('取消')
+  expect(card.isConnected).toBe(true)
+  await click(stop); await click(zh.confirm)
+  expect(server.requests.filter(request => request.method === 'POST' && request.path.endsWith('/stop')).map(request => request.path)).toEqual(['tickets/needs-answer/stop'])
+  expect(all('.dt-board-card').some(card => card.textContent?.includes(waiting.title))).toBe(false)
+  expect(all('.dt-board-card').some(card => card.textContent?.includes('修复回归'))).toBe(true)
+})
+
+it('keeps a pending task and its confirmation visible when stopping fails', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  server.person = [ticketSummary({ id: 'needs-review', title: '待复核任务' }, { stage: 'person', action: 'review' })]
+  await mount()
+  const card = all('.dt-board-card').find(card => card.textContent?.includes('待复核任务'))!
+  expect(card.textContent).toContain('查看交付')
+  await click([...card.querySelectorAll('button')].find(button => button.textContent?.trim() === '停止')!)
+  server.down = true
+  await click(zh.confirm)
+  expect(all('[role="dialog"]')).toHaveLength(1)
+  expect(card.isConnected).toBe(true)
+  expect(all('.dt-toast')).toHaveLength(1)
+  server.down = false
+})
+
+it('offers retry only when the pending task allows it, keeping its original task id', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  server.person = [ticketSummary({ id: 'blocked-task', title: '需要重试', actions: { retry: true, stop: true } }, { stage: 'person', action: 'blocked' })]
+  await mount()
+  const card = all('.dt-board-card').find(card => card.textContent?.includes('需要重试'))!
+  await click([...card.querySelectorAll('button')].find(button => button.textContent?.trim() === '重试')!)
+  expect(server.requests.some(request => request.path.endsWith('/retry'))).toBe(false)
+  await click(zh.confirm)
+  expect(server.requests.some(request => request.method === 'POST' && request.path === 'tickets/blocked-task/retry')).toBe(true)
+})
+
+it('opens separate connection settings without a project sidebar and retains unfinished source edits', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  at({ page: 'settings' })
+  await mount()
+  expect(all('.dt-studio-sidebar')).toHaveLength(0)
+  expect(all('[aria-label="调整项目侧栏宽度"]')).toHaveLength(0)
+  expect(all('.dt-local-settings-nav button').map(button => button.textContent?.trim())).toEqual(['通用', 'MCP 服务', '派单规则', '提示词'])
+  await click(zh.localConnections)
+  await click('GitHub')
+  expect(all('#dt-source-github')).toHaveLength(1)
+  expect(all('#dt-source-feishu')).toHaveLength(0)
+  await type(field<HTMLInputElement>('监听的仓库'), 'acme/unfinished')
+  await click('飞书')
+  expect(all('#dt-source-github')).toHaveLength(0)
+  expect(all('#dt-source-feishu')).toHaveLength(1)
+  await click('GitHub')
+  expect(field<HTMLInputElement>('监听的仓库').value).toBe('acme/unfinished')
+  expect(server.requests.some(request => request.method === 'PUT')).toBe(false)
+})
+
 it('opens the workbench and keeps local navigation understandable', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   at({ page: 'overview' })
@@ -393,7 +459,7 @@ it('opens advanced settings separately and retains an unsaved basic setting', as
   await mount(); await click('设置')
   await type(field<HTMLInputElement>(zh.localMaxWorkers), '4')
   expect(all('.dt-mcp-connection')).toHaveLength(0)
-  await click(zh.mcpTitle)
+  await click(zh.localConnections)
   expect(text()).toContain(zh.mcpAdd)
   await click(zh.localGeneralSettings)
   expect(field<HTMLInputElement>(zh.localMaxWorkers).value).toBe('4')

@@ -47,8 +47,7 @@ function RuleRow({ rule, expanded, onToggle, onChange, onDuplicate, onRemove }: 
   const name = rule.name.trim() || t('newRule')
   return <li className="dt-rule">
     <DisclosureRow icon={<span className="dt-rule-dot" data-enabled={rule.enabled
-      || undefined} />} title={name} open={expanded} onToggle={onToggle}
-      collapsedContent={<span className="dt-rule-preview">{rule.instruction}</span>}>
+      || undefined} />} title={name} open={expanded} onToggle={onToggle}>
       <div className="dt-rule-body">
         <Field label={t('ruleName')}><Input value={rule.name} required maxLength={LIMITS.ruleName} onChange={event => onChange({ ...rule,
           name: event.target.value })} /></Field>
@@ -117,8 +116,7 @@ function AdmissionTable({ rows, labels, table, explicit, onChange }: {
         text={t('admissionAnyoneWarning')} icon="alert" warn />}</span>
     </span></td>
   }
-  return <Section title={t('admission')} hint={t('admissionHint')}>
-    <Hint>{explicit}</Hint>
+  return <Section title={t('admission')} hint={`${t('admissionHint')}\n${explicit}\n${t('admissionFootnote')}`}>
     <table className="dt-table dt-admission">
       <thead>
         <tr><th scope="col">{t('admissionScope')}</th>
@@ -132,7 +130,6 @@ function AdmissionTable({ rows, labels, table, explicit, onChange }: {
           aria-label={t('admissionNotReceived')}>—</td>)}
       </tr>)}</tbody>
     </table>
-    <Hint>{t('admissionFootnote')}</Hint>
   </Section>
 }
 
@@ -160,8 +157,7 @@ function PolicyBlock({ include }: { include?: readonly string[] }) {
   return <form className="dt-form dt-block" onSubmit={event => { void draft.submit(event) }}
     onInvalidCapture={event => reveal(event.target)}>
     <Fields disabled={draft.busy}>
-      <Section title={t('rules')} hint={t('rulesHint')}
-        badge={<span className="dt-settings-revision" title={t('policyVersionHint')}>{policyVersion.slice(0, 8)}</span>}
+      <Section title={t('rules')} hint={`${t('rulesHint')}\n${t('policyVersion')} ${policyVersion.slice(0, 8)}\n${t('policyVersionHint')}`}
         action={<Button variant="ghost" size="sm" icon={<Icon name="plus" />}
         onClick={add}>{t('addRule')}</Button>}>
         {policy.rules.length ? <ul className="dt-rules">{policy.rules.map((rule, index) => <RuleRow key={rule.id} rule={rule}
@@ -175,7 +171,7 @@ function PolicyBlock({ include }: { include?: readonly string[] }) {
       </Section>
       {current && <Section title={t('policyPerSource')} hint={t('policyPerSourceHint')}>
         <div className="dt-source-policy-layout"><div className="dt-source-policy">
-          <div className="dt-source-policy-nav" role="tablist" aria-label={t('policyPerSource')} aria-orientation="vertical">
+          <div className="dt-source-policy-nav" role="tablist" aria-label={t('policyPerSource')}>
             {parts.map((source, index) => <button key={source.id} id={`${sourceTabs}-${source.id}`} type="button" role="tab"
               aria-selected={source === current} aria-controls={`${sourceTabs}-body`} tabIndex={source === current ? 0 : -1} className="dt-subtab"
               onClick={() => setTab(source.id)} onKeyDown={event => {
@@ -190,7 +186,6 @@ function PolicyBlock({ include }: { include?: readonly string[] }) {
             </button>)}
           </div>
           <div className="dt-source-policy-body" role="tabpanel" id={`${sourceTabs}-body`} aria-labelledby={`${sourceTabs}-${current.id}`}>
-            <h4 className="dt-source-policy-title">{localized(t, current.title)}</h4>
             <SourcePart key={current.id} source={current} part={part(current.id)}
               saved={(blocks.policy.value.sources[current.id] ?? {}) as Part} dirty={draft.dirty}
               reload={reload} onChange={next => edit({ sources: { ...policy.sources,

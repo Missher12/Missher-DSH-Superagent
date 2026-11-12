@@ -129,7 +129,7 @@ it('edits a built-in part as an override of its built-in text, marks it changed,
   const shared = builtInParts()['runtime/shared']!
   await click(builtInItem(zh['promptPart.runtime/shared']))
   expect(field<HTMLTextAreaElement>(zh.promptBody).value).toBe(shared.text)
-  expect(text()).toContain(zh['promptReadBy.both'])
+  expect(all('.dt-info').some(item => item.getAttribute('aria-label') === zh['promptReadBy.both'])).toBe(true)
   await type(field<HTMLTextAreaElement>(zh.promptBody), 'Shared, the team way.')
   expect(builtInItem(zh['promptPart.runtime/shared']).querySelector('.dt-changed-tag')?.textContent).toBe(zh.promptChanged)
   await click(zh.save)
@@ -150,7 +150,7 @@ it('says which placeholders a template keeps', async () => {
   await mount()
   await click(builtInItem(zh['promptPart.runtime/policy']))
   expect(text()).toContain('这是模板：保留占位符 {version}、{mode}、{rules}，由系统填入内容。')
-  expect(text()).toContain(zh['promptReadBy.orchestrator'])
+  expect(all('.dt-info').some(item => item.getAttribute('aria-label') === zh['promptReadBy.orchestrator'])).toBe(true)
 })
 
 it('marks an override whose built-in text an upgrade changed, shows how it changed, and keeps the team\'s text or takes the new one', async () => {

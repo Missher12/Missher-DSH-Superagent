@@ -71,8 +71,10 @@ function SourceCard({ source }: { source: SourceView }) {
         {source.installed && <Switch checked={value.enabled} onChange={enabled => draft.edit({ ...value, enabled })}
           label={t('sourceEnable', { name: localized(t, source.title) })} />}
       </div>
-      {problem && <div className="dt-row-buttons">
-        <p className="dt-error" role="status"><SetupMessage problem={problem} lead /></p><CheckSetupButton />
+      {problem && <div className="dt-source-problem">
+        <div className="dt-subhead"><p className="dt-error" role="status"><SetupMessage problem={{ ...problem, values: { ...problem.values, output: '' } }} lead /></p><CheckSetupButton /></div>
+        {problem.values.output && <details className="dt-source-error-details"><summary>{t('sourceErrorDetails')}</summary>
+          <pre>{problem.values.output}</pre></details>}
       </div>}
       {!source.installed && <Hint>{t('sourceNotInstalledHint')}</Hint>}
       {source.installed && source.fields.filter(spec => !spec.advanced).map(field)}

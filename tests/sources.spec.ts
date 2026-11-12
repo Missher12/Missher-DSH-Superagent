@@ -55,7 +55,7 @@ function host(overrides: Partial<SourceContextDeps> = {}) {
   const parts: SourceContextDeps = { store, engine, outbox: { send: message => { store.receipts.add(message) } }, commands, sources, deployment,
     ready: Promise.resolve(), configured: () => true, receive, ...overrides }
   // The Sources' functions take the context; plugin entries and kind callbacks take the host, which builds each kind's context.
-  const value = { ...parts, context: (kind: { kind: string; health: readonly string[] }) => sourceContextOf(parts, kind) }
+  const value = { ...parts, lifetime: new AbortController().signal, context: (kind: { kind: string; health: readonly string[] }) => sourceContextOf(parts, kind) }
   const context = sourceContextOf(parts, { kind: 'feishu', health: ['github', 'feishu', 'history'] })
   const health = overrides.sources ? healthOf.get(overrides.sources)!.all : board.all
   return { ...value, ...context, health, store, engine, commands: parts.commands, receive, executor }
@@ -1209,6 +1209,25 @@ describe('feishu event consumer', () => {
     await vi.waitFor(() => expect(health.feishu).toMatchObject({ state: 'paused', code: 'sourceOff' }), until)
     expect(alive(pid)).toBe(false)
     controller.abort(); await running; store.close()
+  }, 20_000)
+  it('stops its event consumer when the orchestrator shuts down before the source plugin is disposed', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const lifetime = new AbortController()
+    let closed = false
+    const value = host({ sources: emptyRegistry(), deployment: testDeployment({ feishu: { ...testDeployment().feishu!, cli: cli('ready') } }) })
+    const disposers: (() => unknown)[] = []
+    applyFeishu({ orchestrator: { ...value, lifetime: lifetime.signal }, effect: (effect: () => () => unknown) => { disposers.push(effect()) } } as never)
+    try {
+      await vi.waitFor(() => expect(value.health.feishu).toMatchObject({ state: 'ready', detail: 'Listening for bot events' }), until)
+      const pid = Number(readFileSync(join(dir, 'pid'), 'utf8'))
+      lifetime.abort()
+      await vi.waitFor(() => expect(alive(pid)).toBe(false), { timeout: 1000 })
+      value.store.close(); closed = true
+      await vi.advanceTimersByTimeAsync(5000)
+    } finally {
+      for (const dispose of disposers) await dispose()
+      if (!closed) value.store.close()
+    }
   }, 20_000)
   it('starts the consumer again after it exits, and is ready once the next run listens', async () => {
     const { ctx, health, store } = consumerSource(cli('flaky'))

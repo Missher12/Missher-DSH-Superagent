@@ -130,11 +130,11 @@ function StudioSidebar() {
     {file && <FilePreview key={`${scope.id}:${file}`} scope={scope} paths={[file]} onClose={() => setFile(undefined)} />}
   </nav>
 }
-export function StudioShell({ children }: { children: ReactNode }) {
+export function StudioShell({ children, sidebar = true }: { children: ReactNode; sidebar?: boolean }) {
   const studio = useStudio(), { t } = usePanel()
-  return <div ref={studio.root} className="dt-studio-shell" data-compact={studio.compact || undefined} data-left-hidden={studio.hidden || undefined}
-    data-drawer={studio.drawer || undefined} style={{ '--dt-left-width': `${studio.left.width}px` } as CSSProperties}>
-    <StudioSidebar /><PaneDivider pane={studio.left} /><div className="dt-studio-center">{children}</div>
-    {studio.compact && studio.drawer && <button type="button" className="dt-studio-drawer-mask" aria-label={t('studioCloseSidebar')} onClick={studio.closeDrawer} />}
+  return <div ref={studio.root} className="dt-studio-shell" data-compact={studio.compact || undefined} data-left-hidden={!sidebar || studio.hidden || undefined}
+    data-drawer={sidebar && studio.drawer || undefined} style={{ '--dt-left-width': `${studio.left.width}px` } as CSSProperties}>
+    {sidebar && <><StudioSidebar /><PaneDivider pane={studio.left} /></>}<div className="dt-studio-center">{children}</div>
+    {sidebar && studio.compact && studio.drawer && <button type="button" className="dt-studio-drawer-mask" aria-label={t('studioCloseSidebar')} onClick={studio.closeDrawer} />}
   </div>
 }

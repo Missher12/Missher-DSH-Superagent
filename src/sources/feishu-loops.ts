@@ -52,8 +52,8 @@ async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
       continue
     }
     const running = new AbortController()
-    const check = setInterval(() => { if (!enabled(ctx)) running.abort() }, 5000)
-    const stop = () => running.abort()
+    const check = setInterval(() => { if (signal.aborted || !enabled(ctx)) running.abort() }, 5000)
+    const stop = () => { clearInterval(check); running.abort() }
     signal.addEventListener('abort', stop, { once: true })
     const began = Date.now()
     try { await consume(ctx, running.signal) }

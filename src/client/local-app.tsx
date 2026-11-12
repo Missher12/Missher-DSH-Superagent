@@ -59,7 +59,7 @@ export function LocalPages({ route, openTab }: { route: Route; openTab: (tab: Ta
   const workspace = useRef<Extract<Route, { page: 'overview' }>>({ page: 'overview' })
   useEffect(() => { if (route.page === 'overview') workspace.current = route }, [route])
   useEffect(() => { if (!TABS.some(tab => tab === route.page)) navigate({ page: 'overview' }, true) }, [route.page, navigate])
-  return <StudioProvider route={route.page === 'overview' ? route : workspace.current}><div data-density="comfortable" className={`dt-page dt-local-page dt-studio-page${page === 'overview' ? ' dt-workspace-page' : ''}`}><div className="dt-column">
+  return <StudioProvider route={route.page === 'overview' ? route : workspace.current}><div data-density="comfortable" className={`dt-page dt-local-page dt-studio-page${page === 'overview' ? ' dt-workspace-page' : page === 'settings' ? ' dt-settings-page' : ''}`}><div className="dt-column">
     <header className="dt-head"><div className="dt-local-brand"><span className="dt-local-brand-icon"><Icon name="agent" size={19} /></span>
       <h1 className="dt-local-title">{t('title')}</h1></div>
       <SegmentedTabs className="dt-tabs" label={t('pagesLabel')} value={page} onChange={tab => {
@@ -68,9 +68,9 @@ export function LocalPages({ route, openTab }: { route: Route; openTab: (tab: Ta
       }}
         items={TABS.map(value => ({ value, label: t(value === 'overview' ? 'localWorkbench' : value === 'execution' ? 'localTasks' : value === 'source' ? 'localWorkspaces' : `tab.${value}`),
           id: `dt-tab-${value}`, panelId: 'dt-page' }))} />
-      <div className="dt-studio-head-end"><StudioHeaderTools workbench={page === 'overview'} /><LocalTaskComposer team={page === 'overview'} paused={state?.paused} /></div>
+      <div className="dt-studio-head-end">{page !== 'settings' && <StudioHeaderTools workbench={page === 'overview'} />}<LocalTaskComposer team={page === 'overview'} paused={state?.paused} /></div>
     </header>
-    <StudioShell><main id="dt-page" role="tabpanel" aria-labelledby={`dt-tab-${page}`} className="dt-main">
+    <StudioShell sidebar={page !== 'settings'}><main id="dt-page" role="tabpanel" aria-labelledby={`dt-tab-${page}`} className="dt-main">
       {error && <LoadState error={error} loading={false} />}
       {page === 'overview' ? <LocalWorkbench {...route.page === 'overview' ? { sessionId: route.query?.session, teamId: route.query?.team, memberId: route.query?.member } : {}} /> : page === 'help' ? <LocalHelp /> : page === 'settings' ? <LocalSettings /> : page === 'source' ? <LocalWorkspaces />
         : route.page === 'execution' && route.id ? <TicketPage key={route.id} id={route.id} />

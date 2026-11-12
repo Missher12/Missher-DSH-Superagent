@@ -109,7 +109,7 @@ function ProviderField({ id, value, providers, onChange, 'aria-label': label }: 
   }}>
     {!value && <option value="">{t('defaultModelUnavailable')}</option>}
     {value && !providers.some(provider => provider.id === value) && <option value={value}>{value}</option>}
-    {providers.map(provider => <option key={provider.id} value={provider.id} data-detail={provider.id}>{provider.name}</option>)}
+    {providers.map(provider => <option key={provider.id} value={provider.id} data-detail={provider.id !== provider.name ? provider.id : undefined}>{provider.name}</option>)}
     <option value=":manual:">{t('modelCustomValue')}</option>
   </Select>
 }

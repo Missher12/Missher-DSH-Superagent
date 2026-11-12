@@ -8,7 +8,7 @@ import { changedSections, isPart, isSkill, lineDiff, partKey, partText, partWith
 import { useAction, usePanel } from './provider.tsx'
 import { errorText, valueLabel, when, type T } from './text.ts'
 import { Hint, LoadState } from './widgets.tsx'
-import { Button, Icon, Input, SegmentedControl } from './controls.tsx'
+import { Button, Icon, InfoTip, Input, SegmentedControl } from './controls.tsx'
 import { Select } from './select.tsx'
 
 type Tab = 'edit' | 'full' | 'history'
@@ -96,8 +96,8 @@ function PromptSections({ config, view, changed, selected, onSelect, onEdit }: {
       </Select>
       <div className="dt-nav-group">{t('promptTeamGroup')}</div>
       {view.sections.map(section => item(section, <>
-        <span>{sectionLabel(t, view, section)}{config[section] !== view.defaults[section] && <span
-          className="dt-changed-tag">{t('promptChanged')}</span>}{unsaved(section)}</span><small>{t(`promptPartHint.${section}`)}</small>
+        <span title={t(`promptPartHint.${section}`)}>{sectionLabel(t, view, section)}{config[section] !== view.defaults[section] && <span
+          className="dt-changed-tag">{t('promptChanged')}</span>}{unsaved(section)}</span>
       </>))}
       <div className="dt-nav-group">{t('promptBuiltInGroup')}</div>
       {view.parts.map(entry => item(`part/${entry.key}`, <span>{sectionLabel(t, view, `part/${entry.key}`)}
@@ -130,7 +130,7 @@ function TeamEditor({ config, view, selected, onSelect, onEdit }: {
   const text = sectionText(config, selected) ?? ''
   const fallback = sectionText(view.defaults, selected)
   return <div className="dt-prompt-main">
-    <div className="dt-subhead"><h3 className="dt-section-title">{sectionLabel(t, view, selected)}</h3>
+    <div className="dt-subhead"><h3 className="dt-section-title">{sectionLabel(t, view, selected)}<InfoTip text={t(isSkill(selected) ? 'promptReadBy.skill' : 'promptReadBy.both')} /></h3>
       <span className="dt-actions">{isSkill(selected)
         ? <Button variant="outline" size="sm" icon={<Icon name="trash" />} onClick={() => { onEdit(withoutSkill(config, selected),
           { selection: 'communication' }); onSelect('communication') }}>{t('remove')}</Button>
@@ -139,7 +139,6 @@ function TeamEditor({ config, view, selected, onSelect, onEdit }: {
           {t('promptResetSection')}
         </Button>}
     </span></div>
-    <Hint>{t(isSkill(selected) ? 'promptReadBy.skill' : 'promptReadBy.both')}</Hint>
     <textarea className="dt-textarea dt-mono dt-editor" spellCheck={false} aria-label={t('promptBody')} value={text}
       onChange={event => onEdit(withSection(config, selected, event.target.value))} />
   </div>
@@ -164,11 +163,10 @@ function BuiltInEditor({ config, view, part, onEdit }: {
   const readBy = part.key.startsWith('skill/') ? 'promptReadBy.skill' : part.roles.length > 1 ? 'promptReadBy.both'
     : `promptReadBy.${part.roles[0]!}` as const
   return <div className="dt-prompt-main">
-    <div className="dt-subhead"><h3 className="dt-section-title">{sectionLabel(t, view, name)}</h3>
+    <div className="dt-subhead"><h3 className="dt-section-title">{sectionLabel(t, view, name)}<InfoTip text={t(readBy)} /></h3>
       <span className="dt-actions"><Button variant="outline" size="sm" icon={<Icon name="refresh" />}
         disabled={partText(config, part) === partText(view.defaults, part) && !updated(config, part)}
         onClick={reset}>{t('promptResetSection')}</Button></span></div>
-    <Hint>{t(readBy)}</Hint>
     {part.placeholders && <Hint>{t('promptTemplateHint', { placeholders: part.placeholders.join(t('listSeparator')) })}</Hint>}
     {updated(config, part) && <section className="dt-default-updated" aria-label={t('promptDefaultUpdated')}>
       <b>{t('promptDefaultUpdated')}</b>

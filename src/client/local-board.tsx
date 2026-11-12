@@ -5,12 +5,12 @@ import { usePoll, type TicketRow } from './api.ts'
 import { Button, Icon, Input } from './controls.tsx'
 import { ticketMark } from './marks.ts'
 import { useAction, usePanel } from './provider.tsx'
-import { LoadState, SessionButton, StageMark, When } from './widgets.tsx'
+import { ConfirmButton, LoadState, SessionButton, StageMark, When } from './widgets.tsx'
 import { shortText } from './text.ts'
 
 const PAGE_SIZE = 20
 
-function TaskCard({ ticket }: { ticket: TicketRow }) {
+function TaskCard({ ticket, onChanged }: { ticket: TicketRow; onChanged: () => void }) {
   const { t, navigate, call } = usePanel()
   const open = useAction(async () => {
     const query = await call('GET local/tasks/:id/workbench', { id: ticket.id })
@@ -19,6 +19,8 @@ function TaskCard({ ticket }: { ticket: TicketRow }) {
   const mark = ticketMark(t, ticket)
   const completed = ticket.ended?.outcome === 'completed'
   const note = !ticket.ended && (ticket.note?.text || ticket.summary)
+  const attention = ticket.stage === 'person'
+  const after = async (request: Promise<unknown>) => { await request; onChanged() }
   return <li className="dt-board-card dt-task-row" data-state={completed ? 'done' : mark.dot}>
     <div className="dt-task-row-main"><button className="dt-open dt-board-card-title" type="button" onClick={() => navigate({ page: 'execution', id: ticket.id })}>
       {ticket.title}
@@ -33,19 +35,25 @@ function TaskCard({ ticket }: { ticket: TicketRow }) {
     </div>
     <div className="dt-board-card-footer">
       <div className="dt-board-card-actions">
-        {ticket.sessionId ? <SessionButton variant="outline" sessionId={ticket.sessionId} label={t('localViewProcess')} />
+        {attention && <Button variant="outline" size="sm" onClick={() => navigate({ page: 'execution', id: ticket.id })}>
+          {t(ticket.action === 'review' ? 'localViewDelivery' : 'localViewReason')}</Button>}
+        {ticket.actions.retry && <ConfirmButton variant="outline" icon="refresh" label={t('retry')} title={t('retryTitle')}
+          message={t('retryConfirm', { title: ticket.title })} onConfirm={() => after(call('POST tickets/:id/retry', { id: ticket.id }))} />}
+        {ticket.sessionId ? <SessionButton variant="outline" sessionId={ticket.sessionId} label={t(attention && ticket.action !== 'review' ? 'localReplyTask' : 'localViewProcess')} />
           : <span className="dt-board-pending" role="img" aria-label={t('localBoardNoSession')} title={t('localBoardNoSession')}><Icon name="clock" /></span>}
+        {ticket.actions.stop && <span className="dt-board-card-stop"><ConfirmButton icon="stop" label={t('stop')} title={t('stopConfirmTitle')}
+          message={t('stopConfirm', { title: ticket.title })} onConfirm={() => after(call('POST tickets/:id/stop', { id: ticket.id }))} /></span>}
       </div>
     </div>
   </li>
 }
 
-function BoardColumn({ column, query, filter, onCount }: { column: LocalBoardColumn; query: string; filter: 'all' | LocalBoardColumn;
-  onCount: (column: LocalBoardColumn, total: number) => void }) {
+function BoardColumn({ column, query, filter, onCount, revision, onChanged }: { column: LocalBoardColumn; query: string; filter: 'all' | LocalBoardColumn;
+  onCount: (column: LocalBoardColumn, total: number) => void; revision: number; onChanged: () => void }) {
   const { t, call } = usePanel()
   const [offset, setOffset] = useState(0)
   const { data, error } = usePoll(() => call('GET local/board', { query: { column, q: query, offset, limit: PAGE_SIZE } }),
-    [call, column, query, offset])
+    [call, column, query, offset, revision])
   const label = t(`localBoardColumn.${column}`)
   useEffect(() => { if (data) onCount(column, data.total) }, [column, data?.total, onCount])
   useEffect(() => {
@@ -57,7 +65,7 @@ function BoardColumn({ column, query, filter, onCount }: { column: LocalBoardCol
       : column === 'attention' ? 'ask' : column === 'idle' ? 'clock' : 'history'} size={16} /></span>{label}</h3><span className="dt-board-count">{data?.total ?? '—'}</span></header>
     <LoadState error={error} loading={!data} />
     {data && (data.items.length ? <ul key={offset} className="dt-board-cards" id={`dt-board-${column}`}>
-      {data.items.map(ticket => <TaskCard key={ticket.id} ticket={ticket} />)}
+      {data.items.map(ticket => <TaskCard key={ticket.id} ticket={ticket} onChanged={onChanged} />)}
     </ul> : <p className="dt-board-empty">{t(query ? 'localNoMatches' : `localBoardEmpty.${column}`)}</p>)}
     {data && data.total > PAGE_SIZE && <nav className="dt-board-pagination" aria-label={t('localBoardPages', { column: label })}>
       <Button size="sm" icon={<Icon name="chevron-left" />} disabled={!offset}
@@ -75,6 +83,8 @@ export function LocalTaskBoard({ tools }: { tools: ReactNode }) {
   const { t } = usePanel()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | LocalBoardColumn>('all')
+  const [revision, setRevision] = useState(0)
+  const changed = () => setRevision(value => value + 1)
   const [counts, setCounts] = useState<Partial<Record<LocalBoardColumn, number>>>({})
   const count = useCallback((column: LocalBoardColumn, total: number) => {
     setCounts(current => current[column] === total ? current : { ...current, [column]: total })
@@ -92,7 +102,7 @@ export function LocalTaskBoard({ tools }: { tools: ReactNode }) {
           <span>{column === 'all' ? total : counts[column] ?? '—'}</span></button>)}</div>
     </div>
     <div className="dt-board-columns">{LOCAL_BOARD_COLUMNS.map(column => <BoardColumn key={`${column}:${query.trim()}`}
-      column={column} query={query.trim()} filter={filter} onCount={count} />)}</div>
+      column={column} query={query.trim()} filter={filter} onCount={count} revision={revision} onChanged={changed} />)}</div>
     {filter === 'all' && Object.keys(counts).length === LOCAL_BOARD_COLUMNS.length && total === 0 && <p className="dt-hint">{t(query.trim() ? 'localNoMatches' : 'localNoTasks')}</p>}
   </section>
 }

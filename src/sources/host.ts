@@ -23,6 +23,8 @@ export function health(state: Health['state'], code: HealthCode, values: Record<
 }
 export interface SourceHost {
   readonly sources: SourceRegistry
+  /** Aborts before the orchestrator closes its store, even when source plugin disposal is still pending. */
+  readonly lifetime: AbortSignal
   /** Returns the context for one Source kind; its `report` writes only the health entries declared by the kind. */
   context(kind: { kind: string; health: readonly string[] }): SourceContext
 }

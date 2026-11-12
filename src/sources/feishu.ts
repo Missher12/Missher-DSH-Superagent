@@ -143,7 +143,7 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.orchestrator.sources.register(feishuKind), 'feishu: source kind')
   ctx.effect(() => {
     const controller = new AbortController()
-    const running = runFeishu(sourceContext(ctx.orchestrator, feishuKind), controller.signal)
+    const running = runFeishu(sourceContext(ctx.orchestrator, feishuKind), AbortSignal.any([controller.signal, ctx.orchestrator.lifetime]))
     return async () => { controller.abort(); await running }
   })
 }

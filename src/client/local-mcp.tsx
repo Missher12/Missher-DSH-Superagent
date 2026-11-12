@@ -79,16 +79,15 @@ export function McpSettings() {
       setEditing(undefined)
     })
   }
-  return <Section title={t('mcpTitle')} action={<Button variant="outline" size="sm" icon={<Icon name="plus" size={14} />}
+  return <Section title={t('mcpTitle')} hint={t('mcpHint')} action={<Button variant="outline" size="sm" icon={<Icon name="plus" size={14} />}
     disabled={!data || busy} onClick={() => open()}>{t('mcpAdd')}</Button>}>
-    <Hint>{t('mcpHint')}</Hint>
     {(error || workspaceError || failure) && <p className="dt-error" role="status">{failure ?? error?.message ?? workspaceError?.message}</p>}
     {data && !data.clients.length && <p className="dt-hint dt-mcp-empty">{t('mcpEmpty')}</p>}
     <Fields disabled={busy}>
       {data?.clients.map(client => <div className="dt-mcp-connection" key={client.id}>
         <div className="dt-mcp-description"><strong>{client.name}</strong>
-          <span>{client.projects.map(project => project.title).join(' · ')}</span>
-          <small>{client.lastUsedAt ? <>{t('mcpLastUsed')} <When at={client.lastUsedAt} /></> : t('mcpNotUsed')}</small>
+          <span className="dt-mcp-meta">{client.projects.map(project => project.title).join(' · ')}
+            {client.lastUsedAt && <small title={t('mcpLastUsed')}> · <When at={client.lastUsedAt} /></small>}</span>
         </div>
         <div className="dt-actions">
           <Button size="sm" onClick={() => open(client)}>{t('mcpConfigure')}</Button>
