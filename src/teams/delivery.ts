@@ -25,7 +25,7 @@ export function workspaceFile(directory: string, value: string) {
 }
 
 export function recordDelivery(store: Store, ticket: Ticket, input: DeliveryInput,
-  evidence: (session: string, command: string, since: string) => { id: string; state: string } | undefined, state = 'progress'): void {
+  evidence: (session: string, command: string, since: string) => { id: string; state: string; exitCode?: number } | undefined, state = 'progress'): void {
   const assignment = ticket.assignments.at(-1), directory = ticket.execution?.directory
   if (!assignment?.startedAt || !directory) throw new Error('当前任务还没有可记录交付的执行会话')
   const sessionId = workerSessionId(ticket.id)
@@ -36,7 +36,7 @@ export function recordDelivery(store: Store, ticket: Ticket, input: DeliveryInpu
     const call = evidence(sessionId, check.command, assignment.startedAt!)
     if (!call || !['done', 'error'].includes(call.state)) throw new Error('检查结果需要对应本轮真实执行结束的命令；无法核对的检查请放入未验证事项')
     if (check.outcome === 'passed' && call.state === 'error') throw new Error('执行出错的命令不能报告为检查通过')
-    return { ...check, toolCallId: call.id }
+    return { ...check, toolCallId: call.id, ...(call.exitCode !== undefined ? { exitCode: call.exitCode } : {}) }
   })
   store.set(deliveries(`${ticket.id}:${assignment.id}`), { ticketId: ticket.id, assignmentId: assignment.id, sessionId,
     at: new Date().toISOString(), files, checks, unverified: input.unverified })

@@ -11,6 +11,10 @@ import type { Retry } from './sources/github.ts'
 export type Key<V> = string & { readonly __value?: V }
 /** Family of KV records sharing a prefix: callable to build a key from its name parts, and exposing `prefix` for listing. */
 export type Family<V, A extends unknown[]> = ((...name: A) => Key<V>) & { readonly prefix: string }
+/** Authoritative shell-call evidence, separate from the bounded UI activity list. */
+export interface SessionCommandProof {
+  id: string; command: string; at: string; sequence: number; state: 'running' | 'done' | 'error'; exitCode?: number
+}
 /** Define a single typed KV key; external Source plugins use `record` and `family` to type their own keys. */
 export const record = <V>(key: string) => key as Key<V>
 /** Define a KV key family whose keys join `prefix` and name parts with `:` (or a custom `format`). */
@@ -31,8 +35,9 @@ export const KV = {
     builtIn: family<string, [base: string]>('prompt-built-in:') },
   /** Runtime: the main Session's ID. */
   runtime: { masterId: record<string>('master-id') },
-  /** Sessions: prompt revisions each Session has worked under, ordered oldest first; the last entry (`.at(-1)`) is its active revision. */
-  sessions: { prompts: family<number[], [session: string]>('session-prompts:') },
+  /** Sessions: prompt revisions (last is active) and per-assignment shell execution evidence. */
+  sessions: { prompts: family<number[], [session: string]>('session-prompts:'),
+    commands: family<SessionCommandProof, [session: string, assignment: string, call: string]>('session-command:') },
   /** Schema 11 migration: legacy main-Session queues imported into the effect table. */
   queues: { relays: record<{ id: string; text: string }[]>('relay-queue'), unsubscribed: record<string[]>('subscription-results'),
     prompts: record<number | null>('prompt-notification'), settings: record<number | null>('settings-notification') },

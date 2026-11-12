@@ -30,6 +30,12 @@ async function complete(ticketId: string, summary = '本成员分工完成', del
   agent.status = 'idle'; host!.ctx.emit('agent/status', { agent, status: 'idle' } as never)
   await settle()
 }
+async function nativeShellResult(sessionId: string, callId: string, value: Record<string, unknown>) {
+  const agent = host!.ctx.agents.get(sessionId as never)!
+  await agent.ctx.waterfall('tools/post-execute', { agent, callId, rootCallId: callId, name: 'pwsh', arguments: {},
+    signal: new AbortController().signal, token: {} } as never, { isError: false, value, content: [] } as never,
+  async () => ({ kind: 'accept' as const }))
+}
 
 it('pins the selected permission for both the coordinator and dependent members', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
@@ -194,12 +200,133 @@ it('does not accept invented files or commands as successful delivery evidence',
   host.ctx.emit('session/event', agent.session, { type: 'tool/call', time: Date.now(), data: {
     callId: 'actual-check', name: 'pwsh', arguments: JSON.stringify({ command: 'node --test' }),
   } } as never)
+  await nativeShellResult(task.sessionId, 'actual-check', { exitCode: 0 })
   host.ctx.emit('session/event', agent.session, { type: 'tool/result', time: Date.now(), data: { message: { toolCallId: 'actual-check', isError: false } } } as never)
   await host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '完成实际检查', delivery: {
     checks: [{ command: 'node --test', outcome: 'passed', details: '成员报告检查通过' }],
   } })
   expect(await host.api('GET', `tickets/${task.ticketId}`)).toMatchObject({ body: { deliveryReport: { checks: [{ toolCallId: 'actual-check', outcome: 'passed' }] } } })
   expect(await host.api('GET', 'local/workbench')).not.toHaveProperty('body.members.0.command')
+})
+
+it.each(['many later activities', 'released session bindings'])('keeps actual check evidence after %s', async circumstance => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const task = await host.runtime.local!.create({ requestId: 'durable-evidence', title: '长任务交付', instructions: '运行检查并交付', directory: host.directory })
+  await host.runtime.idle(); host.step(task.sessionId)
+  const agent = host.ctx.agents.get(task.sessionId as never)!
+  const emit = (type: string, seq: number, data: unknown) => host!.ctx.emit('session/event', agent.session,
+    { type, seq, time: Date.now(), data } as never)
+  emit('tool/call', 1, { callId: 'real-long-check', name: 'pwsh', arguments: JSON.stringify({ command: 'node --test' }) })
+  await nativeShellResult(task.sessionId, 'real-long-check', { exitCode: 0 })
+  emit('tool/result', 2, { message: { toolCallId: 'real-long-check', isError: false } })
+  if (circumstance === 'many later activities') {
+    for (let i = 0; i < 40; i++) {
+      emit('tool/call', i * 2 + 3, { callId: `read-${i}`, name: 'read', arguments: JSON.stringify({ path: `source-${i}.mjs` }) })
+      emit('tool/result', i * 2 + 4, { message: { toolCallId: `read-${i}`, isError: false } })
+    }
+  } else {
+    host.runtime.sessions.dispose()
+    await host.runtime.sessions.ensure(task.sessionId, host.directory, task.title, 'worker')
+  }
+  await host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '已完成真实检查及后续核对',
+    delivery: { checks: [{ command: 'node --test', outcome: 'passed' }] } })
+  expect(host.runtime.store.tickets.get(task.ticketId)!.ended?.outcome).toBe('completed')
+  expect(await host.api('GET', `tickets/${task.ticketId}`)).toMatchObject({ body: {
+    deliveryReport: { checks: [{ toolCallId: 'real-long-check', outcome: 'passed' }] },
+  } })
+})
+
+it('keeps check evidence after a runtime restart but never reuses it for a later assignment', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const task = await host.runtime.local!.create({ requestId: 'proof-restart', title: '验证恢复', instructions: '检查文件', directory: host.directory })
+  await host.runtime.idle(); host.step(task.sessionId)
+  const agent = host.ctx.agents.get(task.sessionId as never)!
+  for (const event of [
+    { type: 'tool/call', seq: 1, data: { callId: 'before-restart', name: 'pwsh', arguments: JSON.stringify({ command: 'node --test' }) } },
+    { type: 'tool/result', seq: 2, data: { message: { toolCallId: 'before-restart', isError: false } } },
+  ]) {
+    if (event.type === 'tool/result') await nativeShellResult(task.sessionId, 'before-restart', { exitCode: 0 })
+    host.ctx.emit('session/event', agent.session, { ...event, time: Date.now() } as never)
+  }
+  const first = host.runtime.store.tickets.get(task.ticketId)!.assignments.at(-1)!
+  await host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '检查完成',
+    delivery: { checks: [{ command: 'node --test', outcome: 'passed' }] } })
+  const directory = host.directory
+  await host.runtime.stop(); host = await startRuntime(undefined, { mode: 'local', stateDir: directory })
+  expect(host.runtime.sessions.commandEvidence(task.sessionId, 'node --test', first.startedAt!)).toMatchObject({ id: 'before-restart', state: 'done' })
+  await host.runtime.local!.followup(task.ticketId, 'new-assignment', '继续检查新的更改')
+  await host.runtime.idle(); host.step(task.sessionId)
+  await expect(host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '不能沿用旧检查',
+    delivery: { checks: [{ command: 'node --test', outcome: 'passed' }] } })).rejects.toThrow('真实执行')
+  expect(host.runtime.store.tickets.get(task.ticketId)!.ended).toBeUndefined()
+}, 20_000)
+
+it('uses the latest command result even when call IDs sort differently and activity has moved on', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const task = await host.runtime.local!.create({ requestId: 'latest-proof', title: '最新检查结果', instructions: '检查代码', directory: host.directory })
+  await host.runtime.idle(); host.step(task.sessionId)
+  const agent = host.ctx.agents.get(task.sessionId as never)!
+  for (const [index, callId, failed] of [[1, 'z-passed', false], [3, 'a-failed', true]] as const) {
+    host.ctx.emit('session/event', agent.session, { type: 'tool/call', seq: index, time: Date.now(), data: {
+      callId, name: 'pwsh', arguments: JSON.stringify({ command: 'node --test' }),
+    } } as never)
+    await nativeShellResult(task.sessionId, callId, { exitCode: failed ? 7 : 0 })
+    host.ctx.emit('session/event', agent.session, { type: 'tool/result', seq: index + 1, time: Date.now(),
+      data: { message: { toolCallId: callId, isError: failed } } } as never)
+  }
+  for (let index = 0; index < 40; index++) host.ctx.emit('session/event', agent.session, { type: 'tool/call', seq: index + 5,
+    time: Date.now(), data: { callId: `read-${index}`, name: 'read', arguments: '{}' } } as never)
+  await expect(host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '不应通过',
+    delivery: { checks: [{ command: 'node --test', outcome: 'passed' }] } })).rejects.toThrow('执行出错')
+  await host.runTool(task.sessionId, 'orchestrator_report', { state: 'failed', summary: '最新检查失败',
+    delivery: { checks: [{ command: 'node --test', outcome: 'failed' }] } })
+  expect(await host.api('GET', `tickets/${task.ticketId}`)).toMatchObject({ body: {
+    deliveryReport: { checks: [{ toolCallId: 'a-failed', outcome: 'failed' }] },
+  } })
+})
+
+it.each([{ exitCode: 7 }, { exitCode: 0, aborted: true }])('rejects passed checks for a native unsuccessful result %j', async value => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const task = await host.runtime.local!.create({ requestId: 'canonical-failure', title: '真实退出状态', instructions: '执行检查', directory: host.directory })
+  await host.runtime.idle(); host.step(task.sessionId)
+  const agent = host.ctx.agents.get(task.sessionId as never)!
+  host.ctx.emit('session/event', agent.session, { type: 'tool/call', seq: 1, time: Date.now(), data: {
+    callId: 'shell-with-exit', name: 'pwsh', arguments: JSON.stringify({ command: 'node --test' }),
+  } } as never)
+  await nativeShellResult(task.sessionId, 'shell-with-exit', value)
+  // DSH can render a non-zero process exit as a successful tool transport result.
+  host.ctx.emit('session/event', agent.session, { type: 'tool/result', seq: 2, time: Date.now(),
+    data: { message: { toolCallId: 'shell-with-exit', isError: false } } } as never)
+  await expect(host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '不能误报',
+    delivery: { checks: [{ command: 'node --test', outcome: 'passed' }] } })).rejects.toThrow('执行出错')
+  expect(host.runtime.store.tickets.get(task.ticketId)!.ended).toBeUndefined()
+})
+
+it.each([0, 7])('waits for the actual background process settlement with exit %i', async exitCode => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const task = await host.runtime.local!.create({ requestId: 'background-proof', title: '后台检查', instructions: '等待真实检查', directory: host.directory })
+  await host.runtime.idle(); host.step(task.sessionId)
+  const agent = host.ctx.agents.get(task.sessionId as never)!
+  host.ctx.emit('session/event', agent.session, { type: 'tool/call', seq: 1, time: Date.now(), data: {
+    callId: 'background-check', name: 'pwsh', arguments: JSON.stringify({ command: 'node --test' }),
+  } } as never)
+  await nativeShellResult(task.sessionId, 'background-check', { jobId: 'native-job', status: 'running' })
+  host.ctx.emit('session/event', agent.session, { type: 'tool/result', seq: 2, time: Date.now(),
+    data: { message: { toolCallId: 'background-check', isError: false } } } as never)
+  await expect(host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '还没有完成',
+    delivery: { checks: [{ command: 'node --test', outcome: 'passed' }] } })).rejects.toThrow('真实执行结束')
+  host.ctx.emit('session/event', agent.session, { type: 'job/settled', seq: 3, time: Date.now(), data: {
+    jobId: 'native-job', owner: agent.id, kind: 'pwsh', toolCall: { callId: 'background-check', rootCallId: 'background-check' },
+    status: 'completed', producerReported: true, cause: 'producer', detail: `exit code: ${exitCode}`,
+  } } as never)
+  if (exitCode) await expect(host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '不能误报',
+    delivery: { checks: [{ command: 'node --test', outcome: 'passed' }] } })).rejects.toThrow('执行出错')
+  await host.runTool(task.sessionId, 'orchestrator_report', { state: exitCode ? 'failed' : 'ready', summary: '后台检查已经实际结束',
+    delivery: { checks: [{ command: 'node --test', outcome: exitCode ? 'failed' : 'passed' }] } })
+  expect(await host.api('GET', `tickets/${task.ticketId}`)).toMatchObject({ body: {
+    deliveryReport: { checks: [{ toolCallId: 'background-check', exitCode }] },
+  } })
+  expect(host.runtime.store.tickets.get(task.ticketId)!.ended?.outcome).toBe(exitCode ? undefined : 'completed')
 })
 
 it('rejects unknown members and cyclic delivery dependencies before creating any task', async () => {

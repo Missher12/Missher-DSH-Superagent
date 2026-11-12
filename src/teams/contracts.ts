@@ -43,7 +43,7 @@ export type DeliveryInput = z.infer<typeof DeliverySchema>
 export interface DeliveryRecord extends Omit<DeliveryInput, 'files' | 'checks'> {
   ticketId: string; assignmentId: string; sessionId: string; at: string
   files: { path: string; summary: string; exists: boolean; size?: number }[]
-  checks: (DeliveryInput['checks'][number] & { toolCallId?: string })[]
+  checks: (DeliveryInput['checks'][number] & { toolCallId?: string; exitCode?: number })[]
 }
 export interface TeamRecord {
   id: string; request: TeamRequest; encoded: string; createdAt: string; updatedAt: string
