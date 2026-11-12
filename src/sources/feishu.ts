@@ -39,7 +39,7 @@ export const feishuKind: SourceKind<FeishuConfig> = {
   fields: [
     { key: 'workspaceDirectory', type: 'text', label: { zh: '工作区', en: 'Workspace' },
       hint: { zh: '本地模式填写飞书任务要操作的项目绝对路径。独立部署可留空。', en: 'In local mode, set the absolute project path for Feishu tasks. Optional for standalone deployment.' } },
-    { key: 'cli', type: 'text', label: { zh: '机器人的 lark-cli', en: 'Bot lark-cli' },
+    { key: 'cli', type: 'text', advanced: true, label: { zh: '机器人的 lark-cli', en: 'Bot lark-cli' },
       hint: { zh: '命令名或绝对路径，指向只允许机器人身份（strict mode bot）的 lark-cli 配置；执行器以 lark-cli 调用它。保存时读取应用和机器人，然后重启 dsh-superagent。', en: 'A command name or absolute path of a lark-cli configuration that allows only the bot identity (strict mode bot); the Executor calls it as lark-cli. Saving reads the app and the bot, then restarts dsh-superagent.' } },
     { key: 'chats', type: 'rows', label: { zh: '接收的群', en: 'Chats' },
       hint: { zh: '“仅 @”只接收 @ 机器人的消息和已有工单的线程；“全部消息”也接收其余消息，评估可以按规则从中推断工作，需要机器人有读取全部消息的权限。', en: '"@ only" receives messages that mention the bot and Threads that have Tickets; "All" also receives the rest, from which Eval may infer work under the rules; the bot needs permission to read all messages.' },
@@ -132,7 +132,8 @@ export const feishuKind: SourceKind<FeishuConfig> = {
     values: ({ deployment, trigger }) => ({ DSH_SUPERAGENT_FEISHU_BOT: deployment.feishu ? deployment.feishu.name || deployment.feishu.botId : '',
       DSH_SUPERAGENT_FEISHU_CLI: deployment.feishu?.cli ?? '', DSH_SUPERAGENT_FEISHU_CHAT: trigger?.source === SOURCE ? String(trigger.meta.chatId ?? '') : '' }),
   },
-  facts: (deployment): Record<string, Localized | string> => deployment?.feishu ? { cli: { zh: `当前机器人 ${deployment.feishu.name || deployment.feishu.botId}`, en: `Current bot ${deployment.feishu.name || deployment.feishu.botId}` } } : {},
+  facts: (deployment): Record<string, Localized | string> => deployment?.feishu ? { appId: deployment.feishu.appId, brand: deployment.feishu.brand,
+    cli: { zh: `当前机器人 ${deployment.feishu.name || deployment.feishu.botId}${deployment.feishu.credential ? ' · 内置连接' : ''}`, en: `Current bot ${deployment.feishu.name || deployment.feishu.botId}${deployment.feishu.credential ? ' · Built-in connection' : ''}` } } : {},
 }
 /** Returns the Feishu Source's settings, falling back to schema defaults while the Feishu plugin is disabled. */
 export const feishuSettings = (sources: SourceRegistry): FeishuConfig => sources.instance<FeishuConfig>(SOURCE)?.config ?? FeishuConfigSchema.parse({})

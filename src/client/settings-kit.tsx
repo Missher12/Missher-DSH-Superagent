@@ -3,7 +3,7 @@ import { cloneElement, createContext, useContext, useEffect, useId, useLayoutEff
   type ReactNode } from 'react'
 import type { FieldSpec, Localized } from '../sources/kind.ts'
 import { usePoll, type HistoryView, type Settings, type SettingsView, type SourceView } from './api.ts'
-import { Button, DisclosureRow, Icon, InfoTip, Input, SegmentedControl, Switch } from './controls.tsx'
+import { Button, DisclosureRow, Icon, InfoTip, Input, Modal, SegmentedControl, Switch } from './controls.tsx'
 import { useDraft } from './draft.tsx'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
 import { settingsRoute } from './route.ts'
@@ -59,7 +59,34 @@ export function Field({ label, hint, note,
   const id = useId()
   return <div className="dt-field">
     <span className="dt-field-head"><label htmlFor={id}>{label}</label>{hint && <InfoTip text={hint} />}</span>{cloneElement(children,
-      { id, 'aria-label': children.props['aria-label'] ?? label })}{note && <small>{note}</small>}
+      { id, 'aria-label': children.props['aria-label'] ?? label })}{note && <small title={typeof note === 'string' ? note : undefined}>{note}</small>}
+  </div>
+}
+/** Long paths retain a compact row and can be viewed, copied and edited in full. */
+function ValueInput({ id, label, value, onChange, readOnly, pattern, 'aria-label': ariaLabel }: {
+  id?: string; label: string; value: string; onChange: (value: string) => void; readOnly?: boolean; pattern?: string; 'aria-label'?: string
+}) {
+  const { t, notify } = usePanel(), root = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false), [editing, setEditing] = useState(value)
+  useLayoutEffect(() => {
+    const input = root.current?.querySelector('input')
+    if (input && input !== document.activeElement) input.scrollLeft = input.scrollWidth
+  }, [value])
+  return <div className="dt-value-input" ref={root}>
+    <Input id={id} aria-label={ariaLabel} value={value} title={value} readOnly={readOnly} pattern={pattern} spellCheck={false}
+      onChange={event => onChange(event.target.value)} onBlur={event => { event.currentTarget.scrollLeft = event.currentTarget.scrollWidth }} />
+    <Button variant="ghost" size="sm" icon={<Icon name="expand" size={14} />} aria-label={t('expandValue', { name: label })}
+      title={t('expandValue', { name: label })} onClick={() => { setEditing(value); setOpen(true) }} />
+    <Modal className="dt-value-dialog" open={open} title={label} closeLabel={t('close')} onClose={() => setOpen(false)}
+      footer={<>
+        <Button variant="outline" icon={<Icon name="copy" />} onClick={() => { void navigator.clipboard.writeText(editing).then(
+          () => notify(t('localCopied')), error => notify(errorText(error))) }}>{t('copyValue')}</Button>
+        <Button variant="ghost" onClick={() => setOpen(false)}>{t('cancel')}</Button>
+        {!readOnly && <Button variant="primary" onClick={() => { onChange(editing.replace(/[\r\n]/g, '')); setOpen(false) }}>{t('confirm')}</Button>}
+      </>}>
+      <textarea className="dt-textarea" aria-label={t('fullValue')} rows={3} readOnly={readOnly} spellCheck={false}
+        value={editing} onChange={event => setEditing(event.target.value)} />
+    </Modal>
   </div>
 }
 function SwitchRow({ label, hint, checked,
@@ -272,6 +299,8 @@ export function SourceField({ field, value, saved, fact, onChange, labels, refre
           {value && !labels[String(value)] ? <option value={String(value)}>{String(value)}</option> : null}
           {Object.entries(labels).sort(byName).map(([option, name]) => <option key={option} value={option}>{name}</option>)}
         </Select>
+        : ['cli', 'workspaceDirectory', 'repository'].includes(field.key) ? <ValueInput label={label} value={String(value ?? '')}
+          readOnly={field.readonly} pattern={field.pattern} onChange={onChange} />
         : <Input value={String(value ?? '')} readOnly={field.readonly} pattern={field.pattern} spellCheck={false}
           onChange={event => onChange(event.target.value)} />}
     </Field>

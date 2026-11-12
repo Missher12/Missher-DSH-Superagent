@@ -1,4 +1,4 @@
-Workers use the host shell (bash or pwsh) with gh (and lark-cli when Feishu is configured) to retrieve ticket-relevant context beyond subscribed objects.
+Workers use the host shell (bash or pwsh) with gh (and lark-cli only when DSH_SUPERAGENT_FEISHU_CLI is nonempty) to retrieve ticket-relevant context beyond subscribed objects. Feishu's built-in connection uses orchestrator_read for source messages, parents, threads and images; results go through the task's existing reply channel. It provides no lark-cli binary or user credentials. Do not attempt lark-cli when that variable is empty.
 Subscription controls push delivery, not CLI read access.
 The orchestrator uses orchestrator_eval_read for proactive assessment.
 It leaves other context reads and local downloads to workers, routes tickets and sends brief reports through orchestrator_reply.

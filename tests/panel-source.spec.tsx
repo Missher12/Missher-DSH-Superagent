@@ -7,15 +7,59 @@ import { usePanel, mount, remount, settle, all, find, tab, click, type, text, fi
 import { server, problemOf, droppedReply } from './fixtures/panel-server.ts'
 
 usePanel()
+it('opens a complete long path for editing and keeps cancel and apply scoped to the draft', async () => {
+  server.setup = { ...server.setup, mode: 'local' }
+  await mount(); await click('设置'); await click(zh.localConnections); await click('GitHub')
+  const path = '/Users/test/' + 'long-workspace/'.repeat(12) + 'project'
+  await type(field<HTMLInputElement>('工作区'), path)
+  await click('展开：工作区')
+  expect(field<HTMLTextAreaElement>('完整内容').value).toBe(path)
+  await type(field<HTMLTextAreaElement>('完整内容'), '/tmp/edited workspace')
+  await click(zh.cancel)
+  expect(field<HTMLInputElement>('工作区').value).toBe(path)
+  await click('展开：工作区')
+  await type(field<HTMLTextAreaElement>('完整内容'), '/tmp/edited workspace')
+  await click(zh.confirm)
+  expect(field<HTMLInputElement>('工作区').value).toBe('/tmp/edited workspace')
+  expect(server.requests.some(request => request.method === 'PUT')).toBe(false)
+})
+it('connects Feishu with app credentials without persisting the secret in a form draft', async () => {
+  server.setup = { ...server.setup, mode: 'local' }; server.running = 0
+  await mount(); await click('设置'); await click(zh.localConnections); await click('飞书')
+  const appId = field<HTMLInputElement>('App ID').value
+  expect(appId).toMatch(/^cli_/)
+  expect(all('input[aria-label="机器人的 lark-cli"]')).toHaveLength(0)
+  await type(field<HTMLInputElement>('App Secret'), 'local-test-secret')
+  expect(Object.keys(sessionStorage).map(key => sessionStorage.getItem(key)).join('')).not.toContain('local-test-secret')
+  await click(zh.save)
+  expect(server.requests.find(request => request.path === 'feishu/connect')?.body).toMatchObject({ appId, appSecret: 'local-test-secret' })
+  expect(field<HTMLInputElement>('App Secret').value).toBe('')
+  expect(server.settings.sources.feishu?.config.cli).toBe('')
+  expect(server.settings.sources.feishu?.config.credential).toMatch(/^dsh-superagent\/feishu-/)
+  expect(JSON.stringify(server.settings)).not.toContain('local-test-secret')
+})
+it('keeps a rejected app secret only in memory and leaves the working connection unchanged', async () => {
+  server.setup = { ...server.setup, mode: 'local' }; server.running = 0
+  const before = structuredClone(server.settings.sources.feishu)
+  await mount(); await click('设置'); await click(zh.localConnections); await click('飞书')
+  await type(field<HTMLInputElement>('App Secret'), 'rejected-secret'); await click(zh.save)
+  expect(text()).toContain('App ID 或 App Secret 验证失败')
+  expect(server.settings.sources.feishu).toEqual(before)
+  expect(Object.keys(sessionStorage).map(key => sessionStorage.getItem(key)).join('')).not.toContain('rejected-secret')
+  await remount(); await click(zh.localConnections); await click('飞书')
+  expect(field<HTMLInputElement>('App Secret').value).toBe('')
+})
 it('opens a replacement draft without changing the running connection, and can discard it', async () => {
   server.setup = { ...server.setup, mode: 'local' }
   const before = structuredClone(server.settings.sources.feishu!)
   await mount(); await click('设置'); await click(zh.localConnections); await click('飞书')
   await click(find('更换接入', '#dt-source-feishu button'))
-  expect(field<HTMLInputElement>('机器人的 lark-cli').value).toBe('')
+  expect(field<HTMLInputElement>('App ID').value).toBe('')
+  expect(field<HTMLInputElement>('App Secret').value).toBe('')
   expect(server.settings.sources.feishu).toEqual(before)
   await click(find(zh.discard, '#dt-source-feishu button'))
-  expect(field<HTMLInputElement>('机器人的 lark-cli').value).toBe(before.config.cli)
+  expect(field<HTMLInputElement>('App Secret').placeholder).toBe(zh.feishuSecretSaved)
+  expect(server.settings.sources.feishu?.config.cli).toBe(before.config.cli)
 })
 
 it('removes only a confirmed connection and offers a fresh setup, retaining GitHub repository ownership', async () => {
@@ -29,7 +73,7 @@ it('removes only a confirmed connection and offers a fresh setup, retaining GitH
   expect(server.settings.sources.github).toEqual(other)
   await remount(); await click(zh.localConnections); await click('飞书')
   await click('启用 飞书')
-  expect(field<HTMLInputElement>('机器人的 lark-cli').value).toBe('')
+  expect(field<HTMLInputElement>('App ID').value).toBe('')
   expect(find(zh.sourceEnable.replace('{name}', '飞书'), '[role="switch"]')?.getAttribute('aria-checked')).toBe('true')
   await click('GitHub'); await click(find('移除接入', '#dt-source-github button')); await click(zh.confirm)
   expect(server.settings.sources.github).toMatchObject({ enabled: false, config: { cli: '', workspaceDirectory: '', repository: other.config.repository } })
@@ -52,7 +96,8 @@ it('opens bundled GitHub and Feishu setup directly from local settings when thei
   expect(text()).not.toContain('启用 飞书')
   await click('飞书')
   await click('启用 飞书')
-  expect(field<HTMLInputElement>('机器人的 lark-cli')).toBeDefined()
+  expect(field<HTMLInputElement>('App ID')).toBeDefined()
+  expect(field<HTMLInputElement>('App Secret').type).toBe('password')
 })
 
 it('keeps connector setup available and shows the host refusal if enabling fails', async () => {
@@ -272,6 +317,7 @@ it('shows a refused Source save with the output of the tool that failed on its o
   await click(zh['tab.source'])
   await click(find(zh['tab.settings'], '.dt-status-head button'))
   const feishu = all('.dt-card')[0]!
+  await click(find(zh.advanced, '#dt-source-feishu [role="button"]'))
   await type(field<HTMLInputElement>('机器人的 lark-cli'), 'lark-broken')
   await act(async () => { feishu.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) }); await settle()
   expect(feishu.querySelector('.dt-savebar [role="alert"]')?.textContent).toBe('机器人的 lark-cli 不可用。\nlark-cli: app secret missing')

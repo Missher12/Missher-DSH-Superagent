@@ -8,9 +8,15 @@ import { usePanel } from './provider.tsx'
 import { errorText } from './text.ts'
 import { ConfirmButton, Hint, Section, When } from './widgets.tsx'
 import { Select } from './select.tsx'
+import type { TaskTool } from '../mcp/server.ts'
+import type { DshSuperagentKey } from './locales.ts'
 
 type Connection = ApiResponse<'GET mcp'>['clients'][number]
 type Credential = ApiResponse<'POST mcp/clients/:id/token'>
+const TOOL_LABELS: Record<TaskTool, DshSuperagentKey> = {
+  workspace_list: 'mcpTool.workspace_list', task_create: 'mcpTool.task_create', task_get: 'mcpTool.task_get',
+  task_list: 'mcpTool.task_list', task_followup: 'mcpTool.task_followup', task_stop: 'mcpTool.task_stop', task_retry: 'mcpTool.task_retry',
+}
 
 function CredentialDialog({ credential, onClose }: { credential: Credential; onClose: () => void }) {
   const { call, t, notify } = usePanel()
@@ -81,12 +87,15 @@ export function McpSettings() {
   }
   return <Section title={t('mcpTitle')} hint={t('mcpHint')} action={<Button variant="outline" size="sm" icon={<Icon name="plus" size={14} />}
     disabled={!data || busy} onClick={() => open()}>{t('mcpAdd')}</Button>}>
+    <div className="dt-mcp-capabilities"><span>{t('mcpToolsTitle')}</span><ul className="dt-mcp-tools">
+      {Object.entries(TOOL_LABELS).map(([tool, label]) => <li key={tool} title={tool}>{t(label)}</li>)}
+    </ul></div>
     {(error || workspaceError || failure) && <p className="dt-error" role="status">{failure ?? error?.message ?? workspaceError?.message}</p>}
     {data && !data.clients.length && <p className="dt-hint dt-mcp-empty">{t('mcpEmpty')}</p>}
     <Fields disabled={busy}>
       {data?.clients.map(client => <div className="dt-mcp-connection" key={client.id}>
-        <div className="dt-mcp-description"><strong>{client.name}</strong>
-          <span className="dt-mcp-meta">{client.projects.map(project => project.title).join(' · ')}
+        <div className="dt-mcp-description"><strong title={client.name}>{client.name}</strong>
+          <span className="dt-mcp-meta" title={client.projects.map(project => project.title).join(' · ')}>{client.projects.map(project => project.title).join(' · ')}
             {client.lastUsedAt && <small title={t('mcpLastUsed')}> · <When at={client.lastUsedAt} /></small>}</span>
         </div>
         <div className="dt-actions">

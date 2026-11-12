@@ -1,7 +1,7 @@
 /** Local settings with shared model controls and separate connection/prompt editors. */
 import { useState } from 'react'
 import { LIMITS } from '../limits.ts'
-import { Icon, Input, type IconName } from './controls.tsx'
+import { Icon, Input, SegmentedTabs, type IconName } from './controls.tsx'
 import { SaveBar } from './draft.tsx'
 import { usePanel } from './provider.tsx'
 import { PromptsPage } from './prompts.tsx'
@@ -13,9 +13,16 @@ import { Section } from './widgets.tsx'
 import { sourceMark } from './marks.ts'
 
 type ConnectionSource = 'mcp' | 'github' | 'feishu'
-function Connections({ selected, onSelect }: { selected: ConnectionSource; onSelect: (source: ConnectionSource) => void }) {
+type ConnectionPage = 'setup' | 'policy'
+function Connections({ selected, onSelect, page, onPage }: { selected: ConnectionSource; onSelect: (source: ConnectionSource) => void;
+  page: ConnectionPage; onPage: (page: ConnectionPage) => void }) {
   const { t } = usePanel(), { settings: { sources } } = useSettings()
   return <div className="dt-connections">
+    <SegmentedTabs className="dt-subtabs" label={t('localConnectionPages')} value={page} onChange={onPage}
+      items={(['setup', 'policy'] as const).map(value => ({ value, label: t(value === 'setup' ? 'localConnectionsSetup' : 'localExternalPolicy'),
+        id: `dt-connections-tab-${value}`, panelId: `dt-connections-panel-${value}` }))} />
+    <div className="dt-connections-panel" id={`dt-connections-panel-${page}`} role="tabpanel" aria-labelledby={`dt-connections-tab-${page}`}>
+    {page === 'policy' ? <EvalSettings include={['github', 'feishu']} /> : <>
     <nav className="dt-connections-nav" aria-label={t('localConnectionSources')}>
       {(['mcp', 'github', 'feishu'] as const).map(id => {
         const source = sources.find(source => source.id === id)
@@ -30,6 +37,8 @@ function Connections({ selected, onSelect }: { selected: ConnectionSource; onSel
     </nav>
     <div id="dt-connection-content" className="dt-connections-body" key={selected}>
       {selected === 'mcp' ? <McpSettings /> : <SourceSettings include={[selected]} />}
+    </div>
+    </>}
     </div>
   </div>
 }
@@ -58,10 +67,10 @@ function SettingsBody() {
   const { t } = usePanel()
   const [editor, setEditor] = useState('general')
   const [connection, setConnection] = useState<ConnectionSource>('mcp')
+  const [connectionPage, setConnectionPage] = useState<ConnectionPage>('setup')
   const entries: { id: string; title: string; icon: IconName }[] = [
     { id: 'general', title: t('localGeneralSettings'), icon: 'settings' },
     { id: 'connections', title: t('localConnections'), icon: 'agent' },
-    { id: 'policy', title: t('localExternalPolicy'), icon: 'shield' },
     { id: 'prompts', title: t('settingsGroup.prompts'), icon: 'file' },
   ]
   return <div className="dt-local-settings-root"><h2 className="dt-local-management-title">{t('tab.settings')}</h2>
@@ -71,8 +80,8 @@ function SettingsBody() {
         <Icon name={entry.icon} /><span>{entry.title}</span></button>)}
     </nav><section id="dt-settings-content" className="dt-local-settings-editor" aria-label={entries.find(entry => entry.id === editor)?.title}>
       <div className="dt-local-settings-content" key={editor}>{editor === 'general' ? <SettingsForm />
-        : editor === 'connections' ? <Connections selected={connection} onSelect={setConnection} />
-        : editor === 'policy' ? <EvalSettings include={['github', 'feishu']} /> : <PromptsPage />}</div>
+        : editor === 'connections' ? <Connections selected={connection} onSelect={setConnection} page={connectionPage} onPage={setConnectionPage} />
+        : <PromptsPage />}</div>
     </section></div>
   </div>
 }

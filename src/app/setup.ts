@@ -76,7 +76,7 @@ export class Setup {
       return
     }
     const { machine } = this.host
-    const check = block === 'source:feishu' ? resolveFeishuBot(machine, settings.sources.feishu?.config, this.probe())
+    const check = block === 'source:feishu' ? this.feishuAccount(settings.sources.feishu?.config)
       : resolveDeployment(machine, settings.sources.github?.config, this.probe())
     await check.catch((error: unknown) => { if (!(error instanceof SetupError) || error.place === block.slice(7)) throw error })
   }
@@ -89,12 +89,15 @@ export class Setup {
     const { context, machine, lifetime } = this.host
     return workerProbe(context.subprocess, machine.stateDir, machine.stateDir, lifetime)
   }
+  private feishuAccount(config: unknown) {
+    return resolveFeishuBot(this.host.machine, config, this.probe(), undefined, this.host.context.get('credentials'), this.host.lifetime)
+  }
   /** Check a local project before allowing an external source to execute in it. */
   private async localAccount(id: 'github' | 'feishu', config: Record<string, unknown>) {
     let directory: string
     try { directory = canonicalWorkspace({ directory: String(config.workspaceDirectory ?? ''), permissionPreset: 'workspace-write' }).directory }
     catch (error) { throw new SetupError(id === 'github' ? 'githubWorkspaceInvalid' : 'feishuWorkspaceInvalid', { output: error instanceof Error ? error.message : String(error) }) }
-    if (id === 'feishu') return resolveFeishuBot(this.host.machine, config, this.probe())
+    if (id === 'feishu') return this.feishuAccount(config)
     const deployment = await resolveDeployment(this.host.machine, config, this.probe())
     try {
       for (const flag of [[], ['--push']]) {
@@ -145,7 +148,7 @@ export class Setup {
     }
     const probe = this.probe()
     const deployment = await resolveDeployment(machine, settings.sources.github?.config, probe)
-    const feishu = await resolveFeishuBot(machine, settings.sources.feishu?.config, probe).catch((error: unknown) => {
+    const feishu = await this.feishuAccount(settings.sources.feishu?.config).catch((error: unknown) => {
       if (!(error instanceof SetupError)) throw error
       this.feishuProblem = error.problem
       context.logger.warn('dsh-superagent leaves Feishu out: %s', error.message)

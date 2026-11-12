@@ -2,7 +2,7 @@
   "name": "@missher/dsh-superagent",
   "author": "DeepSeek Harness Team <team@dsh.dev>",
   "license": "MIT",
-  "version": "1.9.12",
+  "version": "1.9.13",
   "private": true,
   "description": "DSH local task orchestration with durable tickets and pluggable Git/MCP sources.",
   "type": "module",
@@ -34,7 +34,8 @@
     "docs/local-mode.md",
     "docs/mcp.md",
     "docs/completion-plan.md",
-    "docs/images/cover-v2.png"
+    "docs/images/cover-v2.png",
+    "THIRD-PARTY-NOTICES.txt"
   ],
   "dsh": {
     "bundle": {
@@ -78,12 +79,15 @@
     "@deepseek-ai/dsh-api-session-controller": "^0.2.1-rc.4 || 0.2.2-rc.1",
     "@deepseek-ai/dsh-attachment": "^0.2.1-rc.4 || 0.2.2-rc.1",
     "@deepseek-ai/dsh-client-locale": "^0.2.1-rc.4 || 0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-conversation": "^0.2.1-rc.4 || 0.2.2-rc.1",
     "@deepseek-ai/dsh-client-ui-layout": "^0.2.1-rc.4 || 0.2.2-rc.1",
     "@deepseek-ai/dsh-client-ui-renderer": "^0.2.1-rc.4 || 0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-session": "^0.2.1-rc.4 || 0.2.2-rc.1",
     "@deepseek-ai/dsh-client-ui-settings": "^0.2.1-rc.4 || 0.2.2-rc.1",
     "@deepseek-ai/dsh-client-ui-sidebar": "^0.2.1-rc.4 || 0.2.2-rc.1",
     "@deepseek-ai/dsh-client-ui-slots": "^0.2.1-rc.4 || 0.2.2-rc.1",
     "@deepseek-ai/dsh-client-ui-workspace": "^0.2.1-rc.4 || 0.2.2-rc.1",
+    "@deepseek-ai/dsh-credentials": "^0.2.1-rc.4 || 0.2.2-rc.1",
     "@deepseek-ai/dsh-host-webserver": "^0.2.1-rc.4 || 0.2.2-rc.1",
     "@deepseek-ai/dsh-llm": "^0.2.1-rc.4 || 0.2.2-rc.1",
     "@deepseek-ai/dsh-permission-presets": "^0.2.1-rc.4 || 0.2.2-rc.1",
@@ -95,9 +99,7 @@
     "@deepseek-ai/dsh-system-prompt": "^0.2.1-rc.4 || 0.2.2-rc.1",
     "@deepseek-ai/dsh-tools": "^0.2.1-rc.4 || 0.2.2-rc.1",
     "@deepseek-ai/dsh-workspace": "^0.2.1-rc.4 || 0.2.2-rc.1",
-    "@deepseek-ai/schemastery": "^3.18.5",
-    "@deepseek-ai/dsh-client-ui-session": "^0.2.1-rc.4 || 0.2.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-conversation": "^0.2.1-rc.4 || 0.2.2-rc.1"
+    "@deepseek-ai/schemastery": "^3.18.5"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.5",
@@ -115,6 +117,7 @@
     "@deepseek-ai/dsh-client-ui-sidebar": "0.2.1-rc.4",
     "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.4",
     "@deepseek-ai/dsh-client-ui-workspace": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-credentials": "0.2.1-rc.4",
     "@deepseek-ai/dsh-host-webserver": "0.2.1-rc.4",
     "@deepseek-ai/dsh-llm": "0.2.1-rc.4",
     "@deepseek-ai/dsh-permission-presets": "0.2.1-rc.4",
@@ -128,6 +131,7 @@
     "@deepseek-ai/dsh-tools": "0.2.1-rc.4",
     "@deepseek-ai/dsh-workspace": "0.2.1-rc.4",
     "@deepseek-ai/schemastery": "3.18.5",
+    "@larksuiteoapi/node-sdk": "1.76.0",
     "@types/jsdom": "28.0.3",
     "@types/node": "24.10.0",
     "@types/proper-lockfile": "4.1.4",

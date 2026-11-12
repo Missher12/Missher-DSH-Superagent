@@ -19,6 +19,7 @@ export const SETUP_PROBLEMS = {
   repositoryInUse: ['github', 'This instance already has GitHub tasks; use a separate instance for another repository.'],
   feishuWorkspaceInvalid: ['feishu', 'Select an existing project for Feishu tasks.'],
   feishuCliFailed: ['feishu', 'The bot lark-cli does not work.'],
+  feishuGatewayFailed: ['feishu', 'The Feishu connection is unavailable. Check App ID, App Secret, app permissions and connectivity.'],
   feishuNoApp: ['feishu', 'auth status of the bot lark-cli did not report the app.'],
   feishuBotNotReady: ['feishu', 'The bot identity of app {app} is {status}; configure the app secret with lark-cli.'],
   feishuUserIdentity: ['feishu', 'The bot lark-cli allows user identities (strict mode {mode}); give the bot its own lark-cli configuration in strict mode bot, as docs/006-deployment.md describes.'],

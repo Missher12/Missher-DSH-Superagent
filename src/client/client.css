@@ -538,10 +538,11 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-local-details > summary:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
 .dt-local-details-body { padding-bottom: 16px; display: grid; gap: 12px; }
 .dt-local-record { border-left: 2px solid var(--dsw-alias-border-l2); padding-left: 12px; }
-.dt-local-settings-root { container: superagent-settings / inline-size; display: flex; flex: 1; flex-direction: column; gap: 24px; min-width: 0; min-height: 0; }
+.dt-local-settings-root { --dt-settings-row-height: 64px; container: superagent-settings / inline-size; display: flex; flex: 1; flex-direction: column; gap: 24px; min-width: 0; min-height: 0; }
 .dt-local-settings-layout { display: grid; grid-template-columns: 152px minmax(0,1fr); flex: 1; gap: 32px; min-width: 0; min-height: 0; }
 .dt-local-settings-nav { display: flex; flex-direction: column; align-items: stretch; align-self: start; gap: 5px; min-width: 0; max-height: 100%; overflow: auto; }
 .dt-connections { display: flex; flex-direction: column; gap: 28px; min-width: 0; max-width: 800px; }
+.dt-connections-panel { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
 .dt-connections-nav { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
 .dt-connections-nav > button { display: flex; align-items: center; justify-content: center; gap: 10px; min-width: 0; min-height: 64px; padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; cursor: pointer; }
 .dt-connections-nav > button:hover { background: var(--dsw-alias-interactive-bg-hover); }
@@ -553,6 +554,9 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-connections-nav small { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-secondary); }
 .dt-connections-nav small[data-state='error'] { color: var(--dsw-alias-state-error-primary); }
 .dt-connections-body { min-width: 0; }
+.dt-mcp-capabilities { display: grid; grid-template-columns: 72px minmax(0,1fr); gap: 12px; padding: 12px 0 20px; border-bottom: .5px solid var(--dsw-alias-border-l2); font-size: 12px; line-height: 20px; }
+.dt-mcp-capabilities > span { color: var(--dsw-alias-label-secondary); }
+.dt-mcp-tools { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0; padding: 0; list-style: none; }
 .dt-connections-body .dt-card-head .dt-status-text { display: none; }
 .dt-source-problem { margin-bottom: 16px; }
 .dt-source-problem .dt-error { margin: 0; }
@@ -652,10 +656,37 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-local-settings-content > .dt-prompts-editor { display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; overflow: hidden; }
 .dt-local-settings-content .dt-prompts-editor > .dt-subtabs, .dt-local-settings-content .dt-prompts-editor > .dt-savebar { flex: none; }
 .dt-local-settings-content .dt-prompts-editor > .dt-prompt-content { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.dt-local-settings-root .dt-field { grid-template-columns: minmax(0,1fr) minmax(112px,min(48%,360px)); gap: 4px 24px; padding: 12px 0; border-bottom: .5px solid var(--dsw-alias-border-l2); }
-.dt-local-settings-root .dt-switch-row { box-sizing: border-box; min-height: 56px; padding: 12px 0; border-bottom: .5px solid var(--dsw-alias-border-l2); }
-.dt-local-settings-root .dt-field > :is(.dt-input,.dt-select,.dt-segmented) { grid-column: 2; grid-row: 1 / span 2; width: 100%; max-width: none; }
-.dt-local-settings-root .dt-field > small { grid-column: 1; grid-row: 2; }
+.dt-local-settings-root .dt-field { box-sizing: border-box; grid-template-columns: minmax(0,1fr) minmax(112px,min(48%,360px)); gap: 4px 24px; min-height: var(--dt-settings-row-height); padding: 10px 0; border-bottom: .5px solid var(--dsw-alias-border-l2); }
+.dt-local-settings-root .dt-field:not(.dt-rows-field):not(:has(.dt-textarea)) { height: var(--dt-settings-row-height); }
+.dt-local-settings-root .dt-switch-row { box-sizing: border-box; height: var(--dt-settings-row-height); min-height: var(--dt-settings-row-height); padding: 10px 0; border-bottom: .5px solid var(--dsw-alias-border-l2); }
+.dt-local-settings-root .dt-field > :is(.dt-input,.dt-select,.dt-segmented,.dt-value-input) { grid-column: 2; grid-row: 1 / span 2; width: 100%; max-width: none; }
+.dt-local-settings-root .dt-field > small { grid-column: 1; grid-row: 2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dt-local-settings-root .dt-field:has(> small) { grid-template-rows: minmax(0,1fr) minmax(0,1fr); }
+.dt-local-settings-root .dt-field:not(:has(> small)) { grid-template-rows: minmax(0,1fr); }
+.dt-local-settings-root .dt-field:not(:has(> small)) > :not(.dt-field-head) { grid-row: 1; }
+.dt-local-settings-root .dt-rows-field { padding: 0; }
+.dt-local-settings-root .dt-rows-field > .dt-subhead { box-sizing: border-box; min-height: var(--dt-settings-row-height); margin-bottom: 0; padding-block: 10px; }
+.dt-local-settings-root .dt-rows { gap: 0; }
+.dt-local-settings-root .dt-rows-item { box-sizing: border-box; height: var(--dt-settings-row-height); gap: 12px; padding-block: 10px; }
+.dt-local-settings-root .dt-rows-item:not(:last-child) { border-bottom: .5px solid var(--dsw-alias-border-l2); }
+.dt-local-settings-root .dt-rows-item:has(> .dt-select) { grid-template-columns: minmax(0,1fr) minmax(96px,168px) 32px; }
+.dt-local-settings-root .dt-rule > .dt-disclosure { margin-top: 0; }
+.dt-local-settings-root .dt-rule .dt-disclosure-row { box-sizing: border-box; min-height: var(--dt-settings-row-height); }
+.dt-local-settings-root .dt-mcp-connection { box-sizing: border-box; height: var(--dt-settings-row-height); min-height: var(--dt-settings-row-height); padding-block: 10px; flex-wrap: nowrap; }
+.dt-local-settings-root .dt-mcp-description :is(strong,span) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dt-local-settings-root .dt-mcp-capabilities { box-sizing: border-box; min-height: var(--dt-settings-row-height); padding-block: 10px; align-items: center; }
+.dt-local-settings-root .dt-mcp-tools { row-gap: 4px; }
+.dt-value-input { position: relative; min-width: 0; }
+.dt-value-input .dt-input input { padding-inline: 36px; }
+.dt-value-input > .dt-btn { position: absolute; inset-inline-end: 0; top: 0; width: 32px; height: 32px; padding: 0; }
+.dt-value-dialog { width: min(680px,100%); }
+.dt-value-dialog .dt-textarea { height: 96px; min-height: 96px; max-height: 40dvh; }
+@container source-policy-body (max-width: 500px) {
+  .dt-local-settings-root .dt-admission tbody td { box-sizing: border-box; min-height: var(--dt-settings-row-height); padding-block: 10px; }
+}
+@container source-policy-body (min-width: 501px) {
+  .dt-local-settings-root .dt-admission tbody tr { height: var(--dt-settings-row-height); }
+}
 .dt-local-settings-root .dt-segment { min-width: 0; padding-inline: 6px; }
 .dt-model-manual { min-width: 0; margin-top: 6px; }
 .dt-model-manual > summary { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 24px; cursor: pointer; }
@@ -713,6 +744,11 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
   .dt-local-settings-nav { align-self: stretch; flex: none; flex-direction: row; flex-wrap: wrap; gap: 6px; border-bottom: .5px solid var(--dsw-alias-border-l2); padding-bottom: 12px; overflow: visible; }
   .dt-local-settings-nav .dt-local-setting-entry { flex: none; width: auto; padding-inline: 8px; white-space: nowrap; }
   .dt-local-settings-root .dt-field { column-gap: 12px; }
+}
+@container superagent-settings (max-width: 400px) {
+  .dt-local-settings-root .dt-field > small { display: none; }
+  .dt-local-settings-root .dt-field { grid-template-rows: minmax(0,1fr); }
+  .dt-local-settings-root .dt-field > :not(.dt-field-head) { grid-row: 1; }
 }
 @container (max-width: 560px) {
   .dt-task-row { padding-inline: 0; }

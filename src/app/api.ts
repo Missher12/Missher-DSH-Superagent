@@ -13,6 +13,7 @@ import type { DecisionListView, SearchView, ThreadDetailView, ThreadListView } f
 import type { TicketListView } from './views/tickets.ts'
 import type { WorkbenchView } from './views/workbench.ts'
 import type { LocalTeams } from '../teams/local.ts'
+import type { FeishuConnectRequest, FeishuConnectResult } from './feishu-connect.ts'
 import type { TeamRequest, TeamMember } from '../teams/contracts.ts'
 
 export const TICKET_FILTERS = ['open', 'person', 'working', 'idle', 'ended'] as const
@@ -26,6 +27,7 @@ interface Paged { offset?: number; limit?: number }
 type Delivery = 'injected' | 'pending'
 
 export interface Api {
+  'POST feishu/connect': { body: FeishuConnectRequest; response: FeishuConnectResult }
   'GET local/workbench': { query?: { session?: string; team?: string }; response: WorkbenchView }
   'POST local/teams': { body: TeamRequest; response: Awaited<ReturnType<LocalTeams['create']>> }
   'POST local/teams/:id/members': { body: TeamMember; response: Awaited<ReturnType<LocalTeams['addMember']>> }

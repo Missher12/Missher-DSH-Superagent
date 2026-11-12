@@ -4,6 +4,8 @@ import { basename } from 'node:path'
 import { promisify } from 'node:util'
 import { z } from 'zod'
 import { githubAccount, type Deployment } from '../deployment.ts'
+import { FeishuGatewayError, type FeishuGateway } from './feishu-gateway.ts'
+import type { Health } from '../sources/host.ts'
 
 const exec = promisify(execFile)
 const TIMEOUT_MS = 90_000
@@ -61,10 +63,11 @@ export class Commands {
    * @param resolved - returns the resolved deployment setup, or throws while setup is still pending.
    * @param environment - variables overriding `process.env` for every command (such as isolated git settings).
    */
-  constructor(private readonly resolved: () => Deployment, private readonly environment: Record<string, string | undefined>, private readonly signal: AbortSignal) {}
+  constructor(private readonly resolved: () => Deployment, private readonly environment: Record<string, string | undefined>, private readonly signal: AbortSignal,
+    private readonly feishuGateway?: FeishuGateway) {}
   get deployment(): Deployment { return this.resolved() }
   get repository(): string { return this.deployment.repository }
-  withSignal(signal?: AbortSignal): Commands { return signal ? new Commands(this.resolved, this.environment, AbortSignal.any([this.signal, signal])) : this }
+  withSignal(signal?: AbortSignal): Commands { return signal ? new Commands(this.resolved, this.environment, AbortSignal.any([this.signal, signal]), this.feishuGateway) : this }
   async run(program: string, args: string[], cwd?: string): Promise<string> {
     try {
       const { stdout } = await exec(program, args, { cwd, signal: this.signal, timeout: TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024,
@@ -103,12 +106,22 @@ export class Commands {
   async lark<T>(args: string[], cwd?: string): Promise<T> {
     const bot = this.deployment.feishu
     if (!bot) throw new Error('The Feishu Source has no working bot CLI')
+    if (bot.credential) {
+      if (!this.feishuGateway) throw new Error('飞书内置连接不可用')
+      try { return await this.feishuGateway.execute(bot, args, this.signal, cwd) as T }
+      catch (error) { throw error instanceof FeishuGatewayError ? membership(new CliError(error.message, error.code)) : error }
+    }
     const output = await this.run(bot.cli, [...args, '--as', 'bot', '--format', 'json'], cwd)
       .catch((error: unknown) => { throw membership(error) })
     const result = JSON.parse(output) as { ok: boolean; data: T; error?: { code?: number; message?: string } }
     const code = result.error?.code
     if (!result.ok) throw membership(new CliError(`${result.error?.message ?? 'Feishu command failed'}${code ? ` (${code})` : ''}`, code))
     return result.data
+  }
+  async watchFeishu(signal: AbortSignal, receive: (event: unknown) => Promise<void>, report: (state: Health['state']) => void): Promise<void> {
+    const bot = this.deployment.feishu
+    if (!bot?.credential || !this.feishuGateway) throw new Error('飞书内置连接不可用')
+    await this.feishuGateway.watch(bot, AbortSignal.any([signal, this.signal]), receive, report)
   }
   /** Runs `git` on PATH using the agent's isolated git environment and credential helper. */
   async git(args: string[], cwd: string): Promise<string> { return this.run('git', args, cwd) }

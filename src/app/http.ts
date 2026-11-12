@@ -33,8 +33,10 @@ import type { WorkbenchView } from './views/workbench.ts'
 import { TeamMemberSchema, TeamRequestSchema } from '../teams/contracts.ts'
 import type { LocalTeams } from '../teams/local.ts'
 import { latestDelivery } from '../teams/delivery.ts'
+import { FeishuConnectError, FeishuConnectSchema } from './feishu-connect.ts'
 
 export interface HttpHost {
+  connectFeishu(request: Api['POST feishu/connect']['body']): Promise<ApiResponse<'POST feishu/connect'>>
   workbench(session?: string, team?: string): WorkbenchView
   readonly local?: LocalTasks | undefined
   readonly mcp?: McpTasks | undefined
@@ -90,6 +92,7 @@ export function sameOrigin(req: Pick<IncomingMessage, 'headers'>, port: number):
 }
 /** Maps errors to HTTP status codes and structured payloads that the panel localizes in the interface language. */
 function failure(error: unknown): [number, Record<string, unknown>] {
+  if (error instanceof FeishuConnectError) return [error.status, { error: error.message }]
   if (error instanceof McpTaskError) return [error.status, { error: error.message }]
   if (error instanceof LocalTaskError || error instanceof WorkspaceError) return [400, { error: error.message }]
   if (error instanceof z.ZodError) {
@@ -244,6 +247,12 @@ function routes(runtime: HttpHost): Routes {
     'GET search': ({ query }) => search(views(runtime), query.q ?? '', runtime.sourceLinks),
     'GET sources': () => sourcesStatus(views(runtime), runtime.health, setupState(runtime)),
     'GET settings': () => settingsView(store, runtime.sources, runtime.health, setupState(runtime), runtime.machine.stateDir),
+    'POST feishu/connect': async ({ body }) => {
+      const request = FeishuConnectSchema.parse(await body())
+      const result = await runtime.connectFeishu(request)
+      if (request.appSecret && !result.restarting) { runtime.checkSetup(); return { ...result, restarting: true } }
+      return result
+    },
     'POST sources/:id/labels': ({ params }) => runtime.settings.refreshLabels(params.id),
     'GET threads': ({ query }) => {
       const { filter, offset, limit } = ThreadsQuery.parse(query)

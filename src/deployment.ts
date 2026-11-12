@@ -5,6 +5,8 @@ import { delimiter, isAbsolute, join } from 'node:path'
 import type { Volatile } from '@deepseek-ai/cordis'
 import s from '@deepseek-ai/schemastery'
 import { z } from 'zod'
+import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
+import { FeishuGateway } from './infra/feishu-gateway.ts'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { runAsWorker, sameDirectory, withoutDirectory, workerBin } from './infra/environment.ts'
 import { absoluteDirectory } from './infra/paths.ts'
@@ -52,7 +54,11 @@ export const GithubAccountsSchema = z.object({
   repository: z.string().trim().regex(/^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)?$/, 'owner/name').default(''),
   cli: z.string().trim().default(''),
 })
-export const FeishuBotSchema = z.object({ cli: z.string().trim().default('') })
+export const FeishuBotSchema = z.object({ cli: z.string().trim().default(''),
+  appId: z.string().trim().regex(/^(cli_[A-Za-z0-9]+)?$/).max(120).optional(),
+  brand: z.enum(['feishu', 'lark']).optional(),
+  credential: z.string().regex(/^(dsh-superagent\/feishu-[a-f0-9]{32})?$/).optional(),
+})
 /** Source configuration keys that affect deployment setup and trigger a restart when changed. */
 export const SETUP_FIELDS: Readonly<Record<string, readonly string[]>> = {
   github: [...Object.keys(GithubAccountsSchema.shape), 'workspaceDirectory'],
@@ -64,7 +70,7 @@ export interface Deployment extends Machine {
   github?: { cli: string; login: string; noreply: string }
   feishu?: FeishuBot
 }
-export interface FeishuBot { cli: string; appId: string; brand: 'feishu' | 'lark'; botId: string; name: string }
+export interface FeishuBot { cli: string; appId: string; brand: 'feishu' | 'lark'; botId: string; name: string; credential?: string }
 
 /** GitHub adapters must opt into a configured account; local mode has none. */
 export function githubAccount(deployment: Pick<Deployment, 'github'>): NonNullable<Deployment['github']> {
@@ -126,8 +132,13 @@ const BotInfo = z.object({ bot: z.object({ open_id: z.string().regex(/^ou_[A-Za-
  * Verify that the configured Feishu CLI is authenticated as a bot and restricted to strict mode `bot`.
  * Workers invoke this CLI as `lark-cli`, so a CLI that also permits a user identity would let workers act as that user.
  */
-export async function resolveFeishuBot(machine: Machine, feishu: unknown, probe: Probe, path = process.env.PATH ?? ''): Promise<FeishuBot | undefined> {
-  const { cli: name } = FeishuBotSchema.parse(feishu ?? {})
+export async function resolveFeishuBot(machine: Pick<Machine, 'stateDir'>, feishu: unknown, probe: Probe, path = process.env.PATH ?? '',
+  credentials?: CredentialProvider, signal = AbortSignal.timeout(20_000)): Promise<FeishuBot | undefined> {
+  const config = FeishuBotSchema.parse(feishu ?? {}), { cli: name } = config
+  if (config.credential) {
+    try { return await new FeishuGateway(credentials).resolve(config, signal) }
+    catch (error) { throw new SetupError('feishuGatewayFailed', { output: reason(error) }) }
+  }
   if (!name) return undefined
   const fail = (error: unknown): never => { throw error instanceof SetupError ? error : new SetupError('feishuCliFailed', { output: reason(error) }) }
   let cli = ''

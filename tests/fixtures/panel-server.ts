@@ -309,6 +309,14 @@ const ticketOf = (id: string) =>
 const SourceSave = z.object({ enabled: z.boolean(), config: z.unknown() })
 
 const ROUTES: { [K in keyof Api]: Route<K> } = {
+  'POST feishu/connect': { body: true, answer: ({ body }) => {
+    if (body.appSecret === 'rejected-secret') return refuse(400, 'App ID 或 App Secret 验证失败')
+    if (body.revision !== (server.revisions['source:feishu'] ?? 0)) return refuse(409, '配置已更新，请刷新后重试')
+    server.settings.sources.feishu = { ...body.value, config: { ...body.value.config, cli: '', appId: body.appId,
+      credential: 'dsh-superagent/feishu-' + 'a'.repeat(32) } }
+    server.revisions['source:feishu'] = body.revision + 1
+    return { restarting: false, appId: body.appId, botId: 'ou_bot', name: '测试机器人' }
+  } },
   'GET local/workbench': { query: ['session', 'team'], answer: ({ query }) => ({ ...server.workbench,
     teams: Object.values(server.teamViews).map(({ members: _members, handoffs: _handoffs, deliveries: _deliveries, error: _error, ...index }) => index),
     team: query.team ? server.teamViews[query.team] : undefined }) },

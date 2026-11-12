@@ -75,6 +75,15 @@ class ConnectionBusy extends Error {
   constructor(readonly count: string, message: string) { super(message) }
 }
 async function consume(ctx: SourceContext, signal: AbortSignal): Promise<void> {
+  if (bot(ctx).credential) return ctx.commands.watchFeishu(signal, async event => {
+    if (signal.aborted || !enabled(ctx)) return
+    const trigger = feishuTrigger(event, bot(ctx).botId, bot(ctx).appId)
+    if (!trigger) return
+    const chats = ctx.state.get(KV.feishu.chats) ?? {}
+    chats[String(trigger.meta.chatId)] = trigger.meta.direct === true
+    ctx.state.set(KV.feishu.chats, chats)
+    await receive(ctx, trigger)
+  }, state => { if (!signal.aborted) ctx.report('feishu', { state, detail: state === 'ready' ? 'Listening for bot events' : state === 'starting' ? 'Reconnecting to Feishu' : 'Feishu event processing failed', at: new Date().toISOString() }) })
   const child = spawn(bot(ctx).cli, ['event', 'consume', 'im.message.receive_v1', '--as', 'bot'],
     { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, LARKSUITE_CLI_NO_UPDATE_NOTIFIER: '1',
       LARKSUITE_CLI_NO_SKILLS_NOTIFIER: '1' } })

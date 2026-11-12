@@ -6,9 +6,27 @@ import { SettingsConflict } from '../src/app/settings.ts'
 import type { HttpHost } from '../src/app/http.ts'
 import { SettingsSchema } from '../src/policy.ts'
 import { SetupError } from '../src/setup.ts'
+import { FeishuConnectError } from '../src/app/feishu-connect.ts'
+import type { FeishuConnectRequest } from '../src/app/feishu-connect.ts'
 
 type Handler = (req: unknown, res: unknown) => Promise<void>
 type Headers = Record<string, string | undefined>
+it('accepts app credentials only on the same-origin management route and returns no secret', async () => {
+  let received: FeishuConnectRequest | undefined, restarts = 0
+  const request = { revision: 0, appId: 'cli_test', appSecret: 'request-secret', value: { enabled: true, config: {} } }
+  const call = serve({ connectFeishu: async (value: FeishuConnectRequest) => {
+    received = value; return { restarting: false, appId: value.appId, botId: 'ou_bot', name: 'Test' }
+  }, checkSetup: () => { restarts++ } })
+  expect((await call('POST', 'feishu/connect', request, { origin: 'https://untrusted.example' })).status).toBe(403)
+  expect(received).toBeUndefined()
+  const response = await call('POST', 'feishu/connect', request)
+  expect(received).toMatchObject(request)
+  expect(response).toEqual({ status: 200, body: { restarting: true, appId: 'cli_test', botId: 'ou_bot', name: 'Test' } })
+  expect(JSON.stringify(response)).not.toContain(request.appSecret)
+  expect(restarts).toBe(1)
+  const refused = serve({ connectFeishu: async () => { throw new FeishuConnectError(400, 'App ID 或 App Secret 验证失败') } })
+  expect(await refused('POST', 'feishu/connect', request)).toEqual({ status: 400, body: { error: 'App ID 或 App Secret 验证失败' } })
+})
 /** Mount management HTTP routes on a fake web server and return a request helper that includes default panel headers. */
 function serve(runtime: Partial<Record<keyof HttpHost, unknown>>, host = '127.0.0.1') {
   let handler: Handler = async () => {}

@@ -1,13 +1,13 @@
 /** Source status view (health, filtered Triggers, dropped replies) and Source settings cards. */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FieldSpec } from '../sources/kind.ts'
 import { ApiError, usePoll, type DroppedReply, type SourceStatusRow, type SourceView } from './api.ts'
-import { Button, DisclosureRow, Dot, Icon, InfoTip, Switch, Tag } from './controls.tsx'
+import { Button, DisclosureRow, Dot, Icon, InfoTip, Input, Switch, Tag } from './controls.tsx'
 import { SaveBar } from './draft.tsx'
 import { sourceMark } from './marks.ts'
-import { usePanel, usePanelData } from './provider.tsx'
+import { useAction, usePanel, usePanelData } from './provider.tsx'
 import { setupPage, settingsRoute, type Route } from './route.ts'
-import { ConfigHistory, Fields, SourceField, useBlockDraft, useSettings } from './settings-kit.tsx'
+import { ConfigHistory, Field, Fields, SourceField, useBlockDraft, useSettings } from './settings-kit.tsx'
 import { actorName, errorText, healthText, localized, readableMarkers, reasonLabel, valueLabel, when } from './text.ts'
 import { CheckSetupButton, ConfirmButton, Hint, LabelValue, LoadState, SetupMessage, StatusHead, When } from './widgets.tsx'
 
@@ -23,21 +23,42 @@ function SourceCard({ source }: { source: SourceView }) {
   const value = draft.value
   const { problem, value: saved } = source
   const connector = source.id === 'github' || source.id === 'feishu' ? source.id : undefined
-  const connected = !!saved.config.cli || !!saved.config.workspaceDirectory
+  const connected = !!saved.config.credential || !!saved.config.cli || !!saved.config.workspaceDirectory
+  const knownAppId = typeof saved.config.appId === 'string' ? saved.config.appId : typeof source.facts.appId === 'string' ? source.facts.appId : ''
+  const [appId, setAppId] = useState(knownAppId), [appSecret, setAppSecret] = useState('')
+  const previousAppId = useRef(knownAppId)
+  useEffect(() => { const previous = previousAppId.current; previousAppId.current = knownAppId
+    setAppId(value => value === previous ? knownAppId : value) }, [knownAppId])
+  const accountChanged = connector === 'feishu' && (!!appSecret || appId !== knownAppId || configuring && !value.config.cli && !value.config.credential)
+  const discard = () => { setAppId(knownAppId); setAppSecret(''); setConfiguring(false); draft.discard() }
+  const connect = useAction(async () => {
+    setFailure(undefined)
+    try {
+      const result = await call('POST feishu/connect', { body: { revision: source.revision, appId,
+        ...appSecret ? { appSecret } : {}, brand: source.facts.brand === 'lark' ? 'lark' : 'feishu', value } })
+      setAppSecret(''); setConfiguring(false); draft.discard()
+      if (result.restarting) restart(); else await reload()
+    } catch (error) {
+      setFailure(errorText(error))
+      if (error instanceof ApiError && error.status === 409) await reload()
+      throw error
+    }
+  })
   const cleared = (enabled: boolean, from = value) => ({ enabled, config: { ...from.config, cli: '', workspaceDirectory: '',
-    ...connector === 'feishu' ? { chats: [], directMessages: false, otherChats: 'none' } : {} } })
+    ...connector === 'feishu' ? { appId: '', credential: '', chats: [], directMessages: false, otherChats: 'none' } : {} } })
   const replace = () => {
     setFailure(undefined); setConfiguring(true); draft.edit(cleared(true))
+    if (connector === 'feishu') { setAppId(''); setAppSecret('') }
     requestAnimationFrame(() => {
       const field = source.fields.find(field => field.key === 'cli')
-      if (field) document.querySelector<HTMLInputElement>(`#dt-source-${source.id} input[aria-label=${JSON.stringify(localized(t, field.label))}]`)?.focus()
+      if (field) document.querySelector<HTMLInputElement>(`#dt-source-${source.id} input[aria-label=${JSON.stringify(connector === 'feishu' ? 'App ID' : localized(t, field.label))}]`)?.focus()
     })
   }
   const remove = async () => {
     setFailure(undefined); setRemoving(true)
     try {
       const result = await call('PUT settings/:block', { block: `source:${source.id}`, body: { value: cleared(false, saved), revision: source.revision } })
-      draft.discard(); setConfiguring(false); notify(t('sourceRemoved'))
+      discard(); setConfiguring(false); notify(t('sourceRemoved'))
       if (result.restarting) restart(); else await reload()
     } catch (error) {
       setFailure(errorText(error))
@@ -53,12 +74,15 @@ function SourceCard({ source }: { source: SourceView }) {
   const field = (spec: FieldSpec) => <SourceField key={spec.key} field={spec} value={value.config[spec.key]} saved={saved.config[spec.key]}
     labels={source.labels}
     refreshLabels={refreshLabels} fact={spec.type === 'fact' || !changed(spec.key) ? source.facts[spec.key] : undefined}
-    onChange={next => draft.edit({ ...value, config: { ...value.config, [spec.key]: next } })} />
+    onChange={next => draft.edit({ ...value, config: { ...value.config, [spec.key]: next,
+      ...connector === 'feishu' && spec.key === 'cli' ? { appId: '', credential: '' } : {} } })} />
   const advanced = source.fields.filter(spec => spec.advanced)
   if (connector && source.installed && !saved.enabled && !connected && !configuring) return <ConnectSource id={connector}
     onConnect={() => { setConfiguring(true); draft.edit({ ...value, enabled: true }) }} />
-  return <form id={`dt-source-${source.id}`} className="dt-card" onSubmit={event => { void draft.submit(event) }}>
-    <Fields disabled={draft.busy || removing}>
+  return <form id={`dt-source-${source.id}`} className="dt-card" onSubmit={event => {
+    if (accountChanged) { event.preventDefault(); void connect.run() } else void draft.submit(event)
+  }}>
+    <Fields disabled={draft.busy || connect.busy || removing}>
       <div className="dt-card-head">
         <div className="dt-row-main">
           <div className="dt-row-title">
@@ -67,7 +91,7 @@ function SourceCard({ source }: { source: SourceView }) {
             <span className="dt-status-text" data-state={sourceMark(t, source.state).dot}>{sourceMark(t, source.state).label}</span>
           </div>
         </div>
-        {connector && connected && <Button className="dt-source-connect" variant="outline" disabled={draft.busy || removing} onClick={replace}>{t('sourceReplaceAction')}</Button>}
+        {connector && connected && <Button className="dt-source-connect" variant="outline" disabled={draft.busy || connect.busy || removing} onClick={replace}>{t('sourceReplaceAction')}</Button>}
         {source.installed && <Switch checked={value.enabled} onChange={enabled => draft.edit({ ...value, enabled })}
           label={t('sourceEnable', { name: localized(t, source.title) })} />}
       </div>
@@ -77,6 +101,14 @@ function SourceCard({ source }: { source: SourceView }) {
           <pre>{problem.values.output}</pre></details>}
       </div>}
       {!source.installed && <Hint>{t('sourceNotInstalledHint')}</Hint>}
+      {source.installed && connector === 'feishu' && <div className="dt-feishu-account">
+        <Field label="App ID" note={source.facts.cli && localized(t, source.facts.cli)}><Input value={appId} required={accountChanged} pattern="cli_[A-Za-z0-9]+" maxLength={120}
+          placeholder="cli_…" autoComplete="off" spellCheck={false} onChange={event => setAppId(event.target.value)} /></Field>
+        <Field label="App Secret"><Input type="password" value={appSecret} maxLength={2048} autoComplete="new-password" spellCheck={false}
+          required={accountChanged && (appId !== knownAppId || !saved.config.cli && !saved.config.credential || configuring)}
+          placeholder={knownAppId && (saved.config.cli || saved.config.credential) && !configuring ? t('feishuSecretSaved') : t('feishuSecretPlaceholder')}
+          onChange={event => setAppSecret(event.target.value)} /></Field>
+      </div>}
       {source.installed && source.fields.filter(spec => !spec.advanced).map(field)}
       {source.installed && advanced.length > 0 && <DisclosureRow icon={<Icon name="settings" />} title={t('advanced')} open={advancedOpen}
         onToggle={() => setAdvancedOpen(!advancedOpen)}>
@@ -85,10 +117,11 @@ function SourceCard({ source }: { source: SourceView }) {
     </Fields>
     {connector && connected && <div className="dt-danger-zone dt-source-actions"><ConfirmButton label={t('sourceRemoveAction')}
       title={t('sourceRemoveTitle', { name: localized(t, source.title) })} message={t('sourceRemoveHint') + (connector === 'github' ? t('sourceRepositoryRetained') : '')}
-      icon="trash" disabled={draft.busy || removing || running > 0} disabledReason={running > 0 ? t('sourceRemoveBusy') : undefined} onConfirm={remove} /></div>}
+      icon="trash" disabled={draft.busy || connect.busy || removing || running > 0} disabledReason={running > 0 ? t('sourceRemoveBusy') : undefined} onConfirm={remove} /></div>}
     {failure && <p className="dt-error" role="alert">{failure}</p>}
-    <SaveBar {...draft} busy={draft.busy || removing} status={restarts && running > 0 ? t('restartInterrupts', { count: running }) : undefined}
-      onDiscard={draft.discard} />
+    <SaveBar {...draft} dirty={draft.dirty || accountChanged} busy={draft.busy || connect.busy || removing}
+      status={accountChanged && running > 0 ? t('feishuConnectionBusy') : restarts && running > 0 ? t('restartInterrupts', { count: running }) : undefined}
+      onDiscard={discard} />
   </form>
 }
 

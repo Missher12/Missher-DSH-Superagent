@@ -288,7 +288,7 @@ it('opens separate connection settings without a project sidebar and retains unf
   await mount()
   expect(all('.dt-studio-sidebar')).toHaveLength(0)
   expect(all('[aria-label="调整项目侧栏宽度"]')).toHaveLength(0)
-  expect(all('.dt-local-settings-nav button').map(button => button.textContent?.trim())).toEqual(['通用', 'MCP 服务', '派单规则', '提示词'])
+  expect(all('.dt-local-settings-nav button').map(button => button.textContent?.trim())).toEqual(['通用', 'MCP 服务', '提示词'])
   await click(zh.localConnections)
   await click('GitHub')
   expect(all('#dt-source-github')).toHaveLength(1)
@@ -299,6 +299,23 @@ it('opens separate connection settings without a project sidebar and retains unf
   expect(all('#dt-source-feishu')).toHaveLength(1)
   await click('GitHub')
   expect(field<HTMLInputElement>('监听的仓库').value).toBe('acme/unfinished')
+  expect(server.requests.some(request => request.method === 'PUT')).toBe(false)
+})
+
+it('keeps task policy inside MCP services and retains its draft when switching back to connections', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  at({ page: 'settings' })
+  await mount(); await click(zh.localConnections)
+  expect(all('.dt-connections-nav button')).toHaveLength(3)
+  await click(zh.localExternalPolicy)
+  await type(field<HTMLSelectElement>(zh.acceptMode), 'observe')
+  await click('接入')
+  expect(all('.dt-connections-nav button')).toHaveLength(3)
+  expect(all('.dt-mcp-tools li').map(item => item.getAttribute('title'))).toEqual([
+    'workspace_list', 'task_create', 'task_get', 'task_list', 'task_followup', 'task_stop', 'task_retry',
+  ])
+  await click(zh.localExternalPolicy)
+  expect(field<HTMLSelectElement>(zh.acceptMode).value).toBe('observe')
   expect(server.requests.some(request => request.method === 'PUT')).toBe(false)
 })
 

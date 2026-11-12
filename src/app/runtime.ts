@@ -18,6 +18,7 @@ import { Engine, key, reasonText, type EngineForSettings, type ReceiveResult, ty
 import { allowedSender, settingsPolicy } from '../policy.ts'
 import { SourceRegistry } from '../sources/registry.ts'
 import { Commands } from '../infra/commands.ts'
+import { FeishuGateway } from '../infra/feishu-gateway.ts'
 import type { Deployment, Machine } from '../deployment.ts'
 import { environmentOf, ticketEnvironment, type Variable } from './execution-environment.ts'
 import type { SetupProblem } from '../setup.ts'
@@ -45,6 +46,7 @@ import { Sessions } from './sessions.ts'
 import { workbench } from './views/workbench.ts'
 import { Settings } from './settings.ts'
 import { sourceContextOf, type SourceContextDeps } from './source-context.ts'
+import { createFeishuConnector } from './feishu-connect.ts'
 import type { ResourceHost } from './resources.ts'
 import { mainTools, type MainToolsHost } from './tools/main.ts'
 import { LocalTasks } from '../sources/local.ts'
@@ -113,7 +115,7 @@ export class Runtime extends Service implements SourceHost {
       const prompts = this.prompts = new Prompts(store, () => machine.promptMaxChars.get(), deployed, feishu, () => machine.mode === 'local')
       const masterId = this.masterId = store.get(KV.runtime.masterId) ?? `orchestrator-${key(machine.stateDir)}`
       store.set(KV.runtime.masterId, masterId)
-      const commands = this.commands = new Commands(() => setup.deployment, setup.commandEnvironment, this.lifetime)
+      const commands = this.commands = new Commands(() => setup.deployment, setup.commandEnvironment, this.lifetime, new FeishuGateway(ctx.get('credentials')))
       const board = this.board
       const effects = this.effects = new Effects(store, board)
       const sources = this.sources = new SourceRegistry(() => store.settings(), board, kind => {
@@ -250,6 +252,7 @@ export class Runtime extends Service implements SourceHost {
     const runtime = this
     const { store, sources, prompts, sessions, settings, engine, executor, health, machine, masterId, ready, sourceLinks, setup, passes } = this
     return { store, sources, prompts, sessions, settings, engine, executor, health, machine, masterId, ready, sourceLinks, local: this.local, mcp: this.mcp, teams: this.teams,
+      connectFeishu: createFeishuConnector({ machine, store, settings, sources, credentials: this.ctx.get('credentials'), active: () => executor.activeCount(), signal: this.lifetime }),
       workbench: (session?: string, team?: string) => workbench({ store, sources, links: this.links() }, this.ctx, sessions,
         machine.mode === 'local' ? executionRoot(store.settings(), machine.stateDir) : machine.stateDir, masterId, machine.stateDir, session, this.teams, team),
       get deployment() { return setup.deployment },
