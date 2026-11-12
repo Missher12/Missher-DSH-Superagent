@@ -9,6 +9,7 @@ import { useAction, usePanel } from './provider.tsx'
 import { errorText, valueLabel, when, type T } from './text.ts'
 import { Hint, LoadState } from './widgets.tsx'
 import { Button, Icon, Input, SegmentedControl } from './controls.tsx'
+import { Select } from './select.tsx'
 
 type Tab = 'edit' | 'full' | 'history'
 type Origin = { revision: number } | 'defaults' | { reset: string }
@@ -88,11 +89,11 @@ function PromptSections({ config, view, changed, selected, onSelect, onEdit }: {
   const part = isPart(selected) ? view.parts.find(item => item.key === partKey(selected)) : undefined
   return <div className="dt-prompt">
     <nav className="dt-prompt-nav" aria-label={t('promptSections')}>
-      <select className="dt-select dt-prompt-select" aria-label={t('promptSections')} value={selected} onChange={event => onSelect(event.target.value)}>
+      <Select className="dt-prompt-select" aria-label={t('promptSections')} value={selected} onChange={event => onSelect(event.target.value)}>
         <optgroup label={t('promptTeamGroup')}>{view.sections.map(section => <option key={section} value={section}>{sectionLabel(t, view, section)}</option>)}</optgroup>
         <optgroup label={t('promptBuiltInGroup')}>{view.parts.map(entry => <option key={entry.key} value={`part/${entry.key}`}>{sectionLabel(t, view, `part/${entry.key}`)}</option>)}</optgroup>
         <optgroup label={t('promptSkillsGroup')}>{Object.keys(config.skills).map(skill => <option key={skill} value={`skill/${skill}`}>{sectionLabel(t, view, `skill/${skill}`)}</option>)}</optgroup>
-      </select>
+      </Select>
       <div className="dt-nav-group">{t('promptTeamGroup')}</div>
       {view.sections.map(section => item(section, <>
         <span>{sectionLabel(t, view, section)}{config[section] !== view.defaults[section] && <span
@@ -213,13 +214,13 @@ function FullPrompt({ config, view, dirty, revision, onEdit }: {
   const builtIn = (key: string) => view.parts.find(part => part.key === key)
   return <>
     <div className="dt-subhead">
-      <select className="dt-select dt-inline-select" aria-label={t('promptPreviewTarget')} value={target}
+      <Select className="dt-inline-select" aria-label={t('promptPreviewTarget')} value={target}
         onChange={event => setTarget(event.target.value as Target)}>
         <option value="orchestrator">{valueLabel(t, 'promptRole', 'orchestrator')}</option>
         <option value="worker">{valueLabel(t, 'promptRole', 'worker')}</option>
         {Object.keys(preview.value.skills).map(name => <option key={name} value={`skill/${name}`}>{sectionLabel(t, view,
           `skill/${name}`)}</option>)}
-      </select>
+      </Select>
       <Hint>{t('promptFullState', { count: parts.length, chars: parts.reduce((sum, part) => sum + part.text.length, 0),
         state: dirty ? t('promptPreviewDraft') : t('promptPreviewSaved', { revision }) })}</Hint>
       <SegmentedControl className="dt-segmented dt-compare" label={t('promptCompare')} value={shown} options={[...dirty

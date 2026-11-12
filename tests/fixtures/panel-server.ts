@@ -86,6 +86,7 @@ export const MACHINE = { stateDir: '/srv/dsh-superagent', promptMaxChars: 100000
 type Settings = ReturnType<typeof SettingsSchema.parse>
 export interface PanelServer {
   renderSessions?: boolean
+  models?: ApiResponse<'GET models'>
   sessionModels: Record<string, ApiResponse<'GET local/sessions/:id/model'>>
   workbench: ApiResponse<'GET local/workbench'>
   teamViews: Record<string, ApiResponse<'GET local/teams/:id'>>
@@ -256,7 +257,7 @@ function initial(): PanelServer {
     en: 'Feishu message' } }
   const defaults = { revision: 0, previousRevision: null, savedAt: '', source: 'defaults' }
   return {
-    sessionModels: {}, renderSessions: false, teamViews: {}, teamFiles: {},
+    sessionModels: {}, models: undefined as ApiResponse<'GET models'> | undefined, renderSessions: false, teamViews: {}, teamFiles: {},
     workbench: { teams: [], team: undefined, teamTicketIds: [], workspace: { id: 'superagent-space', title: 'Superagent', directory: '/srv/dsh-superagent' },
       members: [{ id: 'master', role: 'orchestrator', title: '', directory: '/srv/dsh-superagent', state: 'idle', tools: [] }],
       tasks: [], activity: [], sources: [] },
@@ -454,9 +455,9 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET policy/history': { answer: () => server.history },
   'POST policy-sync/:id': { answer: ({ params }) => ({ policy: server.settings.policy.sources[params.id] }) },
   'POST setup/check': { answer: () => ({ restarting: true }) },
-  'GET models': { answer: () => ({ default: { provider: 'host', model: 'default' }, routableProviders: [], failures: [],
+  'GET models': { answer: () => ({ ...(server.models ?? { default: { provider: 'host', model: 'default' }, routableProviders: [], failures: [],
     groups: [{ id: 'worker-provider', name: 'Worker provider', models: [{ id: 'worker-model', name: 'Worker model',
-      reasoning: { efforts: [{ id: 'high', name: 'High' }] } }] }] }) },
+      reasoning: { efforts: [{ id: 'high', name: 'High' }] } }] }] }), taskDefault: server.settings.executor.model }) },
   'GET local/permissions': { answer: () => ({ options: ['read-only', 'workspace-write', 'danger-full-access'].map(value => ({ value, name: value })),
     defaultOptions: ['read-only', 'workspace-write', 'danger-full-access'].map(value => ({ value, name: value })), defaultPreset: 'workspace-write' }) },
   'GET prompts': { query: ['revision', 'offset'], answer: () => server.prompts },

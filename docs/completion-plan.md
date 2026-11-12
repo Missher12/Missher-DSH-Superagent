@@ -46,3 +46,9 @@ GitHub 与 MCP 的测试目标、授权及真实派单已有证据。飞书已�
 - GitHub 测试库：[DSH-Superagent-Integration-Lab-20261107](https://github.com/Missher12/DSH-Superagent-Integration-Lab-20261107)（私有）；[Issue #1](https://github.com/Missher12/DSH-Superagent-Integration-Lab-20261107/issues/1)、[PR #2](https://github.com/Missher12/DSH-Superagent-Integration-Lab-20261107/pull/2)、[PR CI](https://github.com/Missher12/DSH-Superagent-Integration-Lab-20261107/actions/runs/42371856710)。工作区 `/Users/missher/Documents/Codex-File/Deepseek-Corids/superagent-github-lab-20261107`；任务 `bbfc589165db3cc6d413ecc1a4a91f2b`，记录在忽略目录 `.local-artifacts/github-native-acceptance.json`。
 - CI 精细令牌限制已实测：Checks REST 和 GraphQL 对象均不可访问，不能靠增加 `checks:read` 解决；插件改读 Actions 作业和提交状态，明确标出覆盖范围，没有结果不再显示通过。既有经典令牌 / GitHub App 的 Checks 读取保留。CLI 的间歇 EOF 没有证据足够确定根因；独立测试包装器仅对读取请求做有限重试，写请求不重放。
 - 1.2.2 另修复可选 GitHub 组件尚无账号时错误轮询的问题，并禁止路由模型更改 MCP 客户端的工作区授权。独立测试宿主正常退出后，用官方 DSH CLI 以新版本重新启动，端口从 51961 变为 55345，同一 GitHub 任务、会话、报告及 ended 状态均恢复；此项是独立真实宿主的冷启动验收，没有重启用户的日常 DSH。测试结束后已关闭测试来源监听及测试宿主，数据和私有仓库保留。飞书按用户要求暂缓，完整目标尚未完成。
+
+## 官方执行方式对齐（2026-11-12）
+
+本轮对照官方 `main` 当前提交 [`8c32a9d`](https://github.com/deepseek-ai/dsh-superagent-prototype/commit/8c32a9d) 及 `docs/003-execution.md`。继续复用持久工单、Assignment、独立 Worker Session、后台工作占位、消息投递和恢复机制；不会用界面动画或模型自述代替调度与完成状态。
+
+设置中的模型与思考强度改为共用任务表单的控件，保留折叠的手动模型配置。任务默认模型和 DSH 默认模型分别解析，避免只改思考强度时换到另一套默认模型。权限继承、本地目录互斥和团队交付依赖继续保留。飞书真实连接仍按用户此前决定暂缓，在线宿主边界不变。

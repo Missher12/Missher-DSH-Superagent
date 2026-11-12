@@ -73,7 +73,7 @@ export interface Api {
   'GET policy/history': { response: HistoryView }
   'POST policy-sync/:id': { response: { policy: unknown } }
   'POST setup/check': { response: { restarting: true } }
-  'GET models': { response: ModelCatalog }
+  'GET models': { response: ModelCatalog & { taskDefault?: import('../policy.ts').RoleModel | null } }
   'GET prompts': { query?: { revision?: number; offset?: number }; response: PromptsView }
   'PUT prompts': { body: { config: PromptConfig; baseRevision: number }; response: { revision: number; context_delivery: Delivery } }
   'POST prompts/preview': { body: PromptConfig; response: ReturnType<Prompts['preview']> }

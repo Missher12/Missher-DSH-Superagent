@@ -5,7 +5,7 @@ import { ADMISSION_DEFAULTS, ADMISSION_OPTIONS, type Admission, type AdmissionCe
 import type { AdmissionRowView } from '../sources/kind.ts'
 import { LIMITS } from '../limits.ts'
 import { DECISION_FILTERS, DECISION_KINDS, usePoll, type DecisionFilter, type Settings, type SourceView } from './api.ts'
-import { Button, DisclosureRow, Icon, InfoTip, Input, Pill, SegmentedControl, Switch } from './controls.tsx'
+import { Button, DisclosureRow, Icon, InfoTip, Input, Pill, Switch } from './controls.tsx'
 import { SaveBar } from './draft.tsx'
 import { useAction, usePanel } from './provider.tsx'
 import { DecisionLine } from './rows.tsx'
@@ -157,12 +157,9 @@ function PolicyBlock({ include }: { include?: readonly string[] }) {
   return <form className="dt-form dt-block" onSubmit={event => { void draft.submit(event) }}
     onInvalidCapture={event => reveal(event.target)}>
     <Fields disabled={draft.busy}>
-      <h2 className="dt-block-title">{t('term.policy')}<InfoTip text={t('policyIntro')} /></h2>
-      <p className="dt-flow">
-        <LabelValue label={t('policyVersion')} value={<span className="dt-mono">{policyVersion.slice(0, 8)}</span>} /><InfoTip
-          text={t('policyVersionHint')} />
-      </p>
-      <Section title={t('rules')} hint={t('rulesHint')} action={<Button variant="ghost" size="sm" icon={<Icon name="plus" />}
+      <Section title={t('rules')} hint={t('rulesHint')}
+        badge={<span className="dt-settings-revision" title={t('policyVersionHint')}>{policyVersion.slice(0, 8)}</span>}
+        action={<Button variant="ghost" size="sm" icon={<Icon name="plus" />}
         onClick={add}>{t('addRule')}</Button>}>
         {policy.rules.length ? <ul className="dt-rules">{policy.rules.map((rule, index) => <RuleRow key={rule.id} rule={rule}
           expanded={expanded.has(rule.id)}
@@ -200,11 +197,11 @@ function EvalBlock() {
   return <form className="dt-form dt-block" onSubmit={event => { void draft.submit(event) }}>
     <Fields disabled={draft.busy}>
       <h2 className="dt-block-title">{t('evalSettings')}<InfoTip text={t('evalIntro')} /></h2>
-      <Section title={t('acceptMode')} hint={t(`modeOption.${value.mode}`)}>
-        <SegmentedControl className="dt-segmented" label={t('acceptMode')} value={value.mode} onChange={mode => edit({ mode })}
-          options={(['off', 'observe', 'auto'] as const).map(mode => ({ value: mode, label: valueLabel(t, 'mode', mode),
-            title: t(`modeOption.${mode}`) }))} />
-      </Section>
+      <Field label={t('acceptMode')} hint={t(`modeOption.${value.mode}`)}>
+        <Select value={value.mode} onChange={event => edit({ mode: event.target.value as typeof value.mode })}>
+          {(['off', 'observe', 'auto'] as const).map(mode => <option key={mode} value={mode}>{valueLabel(t, 'mode', mode)}</option>)}
+        </Select>
+      </Field>
       <Field label={t('evalTimeout')} hint={t('evalTimeoutHint')}>
         <Input type="number" min={LIMITS.evalTimeoutSeconds.min} max={LIMITS.evalTimeoutSeconds.max} required value={value.timeoutSeconds}
           onChange={event => edit({ timeoutSeconds: event.target.value })} />

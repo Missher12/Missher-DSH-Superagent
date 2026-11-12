@@ -7,6 +7,7 @@ import { Field, Fields } from './settings-kit.tsx'
 import { usePanel } from './provider.tsx'
 import { errorText } from './text.ts'
 import { ConfirmButton, Hint, Section, When } from './widgets.tsx'
+import { Select } from './select.tsx'
 
 type Connection = ApiResponse<'GET mcp'>['clients'][number]
 type Credential = ApiResponse<'POST mcp/clients/:id/token'>
@@ -103,10 +104,10 @@ export function McpSettings() {
           void navigator.clipboard.writeText(configuration).then(() => notify(t('localCopied')), error => setFailure(errorText(error)))
         }}>{t('localCopyResult')}</Button>
       </>}>
-      <div className="dt-form"><Field label={t('mcpTransport')}><select className="dt-select" value={transport}
+      <div className="dt-form"><Field label={t('mcpTransport')}><Select value={transport}
         onChange={event => setTransport(event.target.value as 'stdio' | 'http')}>
         <option value="stdio">{t('mcpStdio')}</option><option value="http">HTTP</option>
-      </select></Field>
+      </Select></Field>
         <Hint>{t(transport === 'stdio' ? 'mcpStdioHint' : 'mcpHttpHint')}</Hint>
         <pre className="dt-mcp-config" tabIndex={0}>{configuration}</pre>
         {failure && <p className="dt-error" role="status">{failure}</p>}

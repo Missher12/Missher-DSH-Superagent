@@ -37,6 +37,22 @@ it('keeps model reasoning effort through draft restoration and dispatch', async 
   expect(server.requests.find(item => item.path === 'local/tasks' && item.method === 'POST')?.body).not.toHaveProperty('permissionPreset')
 })
 
+it('uses the configured task default when only its reasoning effort is changed', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  server.settings.executor.model = { provider: 'worker-provider', model: 'worker-model', reasoningEffort: 'high' }
+  server.models = { default: { provider: 'host', model: 'default' }, routableProviders: [], failures: [],
+    groups: [{ id: 'worker-provider', name: 'Worker provider', models: [{ id: 'worker-model', name: 'Worker model',
+      reasoning: { efforts: [{ id: 'low', name: 'Low' }, { id: 'high', name: 'High' }] } }] }] }
+  await mount(); await click('新建任务')
+  const effort = field<HTMLSelectElement>(zh.modelEffort)
+  expect(effort.disabled).toBe(false)
+  expect(effort.value).toBe('high')
+  await type(effort, 'low'); await type(field<HTMLTextAreaElement>('任务要求'), '按任务默认模型检查代码')
+  await click('派出任务')
+  expect(server.requests.find(item => item.path === 'local/tasks' && item.method === 'POST')?.body)
+    .toMatchObject({ model: { provider: 'worker-provider', model: 'worker-model', reasoningEffort: 'low' } })
+})
+
 it('uses labelled host menus for task models and reasoning without losing the selected model', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   await mount(); await click('新建任务')
@@ -238,7 +254,7 @@ it('keeps prompt edits when returning from the bounded editor to settings', asyn
   await mount()
   await click(zh['settingsGroup.prompts'])
   await type(field<HTMLTextAreaElement>(zh.promptBody), '保留尚未保存的提示词')
-  await click(zh.localBackSettings)
+  await click(zh.localGeneralSettings)
   expect(all('.dt-prompt-nav')).toHaveLength(0)
   expect(text()).toContain(zh.localTaskModel)
   await click(zh['settingsGroup.prompts'])
@@ -379,7 +395,7 @@ it('opens advanced settings separately and retains an unsaved basic setting', as
   expect(all('.dt-mcp-connection')).toHaveLength(0)
   await click(zh.mcpTitle)
   expect(text()).toContain(zh.mcpAdd)
-  await click(zh.localBackSettings)
+  await click(zh.localGeneralSettings)
   expect(field<HTMLInputElement>(zh.localMaxWorkers).value).toBe('4')
   expect(server.requests.some(request => request.method === 'PUT')).toBe(false)
 })

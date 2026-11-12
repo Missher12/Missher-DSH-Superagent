@@ -61,7 +61,6 @@
 .dt-event-text { margin: 0; font-size: 13px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dt-event-actor { font-weight: 500; color: var(--dsw-alias-label-secondary); }
 .dt-event-quiet .dt-event-text { color: var(--dsw-alias-label-tertiary); }
-.dt-flow { margin: 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
 .dt-clamp-8 { display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden; }
 .dt-more { align-self: flex-start; font-size: 12px; }
 .dt-reveal { opacity: 0; }
@@ -91,9 +90,6 @@
 .dt-choice-trigger:disabled { cursor: default; }
 [role='menu']:has(.dt-choice-option) { box-sizing: border-box; font-family: inherit; font-size: 13px; max-height: min(300px, calc(100dvh - 24px)); }
 .dt-choice-option { display: block; white-space: normal; overflow-wrap: anywhere; font-size: 13px; line-height: 20px; }
-.dt-model-custom { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.dt-model-custom > .dt-input { flex: 1; min-width: 0; }
-.dt-model-custom > .dt-btn { flex: none; }
 .dt-mono { font-family: var(--ds-font-family-code, Menlo, monospace); font-size: 12px; overflow-wrap: anywhere; }
 .dt-detail { margin-top: 2px; color: var(--dsw-alias-label-secondary); }
 .dt-savebar .dt-error { white-space: pre-line; }
@@ -116,8 +112,7 @@
 .dt-rule-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--dsw-alias-label-caption); }
 .dt-rule-dot[data-enabled] { background: var(--dsw-alias-brand-primary); }
 .dt-rule-body { display: flex; flex-direction: column; gap: 12px; padding: 8px 0 8px 28px; }
-.dt-model { display: flex; flex-direction: column; gap: 6px; }
-.dt-grid3 { display: grid; grid-template-columns: minmax(0,1fr); gap: 0; }
+.dt-model { display: flex; flex-direction: column; gap: 0; min-width: 0; }
 .dt-changes { display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 20px; }
 .dt-changes li::before { content: '· '; color: var(--dsw-alias-label-caption); }
 .dt-main { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
@@ -194,7 +189,7 @@ div.dt-preview-head { color: var(--dsw-alias-label-secondary); }
   .dt-page .dt-tabs[data-more='start'] { mask-image: linear-gradient(to right, transparent, #000 40px); }
   .dt-page .dt-tabs[data-more='both'] { mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent); }
   .dt-kv { grid-template-columns: 1fr; gap: 2px; }
-  .dt-grid3, .dt-prompt { grid-template-columns: 1fr; }
+  .dt-prompt { grid-template-columns: 1fr; }
   .dt-search { width: 100%; }
   .dt-filters .dt-search { margin-left: 0; }
 }
@@ -585,24 +580,27 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-local-setting-entry:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: -2px; }
 .dt-local-setting-entry > svg { flex: none; color: var(--dsw-alias-label-secondary); }
 .dt-local-setting-entry > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.dt-local-editor-head h2 { margin: 0; font-size: 15px; line-height: 24px; font-weight: 600; }
 .dt-local-settings-editor { display: flex; flex: 1; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
-.dt-local-editor-head { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
 .dt-local-settings-content { flex: 1; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .dt-prompt-content { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .dt-local-settings-content > .dt-prompts-editor { display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; overflow: hidden; }
 .dt-local-settings-content .dt-prompts-editor > .dt-subtabs, .dt-local-settings-content .dt-prompts-editor > .dt-savebar { flex: none; }
 .dt-local-settings-content .dt-prompts-editor > .dt-prompt-content { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.dt-local-settings .dt-section > .dt-field { grid-template-columns: minmax(120px,1fr) minmax(0,320px); gap: 4px 24px; padding: calc(12px + var(--dt-density-space, 0px)) 0; border-bottom: .5px solid var(--dsw-alias-border-l2); }
-.dt-local-settings .dt-field > :is(.dt-input,.dt-select,.dt-segmented) { grid-column: 2; grid-row: 1 / span 2; width: 100%; }
-.dt-local-settings .dt-field > small { grid-column: 1; grid-row: 2; }
+.dt-local-settings-root .dt-field { grid-template-columns: minmax(0,1fr) minmax(112px,min(48%,320px)); gap: 4px 20px; padding: calc(10px + var(--dt-density-space, 0px)) 0; border-bottom: .5px solid var(--dsw-alias-border-l2); }
+.dt-local-settings-root .dt-field > :is(.dt-input,.dt-select,.dt-segmented) { grid-column: 2; grid-row: 1 / span 2; width: 100%; max-width: none; }
+.dt-local-settings-root .dt-field > small { grid-column: 1; grid-row: 2; }
+.dt-local-settings-root .dt-segment { min-width: 0; padding-inline: 6px; }
+.dt-model-manual { min-width: 0; margin-top: 6px; }
+.dt-model-manual > summary { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 24px; cursor: pointer; }
+.dt-model-manual[open] > summary { margin-bottom: 4px; }
+.dt-settings-revision { font-size: 11px; line-height: 18px; font-weight: 400; color: var(--dsw-alias-label-tertiary); }
 .dt-local-page .dt-local-form .dt-fieldset { gap: 12px; }
 .dt-local-form .dt-fieldset > .dt-actions { justify-content: flex-end; }
 .dt-local-page .dt-local-form .dt-fieldset > .dt-field { margin-top: 0; }
 .dt-local-settings .dt-section + .dt-section, .dt-local-help .dt-section + .dt-section { margin-top: 0; }
 @container (max-width: 680px) {
   .dt-board-toolbar > .dt-input { flex: 1 1 200px; width: auto; }
-  .dt-local-settings .dt-section > .dt-field { grid-template-columns: minmax(96px,1fr) minmax(0,1fr); column-gap: 16px; }
+  .dt-local-settings-root .dt-field { column-gap: 12px; }
   .dt-local-page > .dt-column { gap: 12px; }
   .dt-local-page .dt-local-form .dt-field { grid-template-columns: minmax(80px,28%) minmax(0,1fr); gap: 6px 16px; }
   .dt-local-task-head h2 { font-size: 20px; line-height: 28px; }

@@ -29,12 +29,13 @@ export function ModelSelect({ value, onChange, id, disabled, label, 'aria-label'
 }
 
 /** Only expose reasoning efforts supported by the actual selected or inherited model. */
-export function ReasoningSelect({ value, inherited, onChange, id, disabled, label, 'aria-label': ariaLabel }: {
+export function ReasoningSelect({ value, inherited, inherit = 'task', onChange, id, disabled, label, 'aria-label': ariaLabel }: {
   value?: RoleModel | null; inherited?: RoleModel | null; onChange: (model: RoleModel | undefined) => void; id?: string; disabled?: boolean; label?: string; 'aria-label'?: string
+  inherit?: 'dsh' | 'task'
 }) {
   const { t, call } = usePanel()
   const { data, error } = usePoll(() => call('GET models'), [call], 60_000)
-  const effective = value ?? inherited ?? data?.default
+  const effective = value ?? inherited ?? (inherit === 'task' ? data?.taskDefault : undefined) ?? data?.default
   const options = data?.groups.find(group => group.id === effective?.provider)?.models.find(model => model.id === effective?.model)?.reasoning?.efforts ?? []
   const effort = value ? value.reasoningEffort ?? '' : effective?.reasoningEffort ?? ''
   return <Select id={id} className="dt-reasoning-select" aria-label={label ?? ariaLabel} value={effort}
@@ -43,8 +44,8 @@ export function ReasoningSelect({ value, inherited, onChange, id, disabled, labe
       const { reasoningEffort: _old, ...model } = effective
       onChange({ ...model, ...(event.target.value ? { reasoningEffort: event.target.value } : {}) })
     }}>
-    <option value="">{error ? t('modelPickerError') : options.length ? t('modelEffortDefault') : t('modelEffortUnavailable')}</option>
-    {effort && !options.some(option => option.id === effort) && <option value={effort}>{effort}</option>}
+    <option value="">{!data && !error ? t('loading') : error ? t('modelPickerError') : options.length ? t('modelEffortDefault') : t('modelEffortUnavailable')}</option>
+    {effort && !options.some(option => option.id === effort) && <option value={effort}>{effortLabel(effort, effort, t)}</option>}
     {options.map(option => <option key={option.id} value={option.id}>{effortLabel(option.id, option.name, t)}</option>)}
   </Select>
 }

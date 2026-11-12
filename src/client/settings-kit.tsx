@@ -1,7 +1,6 @@
 /** Shared settings context, block draft hook, form controls, Source schema field renderer, and configuration history. */
 import { cloneElement, createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement,
   type ReactNode } from 'react'
-import type { ApiResponse } from '../app/api.ts'
 import type { FieldSpec, Localized } from '../sources/kind.ts'
 import { usePoll, type HistoryView, type Settings, type SettingsView, type SourceView } from './api.ts'
 import { Button, DisclosureRow, Icon, InfoTip, Input, SegmentedControl, Switch } from './controls.tsx'
@@ -11,7 +10,7 @@ import { settingsRoute } from './route.ts'
 import { errorText, localized, valueLabel, when, type T } from './text.ts'
 import { Hint, LoadState } from './widgets.tsx'
 import { Select } from './select.tsx'
-import { effortLabel } from './model-labels.ts'
+import { ModelSelect, ReasoningSelect } from './model-picker.tsx'
 
 /** Parse a numeric input string, returning `null` when empty so the server rejects blank required numbers instead of coercing to 0. */
 export const numberOf = (text: string): number | null => text.trim() ? Number(text) : null
@@ -71,55 +70,25 @@ function SwitchRow({ label, hint, checked,
   </div>
 }
 type RoleModel = Settings['eval']['model']
-function ModelChoice({ id, label, value, options, placeholder, onChange }: { id?: string; label: string; value: string;
-  options: { value: string; label: string }[]; placeholder: string; onChange: (value: string) => void }) {
-  const { t } = usePanel(), token = useId()
-  const [manual, setManual] = useState(false)
-  let custom = `custom:${token}`
-  while (options.some(option => option.value === custom)) custom += ':'
-  if (manual) return <div className="dt-model-custom"><Input id={id} aria-label={label} value={value} spellCheck={false} autoFocus
-    onChange={event => onChange(event.target.value)} /><Button variant="ghost" size="sm" aria-label={t('modelChooseList')}
-    title={t('modelChooseList')} icon={<Icon name="chevron-down" />} onClick={() => setManual(false)} /></div>
-  return <Select id={id} aria-label={label} value={value} onChange={event => {
-    if (event.target.value === custom) setManual(true)
-    else onChange(event.target.value)
-  }}><option value="">{placeholder}</option>
-    {value && !options.some(option => option.value === value) && <option value={value}>{value}</option>}
-    {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-    <option value={custom}>{t('modelCustomValue')}</option>
-  </Select>
-}
-export function ModelField({ id, value, onChange }: { id: string; value: RoleModel; onChange: (next: RoleModel) => void }) {
-  const { t, call } = usePanel()
-  const [catalog, setCatalog] = useState<ApiResponse<'GET models'>>()
-  const [error, setError] = useState<string>()
-  useEffect(() => { call('GET models').then(setCatalog, failure => setError(errorText(failure))) }, [call])
-  const current = { provider: value?.provider ?? '', model: value?.model ?? '', effort: value?.reasoningEffort ?? '' }
-  const set = (next: Partial<typeof current>) => {
-    const { provider, model, effort } = { ...current, ...next }
-    onChange(provider.trim() || model.trim() || effort.trim() ? { provider, model, ...effort ? { reasoningEffort: effort } : {} } : null)
+/** The same model and reasoning controls as task creation; manual IDs stay available on demand. */
+export function ModelField({ id, value, onChange, label }: { id: string; value: RoleModel; onChange: (next: RoleModel) => void; label?: string }) {
+  const { t } = usePanel()
+  const set = (part: Partial<NonNullable<RoleModel>>) => {
+    const next = { provider: value?.provider ?? '', model: value?.model ?? '', ...value, ...part }
+    onChange(next.provider.trim() || next.model.trim() || next.reasoningEffort?.trim() ? next : null)
   }
-  const models = catalog?.groups.find(group => group.id === current.provider.trim())?.models ?? []
-  const efforts = models.find(model => model.id === current.model.trim())?.reasoning?.efforts ?? []
-  const fallback = catalog?.default
-  const fallbackGroup = catalog?.groups.find(group => group.id === fallback?.provider)
-  const fallbackModel = fallbackGroup?.models.find(model => model.id === fallback?.model)
-  const fallbackEffort = fallbackModel?.reasoning?.efforts.find(effort => effort.id === fallback?.reasoningEffort)
-  const fallbackName = fallback && `${fallbackGroup?.name ?? fallback.provider} / ${fallbackModel?.name ?? fallback.model}${fallback.reasoningEffort
-    ? ` · ${effortLabel(fallback.reasoningEffort, fallbackEffort?.name ?? fallback.reasoningEffort, t)}` : ''}`
-  const options = { provider: catalog?.groups.map(group => ({ value: group.id, label: group.name })) ?? [],
-    model: models.map(model => ({ value: model.id, label: model.name })),
-    effort: efforts.map(effort => ({ value: effort.id, label: effortLabel(effort.id, effort.name, t) })) }
-  const input = (name: keyof typeof current, label: string, placeholder: string) => <Field label={label}>
-    <ModelChoice label={label} placeholder={placeholder} value={current[name]} options={options[name]} onChange={next => set({ [name]: next })} />
-  </Field>
   return <div className="dt-model" data-model-field={id}>
-    <Hint>{fallbackName ? t('defaultModel', { model: fallbackName }) : t('defaultModelUnavailable')}</Hint>
-    {error && <p className="dt-error">{t('modelCatalogError', { error })}</p>}
-    <div className="dt-grid3">
-      {input('provider', t('modelProvider'), t('modelInherit'))}{input('model', t('modelName'), t('modelInherit'))}{input('effort',
-        t('modelEffort'), t('modelEffortDefault'))}
-    </div>
+    <Field label={label ?? t('modelName')}><ModelSelect value={value} defaultLabel={t('localInheritDefault')}
+      onChange={model => onChange(model ?? null)} /></Field>
+    <Field label={t('modelEffort')}><ReasoningSelect value={value} inherit="dsh" onChange={model => onChange(model ?? null)} /></Field>
+    <details className="dt-model-manual"><summary>{t('modelManual')}</summary>
+      <Field label={t('modelProvider')}><Input value={value?.provider ?? ''} spellCheck={false}
+        onChange={event => set({ provider: event.target.value })} /></Field>
+      <Field label={t('modelId')}><Input value={value?.model ?? ''} spellCheck={false}
+        onChange={event => set({ model: event.target.value })} /></Field>
+      <Field label={t('modelEffortId')}><Input value={value?.reasoningEffort ?? ''} spellCheck={false}
+        onChange={event => set({ reasoningEffort: event.target.value || undefined })} /></Field>
+    </details>
   </div>
 }
 

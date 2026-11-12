@@ -1,77 +1,41 @@
-/** Local defaults: model, worker capacity, and plain descriptions of permissions and adapters. */
-import { useEffect, useState } from 'react'
-import { Select } from './select.tsx'
-import { effortLabel } from './model-labels.ts'
+/** Local settings with shared model controls and separate connection/prompt editors. */
+import { useState } from 'react'
 import { LIMITS } from '../limits.ts'
-import { type ApiResponse } from '../app/api.ts'
 import { Button, Icon, Input, SegmentedControl } from './controls.tsx'
 import { DENSITIES, useDensity } from './density.ts'
 import { SaveBar } from './draft.tsx'
 import { usePanel } from './provider.tsx'
 import { PromptsPage } from './prompts.tsx'
-import { Field, Fields, SettingsProvider, numberOf, useBlockDraft, useSettings } from './settings-kit.tsx'
-import { errorText } from './text.ts'
-import { Hint, Section } from './widgets.tsx'
+import { Field, Fields, ModelField, SettingsProvider, numberOf, useBlockDraft, useSettings } from './settings-kit.tsx'
 import { McpSettings } from './local-mcp.tsx'
 import { SourceSettings } from './source.tsx'
 import { EvalSettings } from './eval.tsx'
+import { Section } from './widgets.tsx'
 
 function InterfaceSettings() {
   const { t } = usePanel(), { density, setDensity } = useDensity()
   return <div className="dt-form dt-local-settings"><Section title={t('interfaceSettings')}>
-    <Field label={t('interfaceDensity')} note={t('densityHint')}><SegmentedControl label={t('interfaceDensity')} value={density}
+    <Field label={t('interfaceDensity')}><SegmentedControl label={t('interfaceDensity')} value={density}
       options={DENSITIES.map(value => ({ value, label: t(`density.${value}`) }))} onChange={setDensity} /></Field>
     <div className="dt-actions dt-density-reset"><Button variant="ghost" disabled={density === 'compact'} onClick={() => setDensity('compact')}>{t('densityReset')}</Button></div>
   </Section></div>
 }
 
 function SettingsForm() {
-  const { t, call } = usePanel()
+  const { t } = usePanel()
   const { settings: { blocks } } = useSettings()
   const executor = blocks.executor.value
   const draft = useBlockDraft('executor', { ...executor, maxWorkers: String(executor.maxWorkers) }, blocks.executor.revision,
     value => ({ ...value, maxWorkers: numberOf(value.maxWorkers) }))
-  const [catalog, setCatalog] = useState<ApiResponse<'GET models'>>()
-  const [error, setError] = useState<string>()
-  useEffect(() => {
-    let active = true
-    call('GET models').then(value => { if (active) setCatalog(value) }, failure => { if (active) setError(errorText(failure)) })
-    return () => { active = false }
-  }, [call])
-  const selection = draft.value.model
-  const selected = selection ? JSON.stringify([selection.provider, selection.model]) : ''
-  const choices = catalog?.groups.flatMap(group => group.models.map(model => ({ value: JSON.stringify([group.id, model.id]),
-    label: `${group.name} · ${model.name}`, provider: group.id, model }))) ?? []
-  const reasoning = choices.find(choice => choice.value === selected)?.model.reasoning
-  const defaultModel = catalog?.default
-  const defaultName = defaultModel && (catalog.groups.find(group => group.id === defaultModel.provider)?.models.find(model => model.id === defaultModel.model)?.name ?? defaultModel.model)
   return <form className="dt-form dt-local-settings" onSubmit={event => { void draft.submit(event) }}>
     <Fields disabled={draft.busy}>
       <Section title={t('localSettingsTitle')}>
-        <Field label={t('localTaskModel')} note={t('localModelHint')}>
-          <Select className="dt-select" value={selected} onChange={event => {
-            const choice = choices.find(item => item.value === event.target.value)
-            draft.edit({ ...draft.value, model: choice ? { provider: choice.provider, model: choice.model.id } : null })
-          }}>
-            <option value="">{defaultName ? t('localInheritModel', { model: defaultName }) : t('localInheritDefault')}</option>
-            {selection && !choices.some(choice => choice.value === selected) && <option value={selected}>{selection.provider} · {selection.model}</option>}
-            {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
-          </Select>
-        </Field>
-        <Field label={t('modelEffort')}><Select className="dt-select" value={selection?.reasoningEffort ?? ''} disabled={!selection || !reasoning?.efforts.length}
-          onChange={event => {
-            if (!selection) return
-            const { reasoningEffort: _old, ...model } = selection
-            draft.edit({ ...draft.value, model: { ...model, ...event.target.value ? { reasoningEffort: event.target.value } : {} } })
-          }}><option value="">{t(!selection ? 'localInheritDefault' : reasoning?.efforts.length ? 'modelEffortDefault' : 'modelEffortUnavailable')}</option>
-          {reasoning?.efforts.map(effort => <option key={effort.id} value={effort.id}>{effortLabel(effort.id, effort.name, t)}</option>)}
-        </Select></Field>
-        {error && <p className="dt-error" role="status">{error}</p>}
-        <Field label={t('localMaxWorkers')} note={t('localConcurrencyHint')}><Input type="number" required
+        <ModelField id="dt-local-model" label={t('localTaskModel')} value={draft.value.model}
+          onChange={model => draft.edit({ ...draft.value, model })} />
+        <Field label={t('localMaxWorkers')} hint={t('localConcurrencyHint')}><Input type="number" required
           min={LIMITS.maxWorkers.min} max={LIMITS.maxWorkers.max} value={draft.value.maxWorkers}
           onChange={event => draft.edit({ ...draft.value, maxWorkers: event.target.value })} /></Field>
       </Section>
-      <details className="dt-local-details"><summary>{t('localPermissionTitle')}</summary><div className="dt-local-details-body"><Hint>{t('localPermissionHint')}</Hint></div></details>
     </Fields>
     <SaveBar {...draft} onDiscard={draft.discard} />
   </form>
@@ -87,8 +51,6 @@ export function LocalSettings() {
     {entries.map(entry => <button type="button" className="dt-local-setting-entry" key={entry.id} aria-label={entry.title} aria-current={editor === entry.id ? 'page' : undefined}
       onClick={() => setEditor(entry.id)}><Icon name={entry.id === 'prompts' ? 'message' : entry.id === 'policy' ? 'shield' : 'folder'} /><span>{entry.title}</span></button>)}
   </nav>{editor ? <section className="dt-local-settings-editor">
-    <header className="dt-local-editor-head"><Button variant="ghost" icon={<Icon name="chevron-left" />} onClick={() => setEditor(undefined)}>{t('localBackSettings')}</Button>
-      {editor !== 'mcp' && <h2>{entries.find(entry => entry.id === editor)!.title}</h2>}</header>
     <div className="dt-local-settings-content">{editor === 'mcp' ? <McpSettings /> : editor === 'sources' ? <SourceSettings include={['github', 'feishu']} />
       : editor === 'policy' ? <EvalSettings include={['github', 'feishu']} /> : <PromptsPage />}</div>
   </section> : <div className="dt-form dt-local-settings-page"><InterfaceSettings /><SettingsForm /></div>}</div></div></SettingsProvider>

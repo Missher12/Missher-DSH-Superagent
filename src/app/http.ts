@@ -5,7 +5,6 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { z } from 'zod'
 import { LOCAL_BOARD_COLUMNS, THREAD_FILTERS, TICKET_FILTERS, type Api, type ApiResponse, type RouteParams } from './api.ts'
 import { sourceSkills } from './context.ts'
-import type { ModelCatalog } from '@deepseek-ai/dsh-api-session-controller/types'
 import { PromptConflict, SKILL_NAME, SKILL_PREFIX, TEAM_SECTIONS, builtInBase, builtInParts, defaultPrompts, savePrompts, type Prompts }
   from './prompts.ts'
 import { policyVersion, RoleModelSchema } from '../policy.ts'
@@ -64,7 +63,7 @@ export interface HttpHost {
   ticketEnvironment(ticket: Ticket): Variable[]
   checkSetup(): void
   requestPass(): void
-  models(): Promise<ModelCatalog>
+  models(): Promise<ApiResponse<'GET models'>>
 }
 /**
  * Represents a client-facing 400 or 404 error raised during management route parsing or lookup.
