@@ -8,7 +8,7 @@ import { TeamDetails } from './team-details.tsx'
 import { TeamCollaboration } from './team-collaboration.tsx'
 import { TeamStatus } from './team-ui.tsx'
 import { LoadState, When } from './widgets.tsx'
-import { shortText } from './text.ts'
+import { healthText, shortText } from './text.ts'
 import { PaneDivider, usePaneWidth, useStudio } from './studio-layout.tsx'
 import { Select } from './select.tsx'
 
@@ -77,7 +77,7 @@ export function LocalWorkbench({ sessionId, teamId, memberId = 'coordinator' }: 
   const member = team?.members.find(member => member.id === memberId) ?? team?.members[0]
   return <section ref={root} className="dt-team-workbench dt-team-focus-workbench" aria-label={t('localWorkbench')}>
     {state?.paused && <p className="dt-banner">{t('localPauseHint')}</p>}
-    {Object.entries(state?.health ?? {}).filter(([, health]) => health.state === 'error').map(([id, health]) => <p className="dt-error" role="status" key={id}>{health.detail}</p>)}
+    {Object.entries(state?.health ?? {}).filter(([, health]) => health.state === 'error').map(([id, health]) => <p className="dt-error" role="status" key={id}>{healthText(t, health)}</p>)}
     <nav className="dt-team-workspace-tabs" aria-label={t('teamWorkspaceTabs')}><div>{views.map(view => <div key={viewKey(view)} className="dt-team-workspace-tab" data-selected={viewKey(view) === current || undefined}>
       <button type="button" aria-pressed={viewKey(view) === current} onClick={() => selectView(view)}>{view.kind === 'team' && data?.teams.find(team => team.id === view.id)?.activeMembers ? <Icon name="running" size={13} /> : <Icon name={view.kind === 'team' ? 'queue' : 'session'} size={13} />}<span>{view.title}</span></button>
       <button type="button" className="dt-team-tab-close" aria-label={t('teamCloseWorkspace', { name: view.title })} title={t('close')} onClick={() => close(viewKey(view))}><Icon name="close" size={13} /></button>

@@ -1,7 +1,7 @@
 /** Source status view (health, filtered Triggers, dropped replies) and Source settings cards. */
 import { useEffect, useState } from 'react'
 import type { FieldSpec } from '../sources/kind.ts'
-import { usePoll, type DroppedReply, type SourceStatusRow, type SourceView } from './api.ts'
+import { ApiError, usePoll, type DroppedReply, type SourceStatusRow, type SourceView } from './api.ts'
 import { Button, DisclosureRow, Dot, Icon, InfoTip, Switch, Tag } from './controls.tsx'
 import { SaveBar } from './draft.tsx'
 import { sourceMark } from './marks.ts'
@@ -9,18 +9,42 @@ import { usePanel, usePanelData } from './provider.tsx'
 import { setupPage, settingsRoute, type Route } from './route.ts'
 import { ConfigHistory, Fields, SourceField, useBlockDraft, useSettings } from './settings-kit.tsx'
 import { actorName, errorText, healthText, localized, readableMarkers, reasonLabel, valueLabel, when } from './text.ts'
-import { CheckSetupButton, Hint, LabelValue, LoadState, SetupMessage, StatusHead, When } from './widgets.tsx'
+import { CheckSetupButton, ConfirmButton, Hint, LabelValue, LoadState, SetupMessage, StatusHead, When } from './widgets.tsx'
 
 function SourceCard({ source }: { source: SourceView }) {
-  const { t, call } = usePanel()
+  const { t, call, restart, notify } = usePanel()
   const { running } = usePanelData()
   const { reload } = useSettings()
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [configuring, setConfiguring] = useState(false), [removing, setRemoving] = useState(false), [failure, setFailure] = useState<string>()
   const refreshLabels = async () => { const { added } = await call('POST sources/:id/labels',
     { id: source.id }); await reload(); return added }
   const draft = useBlockDraft(`source:${source.id}`, source.value, source.revision)
   const value = draft.value
   const { problem, value: saved } = source
+  const connector = source.id === 'github' || source.id === 'feishu' ? source.id : undefined
+  const connected = !!saved.config.cli || !!saved.config.workspaceDirectory
+  const cleared = (enabled: boolean, from = value) => ({ enabled, config: { ...from.config, cli: '', workspaceDirectory: '',
+    ...connector === 'feishu' ? { chats: [], directMessages: false, otherChats: 'none' } : {} } })
+  const replace = () => {
+    setFailure(undefined); setConfiguring(true); draft.edit(cleared(true))
+    requestAnimationFrame(() => {
+      const field = source.fields.find(field => field.key === 'cli')
+      if (field) document.querySelector<HTMLInputElement>(`#dt-source-${source.id} input[aria-label=${JSON.stringify(localized(t, field.label))}]`)?.focus()
+    })
+  }
+  const remove = async () => {
+    setFailure(undefined); setRemoving(true)
+    try {
+      const result = await call('PUT settings/:block', { block: `source:${source.id}`, body: { value: cleared(false, saved), revision: source.revision } })
+      draft.discard(); setConfiguring(false); notify(t('sourceRemoved'))
+      if (result.restarting) restart(); else await reload()
+    } catch (error) {
+      setFailure(errorText(error))
+      if (error instanceof ApiError && error.status === 409) await reload()
+      throw error
+    } finally { setRemoving(false) }
+  }
   const changed = (key: string) => String(value.config[key] ?? '') !== String(saved.config[key] ?? '')
   // Saving a modified setup-sensitive field restarts dsh-superagent, interrupting running Assignments.
   const restarts = draft.dirty && source.restarts.some(changed)
@@ -31,8 +55,10 @@ function SourceCard({ source }: { source: SourceView }) {
     refreshLabels={refreshLabels} fact={spec.type === 'fact' || !changed(spec.key) ? source.facts[spec.key] : undefined}
     onChange={next => draft.edit({ ...value, config: { ...value.config, [spec.key]: next } })} />
   const advanced = source.fields.filter(spec => spec.advanced)
+  if (connector && source.installed && !saved.enabled && !connected && !configuring) return <ConnectSource id={connector}
+    onConnect={() => { setConfiguring(true); draft.edit({ ...value, enabled: true }) }} />
   return <form id={`dt-source-${source.id}`} className="dt-card" onSubmit={event => { void draft.submit(event) }}>
-    <Fields disabled={draft.busy}>
+    <Fields disabled={draft.busy || removing}>
       <div className="dt-card-head">
         <div className="dt-row-main">
           <div className="dt-row-title">
@@ -41,6 +67,7 @@ function SourceCard({ source }: { source: SourceView }) {
             <span className="dt-status-text" data-state={sourceMark(t, source.state).dot}>{sourceMark(t, source.state).label}</span>
           </div>
         </div>
+        {connector && connected && <Button className="dt-source-connect" variant="outline" disabled={draft.busy || removing} onClick={replace}>{t('sourceReplaceAction')}</Button>}
         {source.installed && <Switch checked={value.enabled} onChange={enabled => draft.edit({ ...value, enabled })}
           label={t('sourceEnable', { name: localized(t, source.title) })} />}
       </div>
@@ -54,26 +81,30 @@ function SourceCard({ source }: { source: SourceView }) {
         <div className="dt-disclosure-body">{advanced.map(field)}</div>
       </DisclosureRow>}
     </Fields>
-    <SaveBar {...draft} status={restarts && running > 0 ? t('restartInterrupts', { count: running }) : undefined}
+    {connector && connected && <div className="dt-danger-zone dt-source-actions"><ConfirmButton label={t('sourceRemoveAction')}
+      title={t('sourceRemoveTitle', { name: localized(t, source.title) })} message={t('sourceRemoveHint') + (connector === 'github' ? t('sourceRepositoryRetained') : '')}
+      icon="trash" disabled={draft.busy || removing || running > 0} disabledReason={running > 0 ? t('sourceRemoveBusy') : undefined} onConfirm={remove} /></div>}
+    {failure && <p className="dt-error" role="alert">{failure}</p>}
+    <SaveBar {...draft} busy={draft.busy || removing} status={restarts && running > 0 ? t('restartInterrupts', { count: running }) : undefined}
       onDiscard={draft.discard} />
   </form>
 }
 
-function ConnectSource({ id }: { id: 'github' | 'feishu' }) {
+function ConnectSource({ id, onConnect }: { id: 'github' | 'feishu'; onConnect?: () => void }) {
   const { t, enableSource } = usePanel(), { reload } = useSettings()
   const name = t(`source.${id}`)
   const [busy, setBusy] = useState(false), [failure, setFailure] = useState<string>()
   const connect = async () => {
-    if (busy || !enableSource) return
+    if (busy || (!enableSource && !onConnect)) return
     setBusy(true); setFailure(undefined)
-    try { await enableSource(id); await reload() }
+    try { if (onConnect) onConnect(); else { await enableSource!(id); await reload() } }
     catch (error) { setFailure(errorText(error)) }
     finally { setBusy(false) }
   }
   return <section className="dt-section">
     <div className="dt-card-head"><h3 className="dt-card-title">{name}</h3><Tag tone="neutral">{t('sourceConnectStatus')}</Tag></div>
-    <div className="dt-subhead"><Hint>{t(enableSource ? 'sourceConnectHint' : 'sourceConnectUnavailable')}</Hint>
-      <Button variant="outline" disabled={busy || !enableSource} onClick={() => { void connect() }}>{t('sourceConnectAction', { name })}</Button></div>
+    <div className="dt-subhead"><Hint>{t(onConnect || enableSource ? 'sourceConnectHint' : 'sourceConnectUnavailable')}</Hint>
+      <Button className="dt-source-connect" variant="outline" disabled={busy || (!enableSource && !onConnect)} onClick={() => { void connect() }}>{t('sourceConnectAction', { name })}</Button></div>
     {failure && <p className="dt-error" role="alert">{failure}</p>}
   </section>
 }

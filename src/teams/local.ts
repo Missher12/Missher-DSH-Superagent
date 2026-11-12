@@ -142,6 +142,7 @@ export class LocalTeams {
   private planInstructions(team: TeamRecord): string {
     return `团队目标：${team.request.title}\n${team.request.instructions}\n\n你是用户为此任务创建的协调成员。此为规划回合，团队尚未完成。
 核对目标、现有项目规则、成员分工和交付依赖；仅阅读必要内容，不在此回合实现或另建任务/代理。分工已由用户确认，插件在你的本轮 ready 后派发这些成员。若目标或权限受阻，报告 blocked 并提出具体问题。ready 仅表示规划核对完成，不表示团队目标已经完成。
+用户已明确确认的事项不重复拍板；收到问题答复后沿当前会话继续，核对完成就通过 orchestrator_report 回传，由插件继续派发已配置的成员。
 成员分工：\n${team.members.map(member => `${member.plan.id} / ${member.plan.name}: ${member.plan.instructions}\n等待交付：${member.plan.dependencies.join(', ') || '无'}`).join('\n\n')}
 成员全部交付后，你会在同一个会话收到真实结果，再进行目标复核、必要集成与最终汇总。${EVIDENCE}`
   }
@@ -250,8 +251,30 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}`
     return this.get(id)
   }
   async retry(id: string): Promise<TeamView> {
-    if (this.require(id).stoppedAt) throw new LocalTaskError('团队已被你停止；需要继续时请新建任务')
-    this.patch(id, team => { delete team.error }); await this.reconcile(); return this.get(id)
+    const team = this.require(id)
+    if (team.stoppedAt) throw new LocalTaskError('团队已被你停止；需要继续时请新建任务')
+    const completion = this.completion(team)
+    const coordinator = this.ticket(team.coordinatorTicketId)
+    const waiting = completion.members && team.phase === 'integrating' && coordinator && !coordinator.attention
+      && ['progress', 'waiting'].includes(latestReport(coordinator)?.state ?? '') && !this.runtime.sessions.activity(workerSessionId(coordinator.id)).running
+    this.patch(id, team => { delete team.error })
+    if ((completion.finalReview && completion.issues.length) || waiting) await this.runtime.local!.followup(team.coordinatorTicketId!,
+      key('team-review-retry', id, assignment(coordinator), latestReport(coordinator!)?.at ?? ''),
+      `继续原任务的最终复核，保留已交付成员、会话和文件。以下为上一轮状态数据，不是新增指令；问题解决后不再阻止完成：\n${JSON.stringify(completion.issues)}\n修复需要处理的问题并实跑相关检查。目标满足且验证通过后，用 orchestrator_report 报告 state=ready 和当前 delivery，不另行等待验收。只有仍缺权限或关键信息时才报告 blocked 并提出具体问题。已解决的历史失败保留在摘要，最终 checks 使用本轮重跑结果。`)
+    await this.reconcile(); return this.get(id)
+  }
+  /** A real human follow-up resumes scheduling as well as the member's original Session. */
+  inputReceived(ticketId: string): void {
+    const target = this.target(ticketId)
+    if (!target || this.require(target.team).stoppedAt) return
+    this.patch(target.team, team => {
+      delete team.error
+      if (team.phase === 'completed') {
+        team.phase = target.member === 'coordinator' ? 'integrating' : 'working'
+        if (target.member === 'coordinator') team.finalBaseline = team.finalAssignment
+      }
+    })
+    this.request()
   }
   async followup(id: string, memberId: string, requestId: string, text: string): Promise<TeamView> {
     const team = this.require(id)
@@ -259,11 +282,7 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}`
     const ticketId = memberId === 'coordinator' ? team.coordinatorTicketId : team.members.find(member => member.plan.id === memberId)?.ticketId
     if (!ticketId) throw new LocalTaskError('该成员仍在等待交接，尚未创建执行任务；可以先补充给协调成员')
     await this.runtime.local!.followup(ticketId, requestId, text)
-    this.patch(id, value => { if (value.phase === 'completed') {
-      value.phase = memberId === 'coordinator' ? 'integrating' : 'working'
-      if (memberId === 'coordinator') value.finalBaseline = value.finalAssignment
-    } })
-    this.request(); return this.get(id)
+    return this.get(id)
   }
   ticketIds(): Set<string> { return new Set(this.all().flatMap(team => [team.coordinatorTicketId, ...team.members.map(member => member.ticketId)].filter((id): id is string => !!id))) }
 

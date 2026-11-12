@@ -57,7 +57,10 @@ async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
     signal.addEventListener('abort', stop, { once: true })
     const began = Date.now()
     try { await consume(ctx, running.signal) }
-    catch (error) { if (!running.signal.aborted) ctx.report('feishu', { state: 'error', detail: String(error) }) }
+    catch (error) { if (!running.signal.aborted) ctx.report('feishu', {
+      ...error instanceof ConnectionBusy ? health('error', 'feishuEventBusBusy', { count: error.count }) : { state: 'error' as const },
+      detail: String(error),
+    }) }
     finally { clearInterval(check); signal.removeEventListener('abort', stop) }
     if (running.signal.aborted) continue
     retry = consumerRetry(retry, Date.now() - began)
@@ -67,6 +70,10 @@ async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
 /** Wait before restarting the event consumer: 1s after a run that stayed up for a minute, otherwise exponential backoff up to 60s. */
 export const consumerRetry = (previous: number | undefined, ranMs: number): number =>
   previous === undefined || ranMs >= 60_000 ? 1000 : Math.min(previous * 2, 60_000)
+/** A structured CLI precondition conflict, displayed separately while retaining its full diagnostic. */
+class ConnectionBusy extends Error {
+  constructor(readonly count: string, message: string) { super(message) }
+}
 async function consume(ctx: SourceContext, signal: AbortSignal): Promise<void> {
   const child = spawn(bot(ctx).cli, ['event', 'consume', 'im.message.receive_v1', '--as', 'bot'],
     { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, LARKSUITE_CLI_NO_UPDATE_NOTIFIER: '1',
@@ -98,7 +105,17 @@ async function consume(ctx: SourceContext, signal: AbortSignal): Promise<void> {
   try {
     await new Promise<void>((resolve, reject) => {
       child.once('error', reject)
-      const exited = (code: number | null) => new Error(`Feishu event consumer exited (${code}, ready=${ready}): ${diagnostic}`)
+      const exited = (code: number | null) => {
+        const message = `Feishu event consumer exited (${code}, ready=${ready}): ${diagnostic}`
+        const count = diagnostic.match(/\[event\] remote connection check: online_instance_cnt=(\d+)/)?.[1]
+        if (code === 2 && count && Number(count) > 0) {
+          try {
+            const envelope = JSON.parse(diagnostic.slice(diagnostic.indexOf('\n{') + 1))
+            if (envelope.error?.type === 'validation' && envelope.error?.subtype === 'failed_precondition') return new ConnectionBusy(count, message)
+          } catch { /* Keep unknown CLI failures verbatim. */ }
+        }
+        return new Error(message)
+      }
       child.once('close', (code) => signal.aborted ? resolve() : reject(exited(code)))
     })
   } finally { clearTimeout(timeout); signal.removeEventListener('abort', stop); stdout.close(); stderr.close(); await chain }

@@ -91,7 +91,20 @@ it('keeps finalization open until the coordinator supplies delivery evidence', a
   let view = host.runtime.teams!.get(team.id)
   expect(view.state).toBe('attention')
   expect(view.completion?.issues.join(' ')).toContain('交付记录')
-  await host.runtime.teams!.followup(team.id, 'coordinator', 'final-evidence', '补齐最终交付记录')
+  const prior = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.assignments.length
+  expect((await host.api('POST', `local/teams/${team.id}/retry`, {})).status).toBe(200)
+  await settle()
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.ended).toBeUndefined()
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.assignments).toHaveLength(prior + 1)
+  expect(host.runtime.teams!.get(team.id).members[0]!.sessionId).toBe(session)
+  await readySession(team.coordinatorTicketId!)
+  await host.runTool(session, 'orchestrator_report', { state: 'progress', summary: '检查已通过，仍在等待验收', delivery: { files: [], checks: [], unverified: [] } })
+  const waiting = host.agents.get(session)!; waiting.status = 'idle'; host.ctx.emit('agent/status', { agent: waiting, status: 'idle' } as never)
+  await settle()
+  expect(host.runtime.teams!.get(team.id).state).toBe('waiting')
+  const inputs = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs.length
+  expect((await host.api('POST', `local/teams/${team.id}/retry`, {})).status).toBe(200)
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs.length).toBeGreaterThan(inputs)
   await complete(team.coordinatorTicketId!, '最终复核完成', { files: [], checks: [], unverified: ['没有运行浏览器检查'] })
   view = host.runtime.teams!.get(team.id)
   expect(view.state).toBe('completed')
@@ -113,6 +126,21 @@ it('creates an explicit plan once, starts a real coordinator, and does not call 
   expect(active.members.find(member => member.id === 'check')!.ticketId).toBeUndefined()
   expect(host.runtime.store.tickets.list()).toHaveLength(2)
   expect(host.runtime.store.tickets.get(active.members.find(member => member.id === 'build')!.ticketId!)!.mandate.scope).toContain('分工与依赖已核对，等待成员执行')
+}, 20_000)
+
+it('retries a dispatch failure when a human follows up in the original task', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const create = vi.spyOn(host.runtime.local!, 'create').mockRejectedValueOnce(new Error('临时派发失败'))
+  await complete(team.coordinatorTicketId!)
+  expect(host.runtime.teams!.get(team.id).error).toBe('临时派发失败')
+  create.mockRestore()
+  await host.runtime.local!.followup(team.coordinatorTicketId!, 'resume-after-repair', '已解决，请继续原计划')
+  await settle()
+  const view = host.runtime.teams!.get(team.id)
+  expect(view.error).toBeUndefined()
+  expect(view.members.find(member => member.id === 'build')!.ticketId).toBeTruthy()
+  expect(view.coordinatorTicketId).toBe(team.coordinatorTicketId)
 }, 20_000)
 
 it('dispatches actual dependent work, delivers its predecessor report, and finishes only after a new coordinator summary', async () => {
@@ -278,6 +306,9 @@ it('uses the latest command result even when call IDs sort differently and activ
     time: Date.now(), data: { callId: `read-${index}`, name: 'read', arguments: '{}' } } as never)
   await expect(host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '不应通过',
     delivery: { checks: [{ command: 'node --test', outcome: 'passed' }] } })).rejects.toThrow('执行出错')
+  await expect(host.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '仍有失败，不能结束任务',
+    delivery: { checks: [{ command: 'node --test', outcome: 'failed' }] } })).rejects.toThrow('失败项')
+  expect(host.runtime.store.tickets.get(task.ticketId)!.ended).toBeUndefined()
   await host.runTool(task.sessionId, 'orchestrator_report', { state: 'failed', summary: '最新检查失败',
     delivery: { checks: [{ command: 'node --test', outcome: 'failed' }] } })
   expect(await host.api('GET', `tickets/${task.ticketId}`)).toMatchObject({ body: {

@@ -297,6 +297,7 @@ Local desktop adaptation additions:
 | `src/sources/task-messages.ts` | Durable task replies shared by local and external intake, preserving existing storage keys |
 | `src/mcp-bridge.ts` | Executable stdio entry for desktop MCP applications |
 | `src/mcp/bridge.ts` | Official MCP client proxy with validated loopback discovery and lazy reconnection |
+| `src/mcp/check.ts` | Real MCP handshake and read-only tool/workspace discovery for connection checks |
 | `src/mcp/contract.ts` | Public tool input schemas and endpoint names independent of the DSH runtime |
 | `src/mcp/server.ts` | Shared seven-tool MCP server contract |
 | `src/mcp/http.ts` | Authenticated Streamable HTTP transport and task operation mapping |
@@ -407,7 +408,6 @@ Local desktop adaptation additions:
 | `src/client/model-picker.tsx` | Task and session-local model choices |
 | `src/client/model-labels.ts` | Localized reasoning-effort labels while retaining provider-specific descriptions |
 | `src/client/select.tsx` | Native form values with the host's themed Menu, keyboard navigation and local sizing |
-| `src/client/density.ts` | Compact, standard and comfortable page density preferences |
 | `src/client/team-ui.tsx`, `team-locales.ts` | Team/member state labels, bounded text and bilingual copy |
 | `src/client/team-graph.tsx` | Real dispatch and explicit dependency connectors with responsive member nodes |
 | `src/client/team-details.tsx`, `team-delivery.tsx` | Member tools, embedded session, durable follow-up, reported files/checks and bounded text previews |
@@ -456,7 +456,7 @@ Local desktop adaptation checks:
 | `tests/team-panel.spec.tsx` | Explicit team overview, member selection, task creation, native sessions and delivery previews |
 | `tests/client-registration.spec.ts` | Host-owned conversation slot contract and cold session initialization |
 | `tests/studio-panel.spec.tsx` | Inline task validation, workspace form registration and persisted sidebar resizing |
-| `tests/density.spec.tsx` | Immediate density changes and preference persistence |
+| `tests/density.spec.tsx` | Fixed comfortable spacing and preservation of unsaved settings |
 | `tests/select.spec.tsx` | Host menu selection, disabled choices, form validation, focus and local resize behavior |
 | `tests/plugin-tools.spec.ts` | Host tool enumeration and read-only Project Ops capability routing |
 | `tests/local-workbench.spec.ts` | Dedicated workspace and managed live activity without tool arguments or extra work |
@@ -599,7 +599,7 @@ Each Executor has six application tools:
 
 A hand-back returns `queued: false` if another Ticket still owns the message, or this Ticket never owned it. For example, a bot message went to Eval independently.
 
-The worker preset is defined in `cordis.patch.yml` and selected through `WORKER_PRESET`. `WORK_TOOLS` in `src/app/sessions.ts` retains available file, search, shell, job, web, skill, todo and subagent tools. Workers do not receive tools for asking or presenting to a person, changing the profile, scheduling work outside worker slots, starting or messaging other Sessions, or editing external documents. Tool calls are refused after the Ticket ends.
+The worker preset is defined in `cordis.patch.yml` and selected through `WORKER_PRESET`. `WORK_TOOLS` in `src/app/sessions.ts` retains available file, search, shell, job, web, skill and todo tools. Superagent dispatches configured members; native subagent tools are omitted from the preset and refused by the guard, including on previously loaded Sessions. Workers do not receive tools for asking or presenting to a person, changing the profile, scheduling work outside worker slots, starting or messaging other Sessions, or editing external documents. Tool calls are refused after the Ticket ends.
 
 ### Result shapes and assessment context
 

@@ -6,7 +6,7 @@ import { Button, Dot, Icon, SegmentedTabs } from './controls.tsx'
 import { LocalFollowup, LocalTaskComposer } from './local.tsx'
 import { SessionModelPicker } from './model-picker.tsx'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
-import { actorName, valueLabel, shortText, workbenchToolLabel as toolLabel, type T } from './text.ts'
+import { actorName, healthText, valueLabel, shortText, workbenchToolLabel as toolLabel, type T } from './text.ts'
 import { LoadState, SessionButton, StageMark, When } from './widgets.tsx'
 import { SessionFiles, TaskFilesButton, type FileScope } from './team-file-preview.tsx'
 import { OpenWorkspaceButton } from './local-workspaces.tsx'
@@ -80,7 +80,7 @@ export function SingleWorkbench({ sessionId }: { sessionId?: string }) {
         onClick={() => { void open.run() }}>{t('workbenchOpenWorkspace')}</Button><LocalTaskComposer paused={state?.paused ?? false} /></div>
     </header>
     {state?.paused && <p className="dt-banner">{t('localPauseHint')}</p>}
-    {problems.map(([name, health]) => <p className="dt-error" role="status" key={name}>{health.detail}</p>)}
+    {problems.map(([name, health]) => <p className="dt-error" role="status" key={name}>{healthText(t, health)}</p>)}
     <LoadState loading={!data} error={error} />
     {data && <div className="dt-workbench-layout">{!sessionId && <aside className="dt-workbench-members" aria-label={t('workbenchMembers')}>
       <div className="dt-workbench-section-head"><h3>{t('workbenchMembers')}</h3><span className="dt-count">{data.members.length}</span></div>

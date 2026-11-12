@@ -811,6 +811,24 @@ describe('policy change', () => {
 })
 
 describe('worker reports', () => {
+  it('clears a pending question when a human reply reaches its task, while retaining it for context-only and automated messages', () => {
+    const h = harness(), ticketId = accepted(h).ticketId!
+    h.engine.report(ticketId, { state: 'blocked', summary: 'Need a decision.', question: 'Use the existing design?' })
+    h.tick(1)
+    h.engine.receive(trigger('2', { human: false, actor: { source: 'chat', id: '' } }))
+    expect(h.repo.tickets.get(ticketId)?.attention?.question).toBe('Use the existing design?')
+    h.engine.followForContext(ticketId, { source: 'chat', id: 'context' })
+    h.engine.receive(trigger('4', { threads: [{ source: 'chat', id: 'context' }] }))
+    expect(h.repo.tickets.get(ticketId)?.attention?.question).toBe('Use the existing design?')
+    h.tick(1)
+    h.engine.receive(trigger('3', { text: 'Yes, continue with the existing design.' }))
+    const resumed = h.repo.tickets.get(ticketId)!
+    expect(resumed.attention).toBeUndefined()
+    expect(ticketStage(resumed).stage).toBe('working')
+    expect(resumed.inputs.some(input => input.kind === 'trigger' && input.triggerId === '3')).toBe(true)
+    expect(h.withdrawn).toHaveLength(1)
+    expect(h.engine.report(ticketId, { state: 'progress', summary: 'Continuing.' }).attention).toBeUndefined()
+  })
   it('asks, keeps, replaces and clears the question for a person, and says which question a report replaced', () => {
     const h = harness()
     const ticketId = accepted(h).ticketId!

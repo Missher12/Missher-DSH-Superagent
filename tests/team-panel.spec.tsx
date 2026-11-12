@@ -6,6 +6,14 @@ import { server } from './fixtures/panel-server.ts'
 import { zh } from '../src/client/locales.ts'
 
 usePanel()
+it.each(['attention', 'waiting'] as const)('offers a working review action for a legacy final report left %s', async state => {
+  const legacy = team(); legacy.state = state
+  legacy.completion = { members: true, finalReview: state === 'attention', evidence: false, issues: state === 'attention' ? ['最终检查仍有失败项'] : [], checks: { passed: 1, failed: state === 'attention' ? 1 : 0, notRun: 0 }, unverified: [] }
+  server.teamViews[legacy.id] = legacy
+  at({ page: 'overview', query: { team: legacy.id, member: 'coordinator' } })
+  await mount(); await click('继续复核')
+  expect(server.requests.some(item => item.method === 'POST' && item.path === 'local/teams/explicit-team/retry')).toBe(true)
+})
 const team = (): TeamView => ({ id: 'explicit-team', name: '真实团队', title: '实现并验证格式化器', instructions: '实现格式化函数，交付文件与检查记录。',
   directory: '/tmp/project', state: 'working', createdAt: '2026-11-10T01:00:00Z', updatedAt: '2026-11-10T01:02:00Z', coordinatorTicketId: 'planner-task',
   completedMembers: 1, memberCount: 2, summary: '', handoffs: [], deliveries: [], members: [

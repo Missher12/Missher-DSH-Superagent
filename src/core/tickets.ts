@@ -233,6 +233,11 @@ export class Tickets extends EnginePart {
    */
   addInput(ticket: Ticket, input: TicketInput): void {
     if (ticket.inputs.some(existing => existing.id === input.id)) return
+    if (input.kind === 'trigger' && input.human && !input.context && ticket.attention) {
+      input.note = [input.note, `用户已回复待确认问题：${ticket.attention.question}。请根据回复继续当前任务；如仍缺信息，提出具体的新问题。`].filter(Boolean).join('\n')
+      this.replies.withdrawAttention(ticket.attention.id)
+      delete ticket.attention
+    }
     ticket.inputs.push(input); ticket.updatedAt = this.now()
     // Hold back automated inputs while the worker is waiting on a person.
     const held = liveTicket(ticket) && automatic(input) && waitsForPerson(ticket)

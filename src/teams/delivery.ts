@@ -29,6 +29,7 @@ export function recordDelivery(store: Store, ticket: Ticket, input: DeliveryInpu
   const assignment = ticket.assignments.at(-1), directory = ticket.execution?.directory
   if (!assignment?.startedAt || !directory) throw new Error('当前任务还没有可记录交付的执行会话')
   const sessionId = workerSessionId(ticket.id)
+  if (state === 'ready' && input.checks.some(check => check.outcome === 'failed')) throw new Error('最终检查仍有失败项，请修复后重新验证再报告 ready；已解决的历史失败写入摘要，最终 checks 使用本轮重跑结果')
   const files = input.files.map(file => ({ ...workspaceFile(directory, file.path), summary: file.summary }))
   if (state === 'ready' && files.some(file => !file.exists)) throw new Error('交付文件尚不存在，不能把它作为完成结果；请先生成文件或明确记录为未验证事项')
   const checks = input.checks.map(check => {

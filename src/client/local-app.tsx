@@ -12,7 +12,6 @@ import { healthText } from './text.ts'
 import type { Route, Tab } from './route.ts'
 import { TicketPage } from './ticket.tsx'
 import { LoadState, MarkdownLite, Section, StageMark } from './widgets.tsx'
-import { DensityContext, DENSITY_KEY, readDensity, type Density } from './density.ts'
 import { StudioProvider, StudioShell, StudioHeaderTools } from './studio-layout.tsx'
 
 const TABS = ['overview', 'execution', 'source', 'settings', 'help'] as const
@@ -54,21 +53,13 @@ export function LocalHelp() {
 }
 
 export function LocalPages({ route, openTab }: { route: Route; openTab: (tab: Tab) => void }) {
-  const { t, navigate, notify } = usePanel()
-  const [density, setDensity] = useState(readDensity)
-  const changeDensity = (value: Density) => {
-    setDensity(value)
-    try {
-      if (value === 'compact') localStorage.removeItem(DENSITY_KEY)
-      else localStorage.setItem(DENSITY_KEY, value)
-    } catch { notify(t('densitySaveFailed')) }
-  }
+  const { t, navigate } = usePanel()
   const { state, error } = usePanelData()
   const page = TABS.find(tab => tab === route.page) ?? 'overview'
   const workspace = useRef<Extract<Route, { page: 'overview' }>>({ page: 'overview' })
   useEffect(() => { if (route.page === 'overview') workspace.current = route }, [route])
   useEffect(() => { if (!TABS.some(tab => tab === route.page)) navigate({ page: 'overview' }, true) }, [route.page, navigate])
-  return <DensityContext.Provider value={{ density, setDensity: changeDensity }}><StudioProvider route={route.page === 'overview' ? route : workspace.current}><div data-density={density} className={`dt-page dt-local-page dt-studio-page${page === 'overview' ? ' dt-workspace-page' : ''}`}><div className="dt-column">
+  return <StudioProvider route={route.page === 'overview' ? route : workspace.current}><div data-density="comfortable" className={`dt-page dt-local-page dt-studio-page${page === 'overview' ? ' dt-workspace-page' : ''}`}><div className="dt-column">
     <header className="dt-head"><div className="dt-local-brand"><span className="dt-local-brand-icon"><Icon name="agent" size={19} /></span>
       <h1 className="dt-local-title">{t('title')}</h1></div>
       <SegmentedTabs className="dt-tabs" label={t('pagesLabel')} value={page} onChange={tab => {
@@ -85,5 +76,5 @@ export function LocalPages({ route, openTab }: { route: Route; openTab: (tab: Ta
         : route.page === 'execution' && route.id ? <TicketPage key={route.id} id={route.id} />
           : state ? <LocalTasksPage state={state} /> : <LoadState loading />}
     </main></StudioShell>
-  </div></div></StudioProvider></DensityContext.Provider>
+  </div></div></StudioProvider>
 }

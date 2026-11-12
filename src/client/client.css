@@ -395,7 +395,6 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 
 /* Local pages keep native chrome; task and project cards carry the visual hierarchy. */
 .dt-local-page.dt-page { --dt-density-space: 0px; --dt-density-group-space: 0px; padding: max(16px, var(--dsh-frame-top-clearance, 0px)) 24px 12px; overflow: hidden; }
-.dt-local-page[data-density='standard'] { --dt-density-space: 2px; --dt-density-group-space: 4px; }
 .dt-local-page[data-density='comfortable'] { --dt-density-space: 4px; --dt-density-group-space: 8px; }
 .dt-local-page > .dt-column { max-width: none; height: 100%; min-height: 0; padding-bottom: 0; gap: 12px; }
 .dt-local-page .dt-main { flex: 1; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: auto; padding-bottom: 20px; }
@@ -500,7 +499,6 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-local-details-body { padding-bottom: 16px; display: grid; gap: 12px; }
 .dt-local-record { border-left: 2px solid var(--dsw-alias-border-l2); padding-left: 12px; }
 .dt-local-settings-page { min-width: 0; }
-.dt-density-reset { justify-content: flex-end; padding-top: 8px; }
 .dt-local-settings-root { display: flex; flex: 1; flex-direction: column; gap: calc(20px + var(--dt-density-group-space, 0px)); min-width: 0; min-height: 0; }
 .dt-local-settings-layout { display: grid; grid-template-columns: 156px minmax(0,1fr); flex: 1; gap: 24px; min-width: 0; min-height: 0; }
 .dt-local-settings-nav { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; overflow: auto; }
@@ -583,6 +581,9 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-local-setting-entry > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .dt-local-settings-editor { display: flex; flex: 1; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
 .dt-local-settings-content { flex: 1; min-height: 0; min-width: 0; padding: 3px; margin: -3px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.dt-source-connect { flex: 0 0 112px; width: 112px; max-width: 100%; height: 32px; }
+.dt-source-actions { justify-content: flex-end; }
+.dt-source-actions .dt-btn { min-width: 112px; min-height: 32px; }
 .dt-prompt-content { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .dt-local-settings-content > .dt-prompts-editor { display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; overflow: hidden; }
 .dt-local-settings-content .dt-prompts-editor > .dt-subtabs, .dt-local-settings-content .dt-prompts-editor > .dt-savebar { flex: none; }

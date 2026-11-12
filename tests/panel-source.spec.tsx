@@ -7,6 +7,40 @@ import { usePanel, mount, remount, settle, all, find, tab, click, type, text, fi
 import { server, problemOf, droppedReply } from './fixtures/panel-server.ts'
 
 usePanel()
+it('opens a replacement draft without changing the running connection, and can discard it', async () => {
+  server.setup = { ...server.setup, mode: 'local' }
+  const before = structuredClone(server.settings.sources.feishu!)
+  await mount(); await click('设置'); await click(zh.localExternalTitle)
+  await click(find('更换接入', '#dt-source-feishu button'))
+  expect(field<HTMLInputElement>('机器人的 lark-cli').value).toBe('')
+  expect(server.settings.sources.feishu).toEqual(before)
+  await click(find(zh.discard, '#dt-source-feishu button'))
+  expect(field<HTMLInputElement>('机器人的 lark-cli').value).toBe(before.config.cli)
+})
+
+it('removes only a confirmed connection and offers a fresh setup, retaining GitHub repository ownership', async () => {
+  server.setup = { ...server.setup, mode: 'local' }; server.running = 0
+  const other = structuredClone(server.settings.sources.github!)
+  await mount(); await click('设置'); await click(zh.localExternalTitle)
+  await click(find('移除接入', '#dt-source-feishu button'))
+  expect(server.requests.some(r => r.method === 'PUT')).toBe(false)
+  await click(zh.confirm)
+  expect(server.settings.sources.feishu).toMatchObject({ enabled: false, config: { cli: '', workspaceDirectory: '', chats: [], directMessages: false, otherChats: 'none' } })
+  expect(server.settings.sources.github).toEqual(other)
+  await remount(); await click(zh.localExternalTitle)
+  await click('启用 飞书')
+  expect(field<HTMLInputElement>('机器人的 lark-cli').value).toBe('')
+  expect(find(zh.sourceEnable.replace('{name}', '飞书'), '[role="switch"]')?.getAttribute('aria-checked')).toBe('true')
+  await click(find('移除接入', '#dt-source-github button')); await click(zh.confirm)
+  expect(server.settings.sources.github).toMatchObject({ enabled: false, config: { cli: '', workspaceDirectory: '', repository: other.config.repository } })
+})
+
+it('does not remove a connection while any task is executing', async () => {
+  server.setup = { ...server.setup, mode: 'local' }
+  await mount(); await click('设置'); await click(zh.localExternalTitle)
+  expect((find('移除接入', '#dt-source-feishu button') as HTMLButtonElement).disabled).toBe(true)
+  expect(server.requests.some(r => r.method === 'PUT')).toBe(false)
+})
 it('opens bundled GitHub and Feishu setup directly from local settings when their components are off', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   server.installedSources = []

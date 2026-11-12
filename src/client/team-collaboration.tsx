@@ -64,6 +64,9 @@ export function TeamCollaboration({ team, selected, select, reload, delivery }: 
 }) {
   const { t, call } = usePanel(), [tab, setTab] = useState<'graph' | 'members' | 'completion'>('graph')
   const retry = useAction(async () => { await call('POST local/teams/:id/retry', { id: team.id }); await reload() })
+  const coordinator = team.members[0]
+  const review = team.state !== 'stopped' && !!team.completion && ((team.completion.finalReview && !!team.completion.issues.length)
+    || (team.completion.members && !team.completion.finalReview && coordinator?.state === 'waiting' && !coordinator.running))
   const active = team.members.find(member => member.id === selected) ?? team.members[0]!
   const recent = team.members.flatMap(member => member.events.filter(event => event.summary?.trim()).map(event => ({ ...event, member: member.name })))
     .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 3)
@@ -76,10 +79,10 @@ export function TeamCollaboration({ team, selected, select, reload, delivery }: 
       ]} /></header>
     <div id="dt-team-collaboration-content" className="dt-team-collaboration-body" role="tabpanel"
       aria-labelledby={tab === 'graph' ? 'dt-team-relations' : tab === 'members' ? 'dt-team-assignments' : 'dt-team-completion'}>
-      {team.error && <div className="dt-team-issue" role="alert"><p>{team.error}</p><Button size="sm" disabled={retry.busy} onClick={() => { void retry.run() }}>{t('teamRetry')}</Button></div>}
+      {(team.error || review) && <div className="dt-team-issue" role="alert"><p>{team.error ?? (team.completion!.issues.join('\n') || t('teamReviewPending'))}</p><Button size="sm" disabled={retry.busy} onClick={() => { void retry.run() }}>{t(team.error ? 'teamRetry' : 'teamReviewContinue')}</Button></div>}
       {tab === 'graph' ? <><div className="dt-team-count-line"><span>{t('studioTaskFlow')}</span><span>{t('teamCompletedCount', { done: team.completedMembers, total: team.memberCount })}</span></div>
         <TeamGraph team={team} selected={selected} select={select} /><section className="dt-team-selected-plan"><div><h3>{t('studioCurrentAssignment')}</h3><span>{active.name}</span></div>
-          <p className="dt-team-assignment-summary">{active.role === 'coordinator' ? t('teamCoordinatorWork') : shortText(active.instructions, 80)}</p>{active.role === 'coordinator' && active.state === 'waiting' && <p className="dt-hint">{t('teamPlanningRound')}</p>}
+          <p className="dt-team-assignment-summary">{active.role === 'coordinator' ? t('teamCoordinatorWork') : shortText(active.instructions, 80)}</p>{active.role === 'coordinator' && active.state === 'waiting' && <p className="dt-hint">{t(team.completion?.members ? 'teamReviewPending' : 'teamPlanningRound')}</p>}
           <Button size="sm" icon={<Icon name="message" size={14} />} onClick={() => select(active.id)}>{t('teamOpenSession')}</Button></section>
         {!!recent.length && <section className="dt-studio-recent"><h3>{t('studioRecentCollaboration')}</h3>{recent.map(event => <div key={`${event.member}:${event.id}`}>
           <Icon name={event.state === 'started' ? 'running' : 'message'} size={13} /><span title={event.summary}>{event.member} · {shortText(event.summary, 55)}</span><When at={event.at} /></div>)}</section>}

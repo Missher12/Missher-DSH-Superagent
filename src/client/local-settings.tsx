@@ -1,8 +1,7 @@
 /** Local settings with shared model controls and separate connection/prompt editors. */
 import { useState } from 'react'
 import { LIMITS } from '../limits.ts'
-import { Button, Icon, Input, SegmentedControl } from './controls.tsx'
-import { DENSITIES, useDensity } from './density.ts'
+import { Icon, Input } from './controls.tsx'
 import { SaveBar } from './draft.tsx'
 import { usePanel } from './provider.tsx'
 import { PromptsPage } from './prompts.tsx'
@@ -11,15 +10,6 @@ import { McpSettings } from './local-mcp.tsx'
 import { SourceSettings } from './source.tsx'
 import { EvalSettings } from './eval.tsx'
 import { Section } from './widgets.tsx'
-
-function InterfaceSettings() {
-  const { t } = usePanel(), { density, setDensity } = useDensity()
-  return <div className="dt-form dt-local-settings"><Section title={t('interfaceSettings')}>
-    <Field label={t('interfaceDensity')}><SegmentedControl label={t('interfaceDensity')} value={density}
-      options={DENSITIES.map(value => ({ value, label: t(`density.${value}`) }))} onChange={setDensity} /></Field>
-    <div className="dt-actions dt-density-reset"><Button variant="ghost" disabled={density === 'compact'} onClick={() => setDensity('compact')}>{t('densityReset')}</Button></div>
-  </Section></div>
-}
 
 function SettingsForm() {
   const { t } = usePanel()
@@ -53,5 +43,5 @@ export function LocalSettings() {
   </nav>{editor ? <section className="dt-local-settings-editor">
     <div className="dt-local-settings-content">{editor === 'mcp' ? <McpSettings /> : editor === 'sources' ? <SourceSettings include={['github', 'feishu']} />
       : editor === 'policy' ? <EvalSettings include={['github', 'feishu']} /> : <PromptsPage />}</div>
-  </section> : <div className="dt-form dt-local-settings-page"><InterfaceSettings /><SettingsForm /></div>}</div></div></SettingsProvider>
+  </section> : <div className="dt-form dt-local-settings-page"><SettingsForm /></div>}</div></div></SettingsProvider>
 }

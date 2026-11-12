@@ -1751,6 +1751,15 @@ it('selects its own preset again for a main Session or worker a person switched 
   await expect(presets.select.mock.results[0]!.value).rejects.toMatchObject({ code: 'agent-preset/locked' })
 })
 
+it('blocks native delegation from managed workers, including already loaded local subagent tools', async () => {
+  const { sessionId } = await acceptedTicket()
+  const check = guards.get(sessionId)!
+  for (const name of ['subagent', 'spawn_agent', 'list_subagent_models', 'list_agents', 'send_message', 'interrupt_agent']) {
+    expect(check({ name, arguments: {} }), name).toMatch(/Superagent/)
+  }
+  expect(check({ name: 'read', arguments: {} })).toBeUndefined()
+})
+
 it('gives a subagent of a worker only the worker\'s work tools, and none once the ticket ended', async () => {
   const { ticket, sessionId } = await acceptedTicket()
   // DSH creates the subagent under the standard preset, with the worker's Session as its parent.
