@@ -12,6 +12,7 @@ import { family, KV } from '../kv.ts'
 import type { SourceKind } from './kind.ts'
 import { rememberTaskMessage, taskMessages } from './task-messages.ts'
 import { MCP_PATH, McpCreateRequest, McpFollowupRequest } from '../mcp/contract.ts'
+import { checkMcpConnection } from '../mcp/check.ts'
 export { McpCreateRequest, McpFollowupRequest } from '../mcp/contract.ts'
 
 const Project = z.object({ id: z.string().min(1), title: z.string(), directory: z.string().min(1) }).strict()
@@ -81,6 +82,11 @@ export class McpTasks {
     const saved = this.runtime.store.get(secrets(id))
     if (!saved || !/^[a-f0-9]{64}$/.test(saved.digest)) return undefined
     return timingSafeEqual(digest(token), Buffer.from(saved.digest, 'hex')) ? { clientId: id, token } : undefined
+  }
+  async checkConnection(id: string, token: string, transport: 'stdio' | 'http') {
+    if (this.authenticate(token)?.clientId !== id) throw new McpTaskError(401, '连接令牌已失效，请重新生成配置')
+    try { return { transport, ...await checkMcpConnection(this.configuration(token)[transport].mcpServers.superagent) } }
+    catch (error) { throw new McpTaskError(400, `MCP 连接测试失败：${(error instanceof Error ? error.message : String(error)).replaceAll(token, '[已隐藏]').slice(0, 400)}`) }
   }
   touch(principal: McpPrincipal): void {
     this.client(principal)

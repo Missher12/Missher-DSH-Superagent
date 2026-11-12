@@ -1,6 +1,7 @@
 /** Public input schemas and stable endpoint names, independent of the DSH runtime. */
 import { z } from 'zod'
-export const MCP_SERVER_INFO = { name: 'dsh-superagent', version: '1.3.3' }
+import packageInfo from '../../package.json' with { type: 'json' }
+export const MCP_SERVER_INFO = { name: 'dsh-superagent', version: packageInfo.version }
 export const MCP_PATH = '/superagent/mcp'
 export const MCP_ENDPOINT_FILE = 'mcp-endpoint.json'
 export const McpCreateRequest = z.object({ requestId: z.string().trim().min(1).max(200), workspaceId: z.string().min(1),

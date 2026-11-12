@@ -2,13 +2,13 @@
 import { useEffect, useState } from 'react'
 import type { FieldSpec } from '../sources/kind.ts'
 import { usePoll, type DroppedReply, type SourceStatusRow, type SourceView } from './api.ts'
-import { DisclosureRow, Dot, Icon, InfoTip, Switch, Tag } from './controls.tsx'
+import { Button, DisclosureRow, Dot, Icon, InfoTip, Switch, Tag } from './controls.tsx'
 import { SaveBar } from './draft.tsx'
 import { sourceMark } from './marks.ts'
 import { usePanel, usePanelData } from './provider.tsx'
 import { setupPage, settingsRoute, type Route } from './route.ts'
 import { ConfigHistory, Fields, SourceField, useBlockDraft, useSettings } from './settings-kit.tsx'
-import { actorName, healthText, localized, readableMarkers, reasonLabel, valueLabel, when } from './text.ts'
+import { actorName, errorText, healthText, localized, readableMarkers, reasonLabel, valueLabel, when } from './text.ts'
 import { CheckSetupButton, Hint, LabelValue, LoadState, SetupMessage, StatusHead, When } from './widgets.tsx'
 
 function SourceCard({ source }: { source: SourceView }) {
@@ -38,6 +38,7 @@ function SourceCard({ source }: { source: SourceView }) {
           <div className="dt-row-title">
             <span className="dt-card-title">{localized(t, source.title)}</span>{description && <InfoTip text={description} />}
             {!source.installed && <Tag tone="warning">{t('sourceNotInstalled')}</Tag>}
+            <span className="dt-status-text" data-state={sourceMark(t, source.state).dot}>{sourceMark(t, source.state).label}</span>
           </div>
         </div>
         {source.installed && <Switch checked={value.enabled} onChange={enabled => draft.edit({ ...value, enabled })}
@@ -58,14 +59,37 @@ function SourceCard({ source }: { source: SourceView }) {
   </form>
 }
 
+function ConnectSource({ id }: { id: 'github' | 'feishu' }) {
+  const { t, enableSource } = usePanel(), { reload } = useSettings()
+  const name = t(`source.${id}`)
+  const [busy, setBusy] = useState(false), [failure, setFailure] = useState<string>()
+  const connect = async () => {
+    if (busy || !enableSource) return
+    setBusy(true); setFailure(undefined)
+    try { await enableSource(id); await reload() }
+    catch (error) { setFailure(errorText(error)) }
+    finally { setBusy(false) }
+  }
+  return <section className="dt-section">
+    <div className="dt-card-head"><h3 className="dt-card-title">{name}</h3><Tag tone="neutral">{t('sourceConnectStatus')}</Tag></div>
+    <div className="dt-subhead"><Hint>{t(enableSource ? 'sourceConnectHint' : 'sourceConnectUnavailable')}</Hint>
+      <Button variant="outline" disabled={busy || !enableSource} onClick={() => { void connect() }}>{t('sourceConnectAction', { name })}</Button></div>
+    {failure && <p className="dt-error" role="alert">{failure}</p>}
+  </section>
+}
+
 export function SourceSettings({ focus, include }: { focus?: string; include?: readonly string[] }) {
   const { sources } = useSettings().settings
   const { t } = usePanel()
   const shown = sources.filter(source => !include || include.includes(source.id))
   useEffect(() => { if (focus) document.getElementById(`dt-source-${focus}`)?.scrollIntoView?.({ block: 'start' }) }, [focus])
+  const rows = include ?? shown.map(source => source.id)
   return <div className="dt-form">
-    {!shown.length && <Hint>{t('localExternalEnableHint')}</Hint>}
-    {shown.map(source => <SourceCard key={source.id} source={source} />)}
+    {rows.map(id => {
+      const source = shown.find(source => source.id === id)
+      return source?.installed || !include ? source && <SourceCard key={id} source={source} />
+        : id === 'github' || id === 'feishu' ? <ConnectSource key={id} id={id} /> : source && <SourceCard key={id} source={source} />
+    })}
     <ConfigHistory blocks={include ? include.map(id => `source:${id}`) : ['source:']} />
   </div>
 }

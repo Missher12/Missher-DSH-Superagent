@@ -17,6 +17,7 @@ export const translator = (dictionary: Record<string, string>): T => ((key: stri
 }) as T
 function Panel({ t }: { t: T }) {
   return <App t={t} renderSession={server.renderSessions ? id => <div data-test-session={id}>{id}</div> : undefined}
+    enableSource={server.enableSource}
     renderContext={server.renderSessions ? id => <span data-test-context={id}>上下文</span> : undefined}
     openSession={async id => { server.opened.push(id) }} openWorkspace={async id => { server.openedWorkspaces.push(id) }} pickDirectory={async () => server.pickedDirectory} deploymentForm={usePageForm(server.form)} />
 }

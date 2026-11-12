@@ -1056,7 +1056,7 @@ describe('feishu event consumer', () => {
    * A bot CLI whose `event consume` behaves as `mode` says: `never` gets ready, `warn` warns once ready, `ready` stays up,
    * and `flaky` exits after its first ready. It records each run and the PID of the latest.
    */
-  function cli(mode: 'never' | 'warn' | 'ready' | 'flaky' | 'events' | 'late'): string {
+  function cli(mode: 'never' | 'warn' | 'ready' | 'flaky' | 'events' | 'late' | 'refused'): string {
     const path = join(dir, 'lark-bot')
     writeFileSync(path, `#!/bin/sh
   [ "$1" = event ] || { echo '{"ok":true,"data":{}}'; exit 0; }
@@ -1068,6 +1068,7 @@ describe('feishu event consumer', () => {
     flaky) echo '[event] ready' >&2; [ "$n" -gt 1 ] && exec sleep 60; exit 1 ;;
     events) echo '[event] ready' >&2; cat '${dir}/events'; touch '${dir}/printed'; exec sleep 60 ;;
     late) echo '[event] ready' >&2; sleep 1; cat '${dir}/events'; touch '${dir}/printed'; exec sleep 60 ;;
+    refused) printf '%s\n' '{' '  "error": {' '    "message": "Event subscription refused"' '  }' '}' >&2; exit 2 ;;
   esac
   `, { mode: 0o755 })
     return path
@@ -1179,6 +1180,14 @@ describe('feishu event consumer', () => {
     const { ctx, health, store } = consumerSource(cli('warn'))
     running = runFeishu(ctx, controller.signal)
     await vi.waitFor(() => expect(health.feishu).toMatchObject({ state: 'error', detail: 'WARN the connection was reset' }), until)
+    controller.abort(); await running; store.close()
+  }, 20_000)
+  it('retains the reason from multiline CLI failures after the consumer exits', async () => {
+    const { ctx, health, store } = consumerSource(cli('refused'))
+    running = runFeishu(ctx, controller.signal)
+    await vi.waitFor(() => expect(health.feishu).toMatchObject({ state: 'error',
+      detail: expect.stringContaining('Event subscription refused') }), until)
+    expect(health.feishu?.detail).toContain('exited (2, ready=false)')
     controller.abort(); await running; store.close()
   }, 20_000)
   it('stops the consumer within five seconds once the Source is off', async () => {

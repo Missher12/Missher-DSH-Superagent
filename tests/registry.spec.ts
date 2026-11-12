@@ -105,6 +105,9 @@ describe('Source registry', () => {
     const reply = feishuTrigger({ message_id: 'om_2', chat_id: 'oc_1', chat_type: 'group', sender_id: 'ou_alice', sender_type: 'user',
       content: 'yes', create_time: '1757376000000', parent_id: 'om_1' }, 'ou_bot', 'cli_bot')!
     expect(sources.repliesTo(reply)).toBe(feishuTriggerId('om_1'))
+    const live = feishuTrigger({ message_id: 'om_3', chat_id: 'oc_1', chat_type: 'group', sender_id: 'ou_alice', sender_type: 'user',
+      content: 'more', create_time: '1757376000001', reply_to: 'om_2' }, 'ou_bot', 'cli_bot')!
+    expect(sources.repliesTo(live)).toBe(feishuTriggerId('om_2'))
     expect(sources.repliesTo({ ...reply, meta: { ...reply.meta, parentId: undefined } })).toBeUndefined()
     expect(sources.repliesTo({ ...reply, source: 'github' })).toBeUndefined()
   })

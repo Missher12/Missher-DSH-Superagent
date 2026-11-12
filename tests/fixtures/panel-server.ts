@@ -85,6 +85,8 @@ export const MACHINE = { stateDir: '/srv/dsh-superagent', promptMaxChars: 100000
 
 type Settings = ReturnType<typeof SettingsSchema.parse>
 export interface PanelServer {
+  installedSources?: string[]
+  enableSource?: (id: 'github' | 'feishu') => Promise<void>
   renderSessions?: boolean
   models?: ApiResponse<'GET models'>
   sessionModels: Record<string, ApiResponse<'GET local/sessions/:id/model'>>
@@ -136,7 +138,7 @@ function healthOf(name: string): Health {
 }
 const problemOf_ = (id: string) => [server.setup.problem, server.setup.feishuProblem].find(item => item?.place === id) ?? undefined
 function sourceSettings(): SourceView[] {
-  return KINDS.map(kind => {
+  return KINDS.filter(kind => !server.installedSources || server.installedSources.includes(kind.kind)).map(kind => {
     const config = kind.schema.parse(server.settings.sources[kind.kind]?.config ?? {})
     const problem = problemOf_(kind.kind)
     const { admission: _admission, ...part } = server.settings.policy.sources[kind.kind] ?? { allowed: [], admission: {} }
@@ -145,6 +147,7 @@ function sourceSettings(): SourceView[] {
     const policy = kind.policy && { fields: kind.policy.fields, explicit: kind.policy.explicit, ...kind.policy.rows
       ? { rows: kind.policy.rows(config) } : {}, ...sync ? { sync } : {} }
     return { id: kind.kind, kind: kind.kind, title: kind.title, description: kind.description, installed: true,
+      state: problem ? 'error' : server.settings.sources[kind.kind]?.enabled === false ? 'off' : healthOf(kind.kind).state,
       value: { enabled: server.settings.sources[kind.kind]?.enabled ?? true, config },
         revision: server.revisions[`source:${kind.kind}`] ?? 0,
       restarts: SETUP_FIELDS[kind.kind] ?? [], fields: kind.fields, facts: kind.facts?.(resolved()) ?? {},
@@ -337,6 +340,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'POST mcp/clients': { body: true, answer: () => refuse(400, 'Connect using the running DSH instance') },
   'PUT mcp/clients/:id': { body: true, answer: () => refuse(404, 'Connection not found') },
   'POST mcp/clients/:id/token': { answer: () => refuse(404, 'Connection not found') },
+  'POST mcp/clients/:id/test': { body: true, answer: () => refuse(404, 'Connection not found') },
   'POST mcp/clients/:id/enabled': { body: true, answer: () => refuse(404, 'Connection not found') },
   'DELETE mcp/clients/:id': { answer: () => refuse(404, 'Connection not found') },
   'GET local/board': { query: ['column', 'q', 'offset', 'limit'], answer: ({ query }) => {

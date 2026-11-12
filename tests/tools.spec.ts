@@ -8,6 +8,7 @@ import { RESOURCES } from '../src/app/resources.ts'
 import { CliError, Commands } from '../src/infra/commands.ts'
 import { IM_WORDS, NOTE_WORDS } from '../src/infra/text.ts'
 import { CHAT, feishu, startRuntime, type Host } from './fixtures/host.ts'
+import { issueTrigger } from '../src/sources/github-trigger.ts'
 
 let h: Host
 beforeEach(async () => { h = await startRuntime() })
@@ -15,6 +16,39 @@ afterEach(async () => { await h.stop() })
 const words = (count: number) => Array.from({ length: count }, () => 'word').join(' ')
 const read = (resource: string, page: { offset?: number; limit?: number } = {}) =>
   h.runTool(h.runtime.masterId, 'orchestrator_read', { resource, ...page })
+
+async function githubDelivery() {
+  const source = issueTrigger({ number: 41, title: 'Implement reference label', body: '@agent-bot implement and open a PR',
+    user: { login: 'alice' }, created_at: new Date().toISOString(), html_url: 'https://github.com/acme/widgets/issues/41' }, 'agent-bot')
+  const task = await h.acceptedTicket(source)
+  const pull = { number: 99, state: 'open', html_url: 'https://github.com/acme/widgets/pull/99', user: { login: 'agent-bot' },
+    head: { sha: 'abc', ref: `agent/${task.ticket.execution!.name}`, repo: { full_name: 'acme/widgets' } } }
+  return { ...task, pull }
+}
+
+it('reconciles a GitHub delivery with its real task-branch PR when the worker omitted pr_number', async () => {
+  const { ticket, sessionId, pull } = await githubDelivery()
+  const api = vi.spyOn(Commands.prototype, 'api').mockResolvedValue([pull] as never)
+  await h.runTool(sessionId, 'orchestrator_report', { state: 'ready', summary: 'Implemented and CI passed.' })
+  expect(api).toHaveBeenCalledWith(expect.anything(), `pulls?state=open&head=${encodeURIComponent(`agent-bot:${pull.head.ref}`)}&per_page=2`)
+  expect(h.runtime.store.tickets.get(ticket.id)?.follows).toContainEqual(expect.objectContaining({ thread: 'github:99', own: true }))
+  expect(h.runtime.store.tickets.get(ticket.id)?.ended).toBeUndefined()
+})
+
+it('does not bind an unrelated PR returned during GitHub delivery reconciliation', async () => {
+  const { ticket, sessionId, pull } = await githubDelivery()
+  vi.spyOn(Commands.prototype, 'api').mockResolvedValue([{ ...pull, head: { ...pull.head, ref: 'agent/another-task' } }] as never)
+  await expect(h.runTool(sessionId, 'orchestrator_report', { state: 'ready', summary: 'Done.' })).rejects.toThrow('PR does not belong')
+  expect(h.runtime.store.tickets.get(ticket.id)?.follows ?? []).toEqual([])
+  expect(h.runtime.store.tickets.get(ticket.id)?.ended).toBeUndefined()
+})
+
+it('allows a GitHub task without an open task-branch PR to finish without creating one', async () => {
+  const { ticket, sessionId } = await githubDelivery()
+  vi.spyOn(Commands.prototype, 'api').mockResolvedValue([] as never)
+  await h.runTool(sessionId, 'orchestrator_report', { state: 'ready', summary: 'No PR needed.' })
+  expect(h.runtime.store.tickets.get(ticket.id)?.ended?.outcome).toBe('completed')
+})
 
 it('reads the lists, a ticket, a decision, the settings, the prompts and the models as resources', async () => {
   const { ticket, trigger } = await h.acceptedTicket(feishu('1', '@bot 修一下回归'))

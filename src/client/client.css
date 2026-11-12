@@ -89,6 +89,7 @@
 .dt-choice:has(.dt-choice-trigger:disabled) { color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-layer-2); }
 .dt-choice-trigger:disabled { cursor: default; }
 [role='menu']:has(.dt-choice-option) { box-sizing: border-box; font-family: inherit; font-size: 13px; max-height: min(300px, calc(100dvh - 24px)); }
+[role='menu']:has(.dt-choice-option) > :has([role='menuitem']) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 .dt-choice-option { display: block; white-space: normal; overflow-wrap: anywhere; font-size: 13px; line-height: 20px; }
 .dt-mono { font-family: var(--ds-font-family-code, Menlo, monospace); font-size: 12px; overflow-wrap: anywhere; }
 .dt-detail { margin-top: 2px; color: var(--dsw-alias-label-secondary); }
@@ -581,7 +582,7 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-local-setting-entry > svg { flex: none; color: var(--dsw-alias-label-secondary); }
 .dt-local-setting-entry > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .dt-local-settings-editor { display: flex; flex: 1; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
-.dt-local-settings-content { flex: 1; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.dt-local-settings-content { flex: 1; min-height: 0; min-width: 0; padding: 3px; margin: -3px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .dt-prompt-content { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .dt-local-settings-content > .dt-prompts-editor { display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; overflow: hidden; }
 .dt-local-settings-content .dt-prompts-editor > .dt-subtabs, .dt-local-settings-content .dt-prompts-editor > .dt-savebar { flex: none; }

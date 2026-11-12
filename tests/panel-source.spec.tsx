@@ -7,6 +7,31 @@ import { usePanel, mount, remount, settle, all, find, tab, click, type, text, fi
 import { server, problemOf, droppedReply } from './fixtures/panel-server.ts'
 
 usePanel()
+it('opens bundled GitHub and Feishu setup directly from local settings when their components are off', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  server.installedSources = []
+  server.enableSource = async id => { server.installedSources!.push(id) }
+  await mount(); await click('设置'); await click(zh.localExternalTitle)
+  expect(text()).toContain('GitHub'); expect(text()).toContain('飞书')
+  await click('启用 GitHub')
+  expect(field<HTMLInputElement>('监听的仓库')).toBeDefined()
+  expect(text()).toContain('启用 飞书')
+  await click('启用 飞书')
+  expect(field<HTMLInputElement>('机器人的 lark-cli')).toBeDefined()
+})
+
+it('keeps connector setup available and shows the host refusal if enabling fails', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  server.installedSources = []
+  server.enableSource = async () => { throw new Error('DSH 暂时无法启用此组件') }
+  await mount(); await click('设置'); await click(zh.localExternalTitle)
+  await click('启用 GitHub')
+  expect(text()).toContain('DSH 暂时无法启用此组件')
+  expect(document.querySelector('.dt-local-settings-editor [role="alert"]')?.textContent).toBe('DSH 暂时无法启用此组件')
+  expect(find('启用 GitHub').hasAttribute('disabled')).toBe(false)
+  expect(text()).not.toContain('监听的仓库')
+})
+
 it('shows each Source\'s state on the Source status and opens its settings from a setup problem', async () => {
   await mount()
   await click(zh['tab.source'])

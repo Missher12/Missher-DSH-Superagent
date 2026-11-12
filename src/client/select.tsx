@@ -7,6 +7,7 @@ export function Select({ id, className = '', value, children, disabled, title, o
   Omit<SelectHTMLAttributes<HTMLSelectElement>, 'multiple' | 'size'>) {
   const owner = useId(), native = useRef<HTMLSelectElement>(null), trigger = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false), [caption, setCaption] = useState(''), [items, setItems] = useState<MenuEntry[]>([])
+  const [side, setSide] = useState<'top' | 'bottom'>('bottom')
   const [, resizeMenu] = useState(0)
   const menu = () => document.querySelector<HTMLElement>(`[data-choice-owner=${JSON.stringify(owner)}]`)?.closest<HTMLElement>('[role="menu"]')
   const close = (focus = false) => { setOpen(false); if (focus) trigger.current?.focus({ preventScroll: true }) }
@@ -36,9 +37,15 @@ export function Select({ id, className = '', value, children, disabled, title, o
     if (!panel) return
     panel.dataset.superagentChoice = owner
     const size = () => {
-      const width = Math.min(Math.max(trigger.current?.getBoundingClientRect().width ?? 0, 240), window.innerWidth - 24)
-      if (width > 0 && panel.style.width !== `${width}px`) {
-        panel.style.width = `${width}px`; panel.style.minWidth = `${width}px`; panel.style.maxWidth = `${width}px`
+      const rect = trigger.current?.getBoundingClientRect()
+      if (!rect) return
+      const width = Math.min(Math.max(rect.width, 240), window.innerWidth - 24)
+      const above = Math.max(0, rect.top - 16), below = Math.max(0, window.innerHeight - rect.bottom - 16)
+      const nextSide = below >= Math.min(panel.scrollHeight || 300, 300) || below >= above ? 'bottom' : 'top'
+      const height = Math.min(300, nextSide === 'bottom' ? below : above)
+      setSide(nextSide)
+      if (width > 0 && (panel.style.width !== `${width}px` || panel.style.maxHeight !== `${height}px`)) {
+        panel.style.width = `${width}px`; panel.style.minWidth = `${width}px`; panel.style.maxWidth = `${width}px`; panel.style.maxHeight = `${height}px`
         resizeMenu(revision => revision + 1)
       }
     }
@@ -47,7 +54,7 @@ export function Select({ id, className = '', value, children, disabled, title, o
     const enabled = items.filter(item => 'label' in item && !item.disabled)
     const index = enabled.findIndex(item => item.id === String(value ?? ''))
     let disposed = false
-    queueMicrotask(() => { if (!disposed) { const selected = rows[index] ?? rows[0]; selected?.focus({ preventScroll: true }); if (selected) panel.scrollTop = selected.offsetTop - (panel.clientHeight - selected.offsetHeight) / 2 } })
+    queueMicrotask(() => { if (!disposed) { const selected = rows[index] ?? rows[0]; selected?.focus({ preventScroll: true }); selected?.scrollIntoView?.({ block: 'nearest' }) } })
     const scrolled = (event: Event) => { if (!(event.target instanceof Node) || !panel.contains(event.target)) close(true) }
     const resized = () => close(true)
     window.addEventListener('scroll', scrolled, true); window.addEventListener('resize', resized)
@@ -77,7 +84,7 @@ export function Select({ id, className = '', value, children, disabled, title, o
   return <span className={`dt-select dt-choice ${className}`} data-open={open || undefined} onKeyDown={keys}>
     <select {...props} ref={native} className="dt-choice-native" value={value} disabled={disabled} onChange={onChange} hidden tabIndex={-1} aria-hidden="true"
       onInvalid={event => { event.preventDefault(); trigger.current?.focus(); setOpen(true) }}>{children}</select>
-    <Menu open={open} selectedId={String(value ?? '')} items={items} onSelect={choose} onClose={() => close()} portal compact align="start" side="bottom"
+    <Menu open={open} selectedId={String(value ?? '')} items={items} onSelect={choose} onClose={() => close()} portal compact align="start" side={side}
       className="dt-choice-anchor" getAnchorRect={() => trigger.current?.getBoundingClientRect() ?? null}
       anchor={<button id={id} ref={trigger} type="button" className="dt-choice-trigger" disabled={disabled} aria-label={props['aria-label']}
         aria-labelledby={props['aria-labelledby']} aria-haspopup="menu" aria-expanded={open} title={title ?? caption} onClick={() => setOpen(value => !value)}>

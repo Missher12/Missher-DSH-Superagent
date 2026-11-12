@@ -200,6 +200,10 @@ function routes(runtime: HttpHost): Routes {
     'POST mcp/clients': async ({ body }) => mcp().createClient(McpClientRequest.parse(await body())),
     'PUT mcp/clients/:id': async ({ params, body }) => mcp().updateClient(params.id, McpClientRequest.parse(await body())),
     'POST mcp/clients/:id/token': ({ params }) => mcp().rotateToken(params.id),
+    'POST mcp/clients/:id/test': async ({ params, body }) => {
+      const request = z.object({ token: z.string().min(1).max(200), transport: z.enum(['stdio', 'http']) }).strict().parse(await body())
+      return mcp().checkConnection(params.id, request.token, request.transport)
+    },
     'POST mcp/clients/:id/enabled': async ({ params, body }) => mcp().setEnabled(params.id, z.object({ enabled: z.boolean() }).strict().parse(await body()).enabled),
     'DELETE mcp/clients/:id': ({ params }) => mcp().removeClient(params.id),
     'GET local/board': ({ query }) => {

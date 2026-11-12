@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
@@ -25,10 +25,15 @@ it('serves real MCP discovery and task calls over loopback HTTP with client-scop
   http = createServer((req, res) => { void bridge!.handle(req, res) })
   await new Promise<void>(resolve => http!.listen(0, '127.0.0.1', resolve))
   const url = new URL(`http://127.0.0.1:${(http.address() as AddressInfo).port}/superagent/mcp`)
+  Object.defineProperty(ctx.webServer, 'port', { value: Number(url.port), configurable: true })
   expect((await fetch(url, { method: 'POST', body: '{}' })).status).toBe(401)
   expect((await fetch(url, { method: 'POST', headers: { authorization: `Bearer ${connection.token}`, origin: 'https://example.invalid' }, body: '{}' })).status).toBe(403)
   const client = new Client({ name: 'superagent-http-test', version: '1.0.0' }); clients.push(client)
   await client.connect(new StreamableHTTPClientTransport(url, { requestInit: { headers: { authorization: `Bearer ${connection.token}` } } }))
+  expect(client.getServerVersion()?.version).toBe(JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version)
+  expect(await host.api('POST', `mcp/clients/${connection.client.id}/test`, { token: connection.token, transport: 'http' }))
+    .toMatchObject({ status: 200, body: { tools: 7, workspaces: 1 } })
+  expect((await host.api('POST', `mcp/clients/${connection.client.id}/test`, { token: 'invalid', transport: 'http' })).status).toBe(401)
   const tools = await client.listTools()
   expect(tools.tools.map(tool => tool.name)).toEqual(expect.arrayContaining(['workspace_list', 'task_create', 'task_get', 'task_followup', 'task_stop', 'task_retry', 'task_list']))
   expect((await client.callTool({ name: 'workspace_list', arguments: {} })).structuredContent).toMatchObject({ items: [{ id: 'project' }] })

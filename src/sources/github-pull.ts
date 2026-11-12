@@ -15,6 +15,16 @@ const PullSchema = z.looseObject({
 export type Pull = z.infer<typeof PullSchema> & { number: number }
 export const readPull = async (ctx: SourceContext, number: number, signal?: AbortSignal): Promise<Pull> =>
   ({ ...await ctx.commands.withSignal(signal).api(PullSchema, `pulls/${number}`), number })
+/** Reconcile an omitted PR on the conventional task branch before a GitHub ready report can end its ticket. */
+export async function findTicketPull(ctx: SourceContext, ticket: Ticket, signal?: AbortSignal): Promise<Pull | undefined> {
+  if (!ctx.config(SOURCE) || !ctx.deployment.github || !ticket.execution?.name || pullOf(ticket)
+    || ctx.triggers.get(ticket.origin.triggerId)?.source !== SOURCE) return
+  const head = `${ctx.deployment.github.login}:agent/${ticket.execution.name}`
+  const pulls = await ctx.commands.withSignal(signal).api(z.array(PullSchema.extend({ number: z.number().int().positive() })),
+    `pulls?state=open&head=${encodeURIComponent(head)}&per_page=2`)
+  if (pulls.length > 1) throw new Error('Multiple open task PRs; report the intended pr_number')
+  return pulls[0]
+}
 const pullNumber = (thread: string): number | undefined => thread.startsWith(`${SOURCE}:`) ? Number(thread.slice(SOURCE.length + 1)) : undefined
 export const pullsOf = (ticket: Pick<Ticket, 'follows'>, open = false): number[] =>
   (ticket.follows ?? []).filter(item => !open || !item.closed).flatMap(item => pullNumber(item.thread) ?? [])

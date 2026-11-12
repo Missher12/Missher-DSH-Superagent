@@ -98,13 +98,26 @@ function Mounted({ ctx, t, seat }: { ctx: ClientContext; t: T; seat: Conversatio
     await ctx.uiWorkspace.openWorkspace(id as Parameters<typeof ctx.uiWorkspace.openWorkspace>[0])
   }, [ctx])
   const pickDirectory = useCallback(() => pickWorkspaceDirectory(() => ctx.uiWorkspace.pickDirectory()), [ctx])
+  const enableSource = useCallback(async (id: 'github' | 'feishu') => {
+    const manager = ctx.get('remote.pluginManager') as {
+      listPlugins(): Promise<{ ok: false } | { ok: true; value: { entryId: string; moduleName: string }[] }>
+      setPluginEnabled(id: string, enabled: boolean): Promise<{ ok: false } | { ok: true; value: { application: string } }>
+    } | undefined
+    if (!manager) throw new Error(t('sourceConnectUnavailable'))
+    const rows = await manager.listPlugins()
+    const entry = rows.ok && rows.value.find(row => row.moduleName === `@missher/dsh-superagent/${id}-watch`)
+    if (!entry) throw new Error(t('sourceConnectFailed', { name: t(`source.${id}`) }))
+    const result = await manager.setPluginEnabled(entry.entryId, true)
+    if (!result.ok) throw new Error(t('sourceConnectFailed', { name: t(`source.${id}`) }))
+    if (result.value.application !== 'applied') throw new Error(t('sourceConnectRestart'))
+  }, [ctx, t])
   const form = usePageForm(ctx.get('configForms')?.get<Record<string, unknown>>(ENTRY))
   const renderSession = useCallback((id: string) => <EmbeddedSession key={id} ctx={ctx} id={id} seat={seat} t={t} />, [ctx, seat, t])
   const renderContext = useCallback((id: string) => <EmbeddedSession key={id} ctx={ctx} id={id} seat={seat} t={t} slot="superagent.context" />, [ctx, seat, t])
-  return <App t={t} openSession={openSession} renderSession={renderSession} renderContext={renderContext} nativeSession openWorkspace={openWorkspace} pickDirectory={pickDirectory} deploymentForm={form} />
+  return <App t={t} openSession={openSession} renderSession={renderSession} renderContext={renderContext} nativeSession enableSource={enableSource} openWorkspace={openWorkspace} pickDirectory={pickDirectory} deploymentForm={form} />
 }
 
-export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace']
+export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace', 'remote.pluginManager']
 /** Registers the panel, sidebar icon, and Plugin Manager config view; `configForms` is optional (without it, machine settings are read-only). */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-superagent: dictionaries')

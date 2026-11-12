@@ -7,6 +7,7 @@ import { Client } from '@modelcontextprotocol/client'
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import { createMcpHttpHandler } from '../src/mcp/http.ts'
 import { endpointUrl } from '../src/mcp/bridge.ts'
+import { checkMcpConnection } from '../src/mcp/check.ts'
 import { startRuntime, type Host } from './fixtures/host.ts'
 
 let host: Host | undefined, client: Client | undefined
@@ -37,6 +38,9 @@ it('serves a desktop MCP client over stdio and reconnects after the DSH endpoint
     writeFileSync(join(host!.directory, 'mcp-endpoint.json'), JSON.stringify({ url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/superagent/mcp` }))
   }
   await listen()
+  expect(await checkMcpConnection({ command: process.execPath,
+    args: ['--experimental-transform-types', 'src/mcp-bridge.ts', '--state-dir', host.directory],
+    env: { DSH_SUPERAGENT_TOKEN: connection.token } })).toMatchObject({ tools: 7, workspaces: 1 })
   const transport = new StdioClientTransport({ command: process.execPath,
     args: ['--experimental-transform-types', 'src/mcp-bridge.ts', '--state-dir', host.directory],
     cwd: process.cwd(), env: { DSH_SUPERAGENT_TOKEN: connection.token }, stderr: 'pipe' })

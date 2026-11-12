@@ -118,3 +118,24 @@ it.each([[390, 240], [220, 196]])('gives narrow model choices room while staying
   await key('Escape')
   expect(document.activeElement).toBe(trigger)
 })
+
+it('keeps a long model menu above its trigger and fully inside a short viewport', async () => {
+  vi.stubGlobal('innerWidth', 360); vi.stubGlobal('innerHeight', 260)
+  onTestFinished(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+    return this.getAttribute('role') === 'menu' ? Math.min(400, parseFloat(this.style.maxHeight) || 400) : 20
+  })
+  const container = await mount(<Select aria-label="任务模型" value="model-39">
+    {Array.from({ length: 40 }, (_, index) => <option key={index} value={`model-${index}`}>模型 {index}</option>)}
+  </Select>)
+  const trigger = container.querySelector('button')!
+  vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({ x: 110, y: 120, left: 110, right: 350, top: 120, bottom: 152, width: 240, height: 32 } as DOMRect)
+  trigger.focus(); await key('ArrowDown')
+  const menu = document.querySelector<HTMLElement>('[role="menu"]')!
+  const top = parseFloat(menu.style.top)
+  expect(menu.offsetHeight).toBeLessThanOrEqual(104)
+  expect(top).toBeGreaterThanOrEqual(12)
+  expect(top + menu.offsetHeight).toBeLessThanOrEqual(116)
+  expect(document.activeElement?.textContent).toBe('模型 39')
+  await key('Escape'); expect(document.activeElement).toBe(trigger)
+})

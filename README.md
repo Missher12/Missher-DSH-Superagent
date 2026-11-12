@@ -2,7 +2,7 @@
 
 ![Superagent · 项目任务（品牌插画）](docs/images/cover-v2.png)
 
-当前版本 **1.9.7** · [下载安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.9.7)
+当前版本 **1.9.9** · [下载安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.9.9)
 在 DSH 里派出任务，在 Superagent 的独立工作区中查看执行会话、文件目录、进度和结果。
 
 适用场景：调研代码、定位问题、修改功能、运行相关检查。任务会在自动创建的独立目录或你选择的已有项目目录内工作，遵守该项目的 `AGENTS.md`。
@@ -76,11 +76,13 @@
 
 ## 外部应用派单
 
-在 **设置 → MCP 外部派单** 新建连接、勾选工作区，复制配置到目标应用。支持本机 stdio 和 Streamable HTTP，可派单、读取进度和结果、补充要求、停止及失败重试。令牌和工作区授权按应用隔离，DSH 需保持运行。详见 [MCP 接入教程](docs/mcp.md)。
+在 **设置 → MCP 接入** 新建连接、勾选工作区，测试连接后复制配置到目标应用。支持本机 stdio 和 Streamable HTTP，可派单、读取进度和结果、补充要求、停止及失败重试。令牌和工作区授权按应用隔离，DSH 需保持运行。详见 [MCP 接入教程](docs/mcp.md)。
 
-GitHub 和飞书提供可选来源组件：启用后，在「设置 → GitHub 与飞书」配置账号 CLI 和已有工作区，再设置接收范围及授权规则。默认不启用，连接校验失败会明确显示原因，本地与 MCP 任务仍可使用。真实接入验收状态见 [完成记录](docs/completion-plan.md)。
+在 **设置 → GitHub 与飞书** 直接启用需要的来源，配置账号 CLI 和已有工作区，再设置接收范围及授权规则。来源默认关闭，页面显示实际运行状态；账号校验失败会显示原因。本地与 MCP 任务仍可独立使用。真实接入验收状态见 [完成记录](docs/completion-plan.md)。
 
 GitHub 任务的分支最后一段应使用工单提供的 `DSH_SUPERAGENT_NAME`（例如 `agent/$DSH_SUPERAGENT_NAME`），以便自动关联 PR。PR 交付并通过检查后仍可等待你评审、合并。
+
+GitHub 会过滤执行账号自己发出的消息；日常接收他人派单时，应使用独立的执行账号。
 
 适配方式和运行边界见 [本地模式及扩展说明](docs/local-mode.md)。源码中的编号文档和 SETUP.md 介绍上游引擎与独立 GitHub 部署，本地插件日常使用无需执行这些部署步骤。
 

@@ -12,14 +12,48 @@ import { Select } from './select.tsx'
 type Connection = ApiResponse<'GET mcp'>['clients'][number]
 type Credential = ApiResponse<'POST mcp/clients/:id/token'>
 
-export function McpSettings() {
+function CredentialDialog({ credential, onClose }: { credential: Credential; onClose: () => void }) {
   const { call, t, notify } = usePanel()
+  const [transport, setTransport] = useState<'stdio' | 'http'>('stdio')
+  const [checking, setChecking] = useState(false), [checked, setChecked] = useState<ApiResponse<'POST mcp/clients/:id/test'>>()
+  const [failure, setFailure] = useState<string>()
+  const configuration = JSON.stringify(credential.configuration[transport], null, 2)
+  const check = async () => {
+    if (checking) return
+    const id = /^dshsa_([a-f0-9-]{36})_/.exec(credential.token)?.[1]
+    if (!id) return
+    setChecking(true); setChecked(undefined); setFailure(undefined)
+    try { setChecked(await call('POST mcp/clients/:id/test', { id, body: { token: credential.token, transport } })) }
+    catch (error) { setFailure(errorText(error)) }
+    finally { setChecking(false) }
+  }
+  return <Modal className="dt-mcp-dialog" open title={t('mcpConnectionConfig')} closeLabel={t('close')} onClose={onClose}
+    description={t('mcpConfigHint')} footer={<>
+      <Button disabled={checking} onClick={() => { void check() }}>{t(checking ? 'mcpChecking' : 'mcpTest')}</Button>
+      <Button onClick={onClose}>{t('close')}</Button>
+      <Button variant="primary" icon={<Icon name="copy" size={14} />} onClick={() => {
+        void navigator.clipboard.writeText(configuration).then(() => notify(t('localCopied')), error => setFailure(errorText(error)))
+      }}>{t('localCopyResult')}</Button>
+    </>}>
+    <div className="dt-form"><Field label={t('mcpTransport')}><Select value={transport}
+      disabled={checking} onChange={event => { setTransport(event.target.value as 'stdio' | 'http'); setChecked(undefined); setFailure(undefined) }}>
+      <option value="stdio">{t('mcpStdio')}</option><option value="http">HTTP</option>
+    </Select></Field>
+      <Hint>{t(transport === 'stdio' ? 'mcpStdioHint' : 'mcpHttpHint')}</Hint>
+      <pre className="dt-mcp-config" tabIndex={0}>{configuration}</pre>
+      {checked && <p className="dt-hint" role="status">{t('mcpChecked', { tools: checked.tools, workspaces: checked.workspaces })}</p>}
+      {failure && <p className="dt-error" role="status">{failure}</p>}
+    </div>
+  </Modal>
+}
+
+export function McpSettings() {
+  const { call, t } = usePanel()
   const formId = useId()
   const { data, error, reload } = usePoll(() => call('GET mcp'), [call])
   const { data: workspaces, error: workspaceError } = usePoll(() => call('GET local/workspaces'), [call])
   const [editing, setEditing] = useState<{ id?: string; name: string; workspaceIds: string[] }>()
   const [credential, setCredential] = useState<Credential>()
-  const [transport, setTransport] = useState<'stdio' | 'http'>('stdio')
   const [busy, setBusy] = useState(false), [failure, setFailure] = useState<string>()
   const perform = async (run: () => Promise<unknown>) => {
     setBusy(true); setFailure(undefined)
@@ -40,12 +74,11 @@ export function McpSettings() {
       if (value.id) await call('PUT mcp/clients/:id', { id: value.id, body })
       else {
         const result = await call('POST mcp/clients', { body })
-        setCredential(result); setTransport('stdio')
+        setCredential(result)
       }
       setEditing(undefined)
     })
   }
-  const configuration = credential ? JSON.stringify(credential.configuration[transport], null, 2) : ''
   return <Section title={t('mcpTitle')} action={<Button variant="outline" size="sm" icon={<Icon name="plus" size={14} />}
     disabled={!data || busy} onClick={() => open()}>{t('mcpAdd')}</Button>}>
     <Hint>{t('mcpHint')}</Hint>
@@ -86,7 +119,7 @@ export function McpSettings() {
             <ConfirmButton label={t('mcpResetToken')} title={t('mcpResetToken')} message={t('mcpResetHint')}
               onConfirm={() => perform(async () => {
                 const result = await call('POST mcp/clients/:id/token', { id: editing.id! })
-                setEditing(undefined); setCredential(result); setTransport('stdio')
+                setEditing(undefined); setCredential(result)
               })} />
           </div>}
           {editing.id && <div className="dt-danger-zone"><span>{t('mcpRevokeHint')}</span>
@@ -97,21 +130,6 @@ export function McpSettings() {
         </Fields>
       </form>}
     </Modal>
-    <Modal className="dt-mcp-dialog" open={!!credential} title={t('mcpConnectionConfig')} closeLabel={t('close')} onClose={() => setCredential(undefined)}
-      description={t('mcpConfigHint')} footer={<>
-        <Button onClick={() => setCredential(undefined)}>{t('close')}</Button>
-        <Button variant="primary" icon={<Icon name="copy" size={14} />} onClick={() => {
-          void navigator.clipboard.writeText(configuration).then(() => notify(t('localCopied')), error => setFailure(errorText(error)))
-        }}>{t('localCopyResult')}</Button>
-      </>}>
-      <div className="dt-form"><Field label={t('mcpTransport')}><Select value={transport}
-        onChange={event => setTransport(event.target.value as 'stdio' | 'http')}>
-        <option value="stdio">{t('mcpStdio')}</option><option value="http">HTTP</option>
-      </Select></Field>
-        <Hint>{t(transport === 'stdio' ? 'mcpStdioHint' : 'mcpHttpHint')}</Hint>
-        <pre className="dt-mcp-config" tabIndex={0}>{configuration}</pre>
-        {failure && <p className="dt-error" role="status">{failure}</p>}
-      </div>
-    </Modal>
+    {credential && <CredentialDialog key={credential.token} credential={credential} onClose={() => setCredential(undefined)} />}
   </Section>
 }

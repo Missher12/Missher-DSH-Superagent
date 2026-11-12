@@ -40,6 +40,7 @@ export interface Api {
   'POST mcp/clients': { body: z.infer<typeof McpClientRequest>; response: Awaited<ReturnType<McpTasks['createClient']>> }
   'PUT mcp/clients/:id': { body: z.infer<typeof McpClientRequest>; response: Awaited<ReturnType<McpTasks['updateClient']>> }
   'POST mcp/clients/:id/token': { response: ReturnType<McpTasks['rotateToken']> }
+  'POST mcp/clients/:id/test': { body: { token: string; transport: 'stdio' | 'http' }; response: Awaited<ReturnType<McpTasks['checkConnection']>> }
   'POST mcp/clients/:id/enabled': { body: { enabled: boolean }; response: Awaited<ReturnType<McpTasks['setEnabled']>> }
   'DELETE mcp/clients/:id': { response: Awaited<ReturnType<McpTasks['removeClient']>> }
   'GET local/board': { query: Paged & { column: LocalBoardColumn; q?: string }; response: TicketListView }
