@@ -10,10 +10,24 @@ import { setupPage, settingsRoute, type Route } from './route.ts'
 import { ConfigHistory, Field, Fields, SourceField, useBlockDraft, useSettings } from './settings-kit.tsx'
 import { actorName, errorText, healthText, localized, readableMarkers, reasonLabel, valueLabel, when } from './text.ts'
 import { CheckSetupButton, ConfirmButton, Hint, LabelValue, LoadState, SetupMessage, StatusHead, When } from './widgets.tsx'
+import { Select } from './select.tsx'
+
+function ExecutionField({ value, onChange }: { value?: 'single' | 'team'; onChange: (value: 'single' | 'team') => void }) {
+  const { t } = usePanel()
+  return <Field label={t('teamMode')}><Select value={value ?? 'single'} onChange={event => onChange(event.target.value as 'single' | 'team')}>
+    <option value="single">{t('teamModeSingle')}</option><option value="team">{t('teamModeTeam')}</option>
+  </Select></Field>
+}
+export function SourceExecution({ source }: { source: SourceView }) {
+  const draft = useBlockDraft(`source:${source.id}`, source.value, source.revision)
+  return <form className="dt-form" onSubmit={event => { void draft.submit(event) }}><Fields disabled={draft.busy}>
+    <ExecutionField value={draft.value.execution} onChange={execution => draft.edit({ ...draft.value, execution })} />
+  </Fields><SaveBar {...draft} onDiscard={draft.discard} /></form>
+}
 
 function SourceCard({ source }: { source: SourceView }) {
   const { t, call, restart, notify } = usePanel()
-  const { running } = usePanelData()
+  const { running, setup } = usePanelData()
   const { reload } = useSettings()
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [configuring, setConfiguring] = useState(false), [removing, setRemoving] = useState(false), [failure, setFailure] = useState<string>()
@@ -44,7 +58,7 @@ function SourceCard({ source }: { source: SourceView }) {
       throw error
     }
   })
-  const cleared = (enabled: boolean, from = value) => ({ enabled, config: { ...from.config, cli: '', workspaceDirectory: '',
+  const cleared = (enabled: boolean, from = value) => ({ ...from, enabled, config: { ...from.config, cli: '', workspaceDirectory: '',
     ...connector === 'feishu' ? { appId: '', credential: '', chats: [], directMessages: false, otherChats: 'none' } : {} } })
   const replace = () => {
     setFailure(undefined); setConfiguring(true); draft.edit(cleared(true))
@@ -101,6 +115,7 @@ function SourceCard({ source }: { source: SourceView }) {
           <pre>{problem.values.output}</pre></details>}
       </div>}
       {!source.installed && <Hint>{t('sourceNotInstalledHint')}</Hint>}
+      {setup?.mode === 'local' && source.installed && source.id !== 'local' && <ExecutionField value={value.execution} onChange={execution => draft.edit({ ...value, execution })} />}
       {source.installed && connector === 'feishu' && <div className="dt-feishu-account">
         <Field label="App ID" note={source.facts.cli && localized(t, source.facts.cli)}><Input value={appId} required={accountChanged} pattern="cli_[A-Za-z0-9]+" maxLength={120}
           placeholder="cli_…" autoComplete="off" spellCheck={false} onChange={event => setAppId(event.target.value)} /></Field>

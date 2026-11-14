@@ -1,5 +1,5 @@
 /** Local task drafts and follow-ups. Drafts stay in this browser session until dispatched or cleared. */
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useState, type AriaAttributes } from 'react'
 import { Button, Icon, Input, SegmentedControl } from './controls.tsx'
 import { useAction, usePanel } from './provider.tsx'
 import { Field, Fields } from './settings-kit.tsx'
@@ -14,7 +14,7 @@ import { usePoll } from './api.ts'
 
 const DRAFT = 'dsh-superagent/local-draft'
 const DRAFT_CHANGED = 'dsh-superagent/task-draft-changed'
-interface TaskDraft { requestId: string; title: string; directory: string; instructions: string; open: boolean; existing: boolean; model?: RoleModel; permissionPreset?: string; mode: 'single' | 'team'; teamName: string; members?: TeamMember[] }
+interface TaskDraft { requestId: string; title: string; directory: string; instructions: string; open: boolean; existing: boolean; model?: RoleModel; permissionPreset?: string; mode: 'single' | 'team'; teamName: string; members?: TeamMember[]; maxRounds?: number }
 const blank = (): TaskDraft => ({ requestId: crypto.randomUUID(), title: '', directory: '', instructions: '', open: false, existing: false, mode: 'single', teamName: '' })
 function readDraft() {
   const fallback = blank()
@@ -27,7 +27,8 @@ function readDraft() {
       existing: typeof value.existing === 'boolean' ? value.existing : !!value.directory,
       permissionPreset: typeof value.permissionPreset === 'string' && value.permissionPreset.trim() ? value.permissionPreset.trim() : undefined,
       mode: value.mode === 'team' ? 'team' as const : 'single' as const, teamName: typeof value.teamName === 'string' ? value.teamName : '',
-      members: Array.isArray(value.members) && value.members.length >= 2 && value.members.length <= 6 && value.members.every(member => member
+      maxRounds: typeof value.maxRounds === 'number' && value.maxRounds >= 1 && value.maxRounds <= 8 ? value.maxRounds : 3,
+      members: Array.isArray(value.members) && value.members.length >= 2 && value.members.length <= 12 && value.members.every(member => member
         && typeof member.id === 'string' && typeof member.name === 'string' && typeof member.instructions === 'string'
         && Array.isArray(member.dependencies) && member.dependencies.every((id: unknown) => typeof id === 'string')) ? value.members as TeamMember[] : undefined,
       model: value.model && typeof value.model === 'object' && 'provider' in value.model && 'model' in value.model
@@ -49,9 +50,9 @@ export function selectLocalWorkspace(directory: string) {
   rememberDraft({ ...readDraft(), directory, open: true, existing: true }); window.dispatchEvent(new Event(DRAFT_CHANGED))
 }
 
-function PermissionSelect({ value, onChange, id, 'aria-label': label }: {
+function PermissionSelect({ value, onChange, id, ...accessible }: {
   value?: string; onChange: (preset: string | undefined) => void; id?: string; 'aria-label'?: string
-}) {
+} & Pick<AriaAttributes, 'aria-invalid' | 'aria-describedby' | 'aria-labelledby'>) {
   const { t, call } = usePanel()
   const { data, error } = usePoll(() => call('GET local/permissions'), [call], 30_000)
   const labels: Record<string, string> = { 'read-only': t('localPermissionReadOnly'), 'workspace-write': t('localPermissionWorkspace'),
@@ -61,7 +62,7 @@ function PermissionSelect({ value, onChange, id, 'aria-label': label }: {
     return option?.name && option.name !== value ? option.name : labels[value] ?? option?.name ?? value
   }
   const listed = data?.options.some(option => option.value === value)
-  return <Select id={id} aria-label={label} value={value ?? ''} disabled={!data}
+  return <Select id={id} {...accessible} value={value ?? ''} disabled={!data}
     title={error ? t('localPermissionLoadError') : undefined} onChange={event => onChange(event.target.value || undefined)}>
     <option value="">{data ? t('localPermissionDefault', { preset: name(data.defaultPreset) }) : t('localInheritDefault')}</option>
     {value && !listed && <option value={value} disabled>{name(value)}{data ? ` · ${t('localPermissionUnavailable')}` : ''}</option>}
@@ -78,10 +79,11 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
   useEffect(() => { rememberDraft(draft) }, [draft])
   useEffect(() => { const sync = () => setDraft(readDraft()); window.addEventListener(DRAFT_CHANGED, sync); return () => window.removeEventListener(DRAFT_CHANGED, sync) }, [])
   useEffect(() => {
+    if (!draft.open) return
     let active = true
     call('GET local/workspaces').then(items => { if (active) setWorkspaces(items) }, () => {})
     return () => { active = false }
-  }, [call])
+  }, [call, draft.open])
   const edit = (patch: Partial<typeof draft>) => { setFailure(undefined); setDraft(current => ({ ...current, ...patch })) }
   const submit = useAction(async () => {
     setFailure(undefined)
@@ -91,7 +93,7 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
         ...(draft.permissionPreset ? { permissionPreset: draft.permissionPreset } : {}),
         ...(draft.model ? { model: draft.model } : {}), instructions: draft.instructions.trim() }
       const task = draft.mode === 'team' ? await call('POST local/teams', { body: { ...body, coordinatorName: t('teamCoordinator'),
-        ...(draft.teamName.trim() ? { name: draft.teamName.trim() } : {}), members: draft.members ?? defaultMembers(t) } })
+        ...(draft.teamName.trim() ? { name: draft.teamName.trim() } : {}), members: draft.members ?? defaultMembers(t), workflow: { maxRounds: draft.maxRounds ?? 3 } } })
         : await call('POST local/tasks', { body })
       const next = { ...blank(), directory: draft.directory, existing: draft.existing }
       rememberDraft(next); setDraft(next)
@@ -121,6 +123,7 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
             options={[{ value: 'team', label: t('teamModeTeam') }, { value: 'single', label: t('teamModeSingle') }]} /></ComposerField>
           <ComposerField label={t('localTaskModel')}><ModelSelect value={draft.model} onChange={model => edit({ model })} /></ComposerField>
           <ComposerField label={t('modelEffort')}><ReasoningSelect value={draft.model} onChange={model => edit({ model })} /></ComposerField>
+          {draft.mode === 'team' && <ComposerField label={t('teamRoundLimit')}><Input type="number" min={1} max={8} required value={draft.maxRounds ?? 3} onChange={event => edit({ maxRounds: Number(event.target.value) })} /></ComposerField>}
           <div className="dt-composer-full"><ComposerField label={t('localPermissionTitle')}>
             <PermissionSelect value={draft.permissionPreset} onChange={permissionPreset => edit({ permissionPreset })} />
           </ComposerField></div>

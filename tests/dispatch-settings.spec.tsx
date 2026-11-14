@@ -26,7 +26,7 @@ it('discovers another registered source in connections and saves its own dispatc
   await type(field<HTMLInputElement>('名字'), 'Alice')
   await click(zh.save)
   expect(server.settings.policy.sources.support?.allowed).toEqual([{ id: 'support-alice', name: 'Alice' }])
-  await click(zh.localConnectionsSetup)
+  await click(find('工单系统', '.dt-connections-nav button'))
   expect(find('工单系统', '.dt-connections-nav button')).toBeDefined()
 })
 it('lists multiple MCP applications and edits one workspace grant without changing the others', async () => {

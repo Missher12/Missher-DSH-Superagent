@@ -138,6 +138,8 @@ export class Runtime extends Service implements SourceHost {
       this.settings = new Settings({ store, sources, engine: { policyChanged }, health: board, context: ctx, lifetime: this.lifetime, sessions,
         sourceHost: this, setup, requestPass: () => { this.passes.request() } })
       this.executor = new DshExecutor({ context: ctx, get engine() { return runtime.engine }, store, effects, health: board.claim('worker'), machine,
+        managed: ticket => { if (!this.teams?.ownsSource(ticket.id)) return false; store.afterCommit(() => this.teams?.request()); return true },
+        allowed: ticket => this.teams?.allowedWorker(ticket.id) ?? true,
         lifetime: this.lifetime, sessions, closing: () => this.closing(), paused: () => this.paused(), environment, sourceLink: link,
         workspace: trigger => {
           const selected = machine.mode === 'local' ? sources.workspace(trigger) : undefined
@@ -151,7 +153,7 @@ export class Runtime extends Service implements SourceHost {
       const { assessor, executor } = this
       const policy = () => settingsPolicy(store.settings(), sources)
       const engine = this.engine = new Engine({ repo: store, scope: sources, policy, assessor, executor,
-        outbox, prepareTicket: (ticket, outcome) => executor.prepare(ticket, outcome), emit: event => {
+        outbox, prepareTicket: (ticket, outcome) => { const prepared = executor.prepare(ticket, outcome); this.teams?.prepareSource(prepared); return prepared }, emit: event => {
           store.afterCommit(() => { this.teams?.request() })
           // Notify the main Session only about domain events it did not initiate itself.
           const notice = this.quiet ? undefined : eventNotice(event, id => store.tickets.get(id))
@@ -178,6 +180,7 @@ export class Runtime extends Service implements SourceHost {
         get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem },
         get githubProblem() { return setup.githubProblem }, receive: trigger => passes.receive(trigger) }
       this.toolHost = { context: ctx, engine, store, prompts, sessions, settings: this.settings, assessor, resources,
+        get teams() { return runtime.teams },
         ...(machine.mode === 'local' ? { recordDelivery: (ticket: Ticket, input: import('../teams/contracts.ts').DeliveryInput, state: string) =>
           recordDelivery(store, ticket, input, (session, command, since) => sessions.commandEvidence(session, command, since), state) } : {}),
         get github() { return runtime.context({ kind: 'github', health: ['github'] }) },
@@ -214,9 +217,12 @@ export class Runtime extends Service implements SourceHost {
     return channel => this.sources.link(channel, links)
   }
   ticketEnvironment(ticket: Ticket): Variable[] {
-    const trigger = sourceTrigger(this, ticket)
+    const source = this.teams?.sourceTicket(ticket.id), trigger = sourceTrigger(this, source ?? ticket)
+    // Members retain their own identity and directory, but use the original request's task branch and source context.
+    const current = source?.execution && ticket.execution
+      ? { ...ticket, execution: { ...ticket.execution, name: source.execution.name } } : ticket
     const { setup: { deployment }, sources } = this
-    return ticketEnvironment({ deployment, sources, settings: this.store.settings(), ticket, ...trigger ? { trigger } : {} })
+    return ticketEnvironment({ deployment, sources, settings: this.store.settings(), ticket: current, ...trigger ? { trigger } : {} })
   }
   checkSetup(): void { this.setup.check() }
   receive(trigger: Trigger): ReceiveResult { return this.passes.receive(trigger) }

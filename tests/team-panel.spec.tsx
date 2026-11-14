@@ -86,6 +86,15 @@ it('opens new member fields immediately instead of hiding the required empty ass
   expect(member.hasAttribute('open')).toBe(true)
   expect(member.querySelector('textarea')?.value).toBe('')
 })
+it('offers a real member name, an explicit parent and add-and-execute action', async () => {
+  server.teamViews['explicit-team']!.model = { provider: 'worker-provider', model: 'worker-model' }
+  at({ page: 'overview', query: { team: 'explicit-team', member: 'coordinator' } })
+  await mount(); await click(all('.dt-team-collaboration-title button')[0]!)
+  expect(field<HTMLInputElement>(zh.teamMemberName).value).toMatch(/成员/)
+  expect(field<HTMLSelectElement>('上级').value).toBe('coordinator')
+  expect(all('[role="dialog"] button').some(button => button.textContent === '添加并执行')).toBe(true)
+  expect(field<HTMLSelectElement>(zh.localTaskModel).options[0]!.text).toContain('Worker model')
+})
 it('keeps a new member expanded and focused while entering, clearing, and rewriting the assignment', async () => {
   await mount(); await click('新建任务'); await click('添加成员')
   const member = all('.dt-team-plan-member').at(-1)! as HTMLDetailsElement

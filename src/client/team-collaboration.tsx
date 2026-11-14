@@ -9,32 +9,40 @@ import { TeamStatus, TeamText } from './team-ui.tsx'
 import { useAction, usePanel } from './provider.tsx'
 import { errorText, shortText } from './text.ts'
 import { When } from './widgets.tsx'
+import { Select } from './select.tsx'
 
-function AddTeamMember({ team, reload, select }: { team: TeamView; reload: () => Promise<void>; select: (id: string) => void }) {
+function AddTeamMember({ team, reload, select, parentId = 'coordinator', compact = false }: { team: TeamView; reload: () => Promise<void>; select: (id: string) => void; parentId?: string; compact?: boolean }) {
   const { t, call } = usePanel(), form = useId()
-  const blank = (): TeamMember => ({ id: `member-${crypto.randomUUID().slice(0, 12)}`, name: '', instructions: '', dependencies: [] })
+  const blank = (count = team.memberCount + 1): TeamMember => ({ id: `member-${crypto.randomUUID().slice(0, 12)}`, name: t('teamMemberNumber', { count }), instructions: '', dependencies: [], parentId, responsibility: 'implementer' })
   const [draft, setDraft] = useState(blank), [open, setOpen] = useState(false), [error, setError] = useState<string>()
   const submit = useAction(async () => {
     setError(undefined)
     try {
-      await call('POST local/teams/:id/members', { id: team.id, body: draft })
-      setOpen(false); await reload(); select(draft.id); setDraft(blank())
+      const updated = await call('POST local/teams/:id/members', { id: team.id, body: draft })
+      setOpen(false); await reload(); select(draft.id); setDraft(blank(updated.memberCount + 1))
     } catch (failure) { setError(errorText(failure)); throw failure }
   })
-  return <><Button size="sm" variant="outline" icon={<Icon name="plus" />} disabled={team.state === 'stopped' || team.memberCount >= 6}
-    title={team.memberCount >= 6 ? t('teamMaxMembers') : undefined} onClick={() => setOpen(true)}>{t('teamAddMember')}</Button>
+  return <><Button size="sm" variant={compact ? 'ghost' : 'outline'} icon={<Icon name="plus" />} disabled={team.state === 'stopped' || !!team.workflow?.halted || team.memberCount >= 12}
+    aria-label={compact ? `${t('teamAddMember')} · ${team.members.find(member => member.id === parentId)?.name}` : undefined}
+    title={team.memberCount >= 12 ? t('teamMaxMembers') : t('teamAddMemberHint')} onClick={() => setOpen(true)}>{compact ? null : t('teamAddMember')}</Button>
     <ComposerModal open={open} title={t('teamAddMember')} kind="member" busy={submit.busy} close={() => setOpen(false)}
-      form={form} action={t('teamAddMember')} note={t('studioTeamDispatch')}>
+      form={form} action={t('teamAddAndRun')} note={t('teamAddMemberHint')}>
       <ComposerForm id={form} disabled={submit.busy} failure={error} onSubmit={() => { void submit.run() }}>
         <section className="dt-composer-brief" aria-label={t('teamAddMember')}>
           <Field label={t('teamMemberName')} required><Input required className="dt-composer-name" maxLength={60} value={draft.name}
-            placeholder={t('teamMemberNumber', { count: team.members.length + 1 })} onChange={event => setDraft({ ...draft, name: event.target.value })} /></Field>
+            placeholder={t('teamMemberNumber', { count: team.memberCount + 1 })} onChange={event => setDraft({ ...draft, name: event.target.value })} /></Field>
           <Field label={t('teamMemberWork')} required><WritingArea required maxLength={4000} value={draft.instructions}
             placeholder={t('studioMemberPlaceholder')} onChange={event => setDraft({ ...draft, instructions: event.target.value })} /></Field>
         </section>
         <section className="dt-composer-properties dt-composer-grid" aria-label={t('studioExecutionSettings')}>
-          <Field label={t('localTaskModel')}><ModelSelect defaultLabel={t('teamModelInherit')} value={draft.model} onChange={model => setDraft({ ...draft, model })} /></Field>
+          <Field label={t('localTaskModel')}><ModelSelect inherited={team.model} defaultLabel={t('teamModelInherit')} value={draft.model} onChange={model => setDraft({ ...draft, model })} /></Field>
           <Field label={t('modelEffort')}><ReasoningSelect inherited={team.model} value={draft.model} onChange={model => setDraft({ ...draft, model })} /></Field>
+          <Field label={t('teamParent')}><Select value={draft.parentId ?? 'coordinator'} onChange={event => setDraft({ ...draft, parentId: event.target.value })}>
+            {team.members.filter(member => member.role === 'coordinator' || member.responsibility === 'manager').map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
+          </Select></Field>
+          <Field label={t('teamResponsibility')}><Select value={draft.responsibility ?? 'implementer'} onChange={event => setDraft({ ...draft, responsibility: event.target.value as TeamMember['responsibility'] })}>
+            {(['implementer', 'reviewer', 'manager'] as const).map(role => <option key={role} value={role}>{t(`teamRole.${role}`)}</option>)}
+          </Select></Field>
           <div className="dt-composer-full"><Field label={t('teamDependencies')}><fieldset className="dt-fieldset dt-team-dependencies" aria-label={t('teamDependencies')}>
             {team.members.filter(member => member.role === 'member').map(member => <label key={member.id}><input type="checkbox" checked={draft.dependencies.includes(member.id)}
               onChange={event => setDraft({ ...draft, dependencies: event.target.checked ? [...draft.dependencies, member.id] : draft.dependencies.filter(id => id !== member.id) })} />{member.name}</label>)}
@@ -81,7 +89,8 @@ export function TeamCollaboration({ team, selected, select, reload, delivery }: 
       aria-labelledby={tab === 'graph' ? 'dt-team-relations' : tab === 'members' ? 'dt-team-assignments' : 'dt-team-completion'}>
       {(team.error || review) && <div className="dt-team-issue" role="alert"><p>{team.error ?? (team.completion!.issues.join('\n') || t('teamReviewPending'))}</p><Button size="sm" disabled={retry.busy} onClick={() => { void retry.run() }}>{t(team.error ? 'teamRetry' : 'teamReviewContinue')}</Button></div>}
       {tab === 'graph' ? <><div className="dt-team-count-line"><span>{t('studioTaskFlow')}</span><span>{t('teamCompletedCount', { done: team.completedMembers, total: team.memberCount })}</span></div>
-        <TeamGraph team={team} selected={selected} select={select} /><section className="dt-team-selected-plan"><div><h3>{t('studioCurrentAssignment')}</h3><span>{active.name}</span></div>
+        {team.workflow && <div className="dt-team-round" role="status">{t('teamRound', { round: team.workflow.round, version: team.workflow.planVersion })}</div>}
+        <TeamGraph team={team} selected={selected} select={select} addMember={member => <AddTeamMember key={member.id} team={team} parentId={member.id} reload={reload} select={select} compact />} /><section className="dt-team-selected-plan"><div><h3>{t('studioCurrentAssignment')}</h3><span>{active.name}</span></div>
           <p className="dt-team-assignment-summary">{active.role === 'coordinator' ? t('teamCoordinatorWork') : shortText(active.instructions, 80)}</p>{active.role === 'coordinator' && active.state === 'waiting' && <p className="dt-hint">{t(team.completion?.members ? 'teamReviewPending' : 'teamPlanningRound')}</p>}
           <Button size="sm" icon={<Icon name="message" size={14} />} onClick={() => select(active.id)}>{t('teamOpenSession')}</Button></section>
         {!!recent.length && <section className="dt-studio-recent"><h3>{t('studioRecentCollaboration')}</h3>{recent.map(event => <div key={`${event.member}:${event.id}`}>

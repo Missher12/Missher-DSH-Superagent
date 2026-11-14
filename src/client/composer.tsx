@@ -68,15 +68,5 @@ export function ComposerField({ label, required, note, children }: {
 }
 
 export function WritingArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  const field = useRef<HTMLTextAreaElement>(null)
-  const grow = () => { if (field.current) { field.current.style.height = 'auto'; field.current.style.height = `${Math.max(128, field.current.scrollHeight)}px` } }
-  useLayoutEffect(grow, [props.value])
-  useLayoutEffect(() => {
-    const parent = field.current?.parentElement
-    if (!parent || typeof ResizeObserver === 'undefined') return
-    let width = parent.clientWidth
-    const observer = new ResizeObserver(() => { if (width !== parent.clientWidth) { width = parent.clientWidth; grow() } })
-    observer.observe(parent); return () => observer.disconnect()
-  }, [])
-  return <textarea {...props} ref={field} className="dt-textarea dt-composer-writing" rows={4} />
+  return <textarea {...props} className="dt-textarea dt-composer-writing" rows={4} />
 }

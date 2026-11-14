@@ -51,17 +51,17 @@ export class SourceRegistry implements SourceScope {
   /** Every registered kind's instance ordered by ID, followed by stored instances whose kind is not installed (with their config kept as stored). */
   instances(settings = this.settings()): (SourceInstance & { installed: boolean })[] {
     const installed = [...this.kinds.values()].sort((a, b) => a.kind.localeCompare(b.kind)).map(kind => ({ ...this.resolve(kind, settings.sources[kind.kind]), installed: true }))
-    const orphaned = Object.entries(settings.sources).filter(([id]) => !this.kinds.has(id)).map(([id, stored]) => ({ id, kind: id, enabled: stored.enabled, config: stored.config, installed: false }))
+    const orphaned = Object.entries(settings.sources).filter(([id]) => !this.kinds.has(id)).map(([id, stored]) => ({ id, kind: id, ...stored, installed: false }))
     return [...installed, ...orphaned]
   }
   instance<C extends Record<string, unknown>>(id: string, settings = this.settings()): SourceInstance<C> | undefined {
     const kind = this.kinds.get(id)
     return kind ? this.resolve(kind, settings.sources[id]) as SourceInstance<C> : undefined
   }
-  validate(id: string, value: { enabled: boolean; config: unknown }): { enabled: boolean; config: Record<string, unknown> } {
+  validate(id: string, value: { enabled: boolean; config: unknown; execution?: 'single' | 'team' }): { enabled: boolean; config: Record<string, unknown>; execution?: 'single' | 'team' } {
     const kind = this.kinds.get(id)
     if (!kind) throw new Error(`Source kind not installed: ${id}`)
-    return { enabled: value.enabled, config: kind.schema.parse(value.config) }
+    return { enabled: value.enabled, config: kind.schema.parse(value.config), ...value.execution ? { execution: value.execution } : {} }
   }
   /** Validates each Source's part of a submitted Policy against its kind; policy parts for uninstalled Source kinds are kept as stored. */
   validatePolicy(parts: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown> & { allowed: { id: string; name?: string }[] }> {
@@ -138,8 +138,9 @@ export class SourceRegistry implements SourceScope {
     return kind.scope ? kind.scope({ meta: input.meta }, instance.config) : { listened: true, observed: false }
   }
   /** Falls back to schema defaults and disables the instance when stored configuration fails validation. */
-  private resolve(kind: SourceKind, stored: { enabled: boolean; config: Record<string, unknown> } | undefined): SourceInstance {
+  private resolve(kind: SourceKind, stored: Settings['sources'][string] | undefined): SourceInstance {
     const parsed = kind.schema.safeParse(stored?.config ?? {})
-    return { id: kind.kind, kind: kind.kind, enabled: parsed.success && (stored?.enabled ?? true), config: parsed.success ? parsed.data : kind.schema.parse({}) }
+    return { id: kind.kind, kind: kind.kind, enabled: parsed.success && (stored?.enabled ?? true), config: parsed.success ? parsed.data : kind.schema.parse({}),
+      ...stored?.execution ? { execution: stored.execution } : {} }
   }
 }

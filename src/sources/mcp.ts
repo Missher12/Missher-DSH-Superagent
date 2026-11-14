@@ -107,7 +107,7 @@ export class McpTasks {
     })
   }
   private async save(clients: McpConfig['clients']) {
-    await this.runtime.settings.save('source:mcp', { enabled: clients.some(client => client.enabled), config: { clients } },
+    await this.runtime.settings.save('source:mcp', { ...this.runtime.store.settings().sources.mcp, enabled: clients.some(client => client.enabled), config: { clients } },
       this.runtime.store.blockRevision('source:mcp'), 'panel')
     this.runtime.store.set(KV.sources.labels('mcp'), Object.fromEntries(clients.map(client => [client.id, client.name])))
   }
@@ -158,8 +158,11 @@ export class McpTasks {
   }
   get(principal: McpPrincipal, id: string) {
     const ticket = this.owned(principal, id)
+    const target = this.runtime.teams?.target(id), team = target && this.runtime.teams!.get(target.team)
     return { ticketId: ticket.id, title: ticket.title, stage: ticketStage(ticket), directory: ticket.execution?.directory,
-      sessionId: workerSessionId(id), summary: latestReport(ticket)?.summary ?? '', updatedAt: ticket.updatedAt,
+      sessionId: team ? team.members[0]?.sessionId : workerSessionId(id), summary: latestReport(ticket)?.summary ?? '', updatedAt: ticket.updatedAt,
+      ...team ? { team: { id: team.id, state: team.state, workflow: team.workflow, error: team.error,
+        members: team.members.map(({ id, name, state, parentId, responsibility, sessionId }) => ({ id, name, state, parentId, responsibility, sessionId })), deliveries: team.deliveries } } : {},
       paused: this.runtime.store.settings().paused, ...(ticket.attention ? { attention: ticket.attention } : {}), messages: taskMessages(this.runtime, id) }
   }
   list(principal: McpPrincipal, offset = 0, limit = 20) {

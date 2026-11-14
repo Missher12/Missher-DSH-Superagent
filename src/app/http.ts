@@ -126,7 +126,11 @@ export function stateView(runtime: HttpHost) {
     maxWorkers: settings.executor.maxWorkers },
     masterId: runtime.masterId, paused: settings.paused, health: runtime.health }
 }
-const views = (runtime: HttpHost): ViewHost => ({ store: runtime.store, sources: runtime.sources, links: runtime.links() })
+const views = (runtime: HttpHost): ViewHost => ({ store: runtime.store, sources: runtime.sources, links: runtime.links(),
+  sessionId: ticket => {
+    const target = runtime.teams?.target(ticket.id), team = target && runtime.teams!.get(target.team)
+    return team?.sourceTicketId === ticket.id ? team.members.find(member => member.role === 'coordinator')?.sessionId ?? '' : undefined
+  } })
 const setupState = (runtime: HttpHost): SetupState => ({ deployment: runtime.configured() ? runtime.deployment : undefined,
   problem: runtime.setupProblem, feishuProblem: runtime.feishuProblem, githubProblem: runtime.githubProblem })
 export type StateView = ReturnType<typeof stateView>
@@ -134,8 +138,10 @@ export type StateView = ReturnType<typeof stateView>
 function ticketPage(runtime: HttpHost, id: string) {
   const detail = ticketDetail(views(runtime), id), ticket = runtime.store.tickets.get(id)
   if (!detail || !ticket) throw new RouteError(404, 'Ticket not found')
-  return { ...detail, local: !!workspaceOf(runtime.store, ticket),
-    deliveryReport: latestDelivery(runtime.store, ticket),
+  const target = runtime.teams?.target(id), team = target && runtime.teams!.get(target.team)
+  const planner = team?.sourceTicketId === id ? team.members.find(member => member.role === 'coordinator') : undefined
+  return { ...detail, ...(team?.sourceTicketId === id ? { assignments: detail.assignments.map(run => ({ ...run, ref: undefined })) } : {}), local: !!workspaceOf(runtime.store, ticket),
+    deliveryReport: planner?.delivery ?? latestDelivery(runtime.store, ticket),
     messages: localMessages(runtime, id), environment: runtime.configured() ? runtime.ticketEnvironment(ticket) : [] }
 }
 export type TicketPageView = ReturnType<typeof ticketPage>
@@ -212,7 +218,7 @@ function routes(runtime: HttpHost): Routes {
     'GET local/board': ({ query }) => {
       if (!runtime.local) throw new RouteError(404, 'Local task intake is not enabled')
       const { column, q, offset, limit } = LocalBoardQuery.parse(query)
-      return localBoard(views(runtime), column, offset, limit, q)
+      return localBoard(views(runtime), column, offset, limit, q, runtime.teams?.list().map(team => runtime.teams!.get(team.id)))
     },
     'GET local/workspaces': () => {
       if (!runtime.local) throw new RouteError(404, 'Local task intake is not enabled')

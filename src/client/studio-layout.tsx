@@ -105,7 +105,7 @@ function StudioSidebar() {
     onClick={() => setFile(file.path)}><Icon name="file" size={14} /><span>{file.path.split('/').at(-1)}</span></button></li>
   return <nav className="dt-team-sidebar dt-studio-sidebar" aria-label={t('teamList')}>
     <div className="dt-studio-project"><span className="dt-studio-project-icon"><Icon name="folder" size={20} /></span><div>
-      <strong title={directory}>{directory?.split('/').filter(Boolean).at(-1) ?? t('studioWorkspace')}</strong><span>{team?.name ?? t('studioIndependentDispatch')}</span></div>
+      <strong title={directory}>{team?.name ?? directory?.split('/').filter(Boolean).at(-1) ?? t('studioWorkspace')}</strong>{(team || directory) && <span>{t('studioWorkspace')}</span>}</div>
       <Button variant="ghost" size="sm" icon={<Icon name="folder" />} aria-label={t(directory ? 'localOpenWorkspace' : 'workbenchOpenWorkspace')} title={directory ?? data?.workspace?.directory}
         disabled={!directory && !data?.workspace || open.busy} onClick={() => { void open.run() }} /></div>
     <div className="dt-studio-sidebar-scroll">

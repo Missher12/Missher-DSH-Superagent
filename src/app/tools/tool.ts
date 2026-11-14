@@ -14,6 +14,8 @@ export const tool = <S extends z.ZodType>(definition: Tool<S>): Tool => definiti
 
 /** Zod adds hidden Standard Schema methods; the host requires a pure JSON tool schema. */
 export const toolParameters = (schema: z.ZodType): ReturnType<typeof z.toJSONSchema> => JSON.parse(JSON.stringify(z.toJSONSchema(schema)))
+/** Optional view fields must be omitted at the native tool boundary, which rejects undefined JSON values. */
+export const toolValue = (value: unknown): unknown => JSON.parse(JSON.stringify(value))
 
 /** Human-facing acknowledgement text, constrained to `IM_WORDS` regardless of which channel it is posted to. */
 export const AcknowledgementSchema = z.string().trim().min(1)

@@ -288,6 +288,7 @@ Some generic modules still refer directly to GitHub or Feishu:
 
 ## Modules
 
+
 Local desktop adaptation additions:
 
 | Module | Purpose |
@@ -392,6 +393,8 @@ Local desktop adaptation additions:
 | `src/sources/github-pull.ts` | The pull request rules: which pull requests a Ticket follows (`claimPull`, `observePull`), the closes it reports to the Engine, and `pullEndNotices`, the chat notice of a Ticket that ended merged or closed |
 | `src/sources/github-channel.ts` | The GitHub Channel: comments and review thread replies, `sent` or `gone` |
 | `src/sources/github-read.ts` | CI snapshots, repository reads, the `github/` resources, and `githubThreadContext`: an Issue's or pull request's conversation by page |
+| `src/app/feishu-connect.ts` | Connects an application identity, stores credentials and restarts the owned gateway |
+| `src/infra/feishu-gateway.ts` | Credential-backed Feishu API and long-connection lifecycle |
 | `src/sources/feishu.ts` | The Feishu kind and plugin entry, exported as `./feishu-watch` |
 | `src/sources/feishu-trigger.ts` | Feishu messages as Triggers, by one rule for live events, history pages and topic pages |
 | `src/sources/feishu-loops.ts` | The Feishu loops: the event consumer, history recovery, chat names and polling of subscribed topics |
@@ -453,6 +456,8 @@ Local desktop adaptation checks:
 | `tests/local-tasks.spec.ts` | Task identity, native composer adoption, completion-boundary follow-ups, permissions, stop, result delivery and restart persistence |
 | `tests/local-panel.spec.tsx` | User dispatch and task-specific follow-ups in the panel |
 | `tests/local-teams.spec.ts` | Actual dependency dispatch, planning/final-review separation, follow-ups, evidence, stop and restart recovery |
+| `tests/feishu-connect.spec.ts`, `tests/feishu-gateway.spec.ts` | Application connection, credential handling and owned event gateway lifecycle |
+| `tests/dispatch-settings.spec.tsx` | Source selection and native dispatch settings forms |
 | `tests/team-panel.spec.tsx` | Explicit team overview, member selection, task creation, native sessions and delivery previews |
 | `tests/client-registration.spec.ts` | Host-owned conversation slot contract and cold session initialization |
 | `tests/studio-panel.spec.tsx` | Inline task validation, workspace form registration and persisted sidebar resizing |

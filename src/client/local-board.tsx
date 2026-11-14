@@ -1,7 +1,7 @@
 /** Live task columns with direct access to each ticket's real DSH worker conversation. */
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { LOCAL_BOARD_COLUMNS, type LocalBoardColumn } from '../app/api.ts'
-import { usePoll, type TicketRow } from './api.ts'
+import { LOCAL_BOARD_COLUMNS, type LocalBoardColumn, type ApiResponse } from '../app/api.ts'
+import { usePoll } from './api.ts'
 import { Button, Icon, Input } from './controls.tsx'
 import { ticketMark } from './marks.ts'
 import { useAction, usePanel } from './provider.tsx'
@@ -10,9 +10,10 @@ import { shortText } from './text.ts'
 
 const PAGE_SIZE = 20
 
-function TaskCard({ ticket, onChanged }: { ticket: TicketRow; onChanged: () => void }) {
+function TaskCard({ ticket, onChanged }: { ticket: ApiResponse<'GET local/board'>['items'][number]; onChanged: () => void }) {
   const { t, navigate, call } = usePanel()
   const open = useAction(async () => {
+    if (ticket.team) { navigate({ page: 'overview', query: { team: ticket.team.id, member: 'coordinator' } }); return }
     const query = await call('GET local/tasks/:id/workbench', { id: ticket.id })
     navigate({ page: 'overview', query })
   })
@@ -22,9 +23,10 @@ function TaskCard({ ticket, onChanged }: { ticket: TicketRow; onChanged: () => v
   const attention = ticket.stage === 'person'
   const after = async (request: Promise<unknown>) => { await request; onChanged() }
   return <li className="dt-board-card dt-task-row" data-state={completed ? 'done' : mark.dot}>
-    <div className="dt-task-row-main"><button className="dt-open dt-board-card-title" type="button" onClick={() => navigate({ page: 'execution', id: ticket.id })}>
+    <div className="dt-task-row-main"><button className="dt-open dt-board-card-title" type="button" onClick={() => { if (ticket.team) void open.run(); else navigate({ page: 'execution', id: ticket.id }) }}>
       {ticket.title}
     </button>
+    {ticket.team && <span className="dt-hint">{t('teamCompletedCount', { done: ticket.team.completed, total: ticket.team.members })}</span>}
     {note ? <p className="dt-board-note" data-error={ticket.note?.error || undefined}>{shortText(note, 100)}</p>
       : ticket.directory && <span className="dt-board-path" title={ticket.directory}><Icon name="folder" size={13} />
         <span>{ticket.directory.split('/').filter(Boolean).at(-1)}</span></span>}</div>
@@ -42,7 +44,7 @@ function TaskCard({ ticket, onChanged }: { ticket: TicketRow; onChanged: () => v
         {ticket.sessionId ? <SessionButton variant="outline" sessionId={ticket.sessionId} label={t(attention && ticket.action !== 'review' ? 'localReplyTask' : 'localViewProcess')} />
           : <span className="dt-board-pending" role="img" aria-label={t('localBoardNoSession')} title={t('localBoardNoSession')}><Icon name="clock" /></span>}
         {ticket.actions.stop && <span className="dt-board-card-stop"><ConfirmButton icon="stop" label={t('stop')} title={t('stopConfirmTitle')}
-          message={t('stopConfirm', { title: ticket.title })} onConfirm={() => after(call('POST tickets/:id/stop', { id: ticket.id }))} /></span>}
+          message={t('stopConfirm', { title: ticket.title })} onConfirm={() => after(ticket.team ? call('POST local/teams/:id/stop', { id: ticket.team.id }) : call('POST tickets/:id/stop', { id: ticket.id }))} /></span>}
       </div>
     </div>
   </li>

@@ -1,11 +1,37 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it } from 'vitest'
 import { zh } from '../src/client/locales.ts'
-import { usePanel, mount, remount, all, click, type, field, text, at } from './fixtures/panel.tsx'
+import { usePanel, mount, remount, all, find, click, type, field, text, at } from './fixtures/panel.tsx'
 import { server, ticketSummary } from './fixtures/panel-server.ts'
 
 usePanel()
 beforeEach(() => at({ page: 'execution' }))
+it('renames a workspace in place and keeps its directory visible', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }
+  at({ page: 'source' }); await mount()
+  await click(find('重命名', '.dt-local-workspace-row button'))
+  expect(field<HTMLInputElement>(zh.studioProjectDirectory).value).toBe('/tmp/work')
+  expect(field<HTMLInputElement>(zh.studioProjectDirectory).readOnly).toBe(true)
+  await type(field<HTMLInputElement>(zh.studioWorkspaceName), '我的项目')
+  await click(find(zh.save, '[role="dialog"] button'))
+  expect(all('.dt-local-workspace-row')[0]!.textContent).toContain('我的项目')
+  expect(server.workspaceChoices).toHaveLength(1)
+})
+it('refreshes the task workspace choices after adding a workspace without losing the draft', async () => {
+  server.setup = { ...server.setup, mode: 'local', accounts: null }; server.running = 0
+  at({ page: 'source' }); await mount()
+  await click(zh.localNewTask)
+  await type(field<HTMLTextAreaElement>(zh.localInstructions), '保留尚未提交的目标')
+  await click(zh.cancel)
+  await click(find(zh.localAddWorkspace, '.dt-local-workspace-tools button'))
+  await type(field<HTMLInputElement>(zh.studioWorkspaceName), '新增项目')
+  await type(field<HTMLInputElement>(zh.studioProjectDirectory), '/tmp/new-project')
+  await click(find(zh.localAddWorkspace, '[role="dialog"] button'))
+  await click(zh.localNewTask)
+  await type(field<HTMLSelectElement>(zh.localWorkspaceMode), 'existing')
+  expect([...field<HTMLSelectElement>(zh.localChooseWorkspace).options].map(option => option.value)).toContain('/tmp/new-project')
+  expect(field<HTMLTextAreaElement>(zh.localInstructions).value).toBe('保留尚未提交的目标')
+})
 it('keeps a chosen execution permission through closing, reopening and restoring a task draft', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   await mount(); await click('新建任务')
@@ -306,12 +332,12 @@ it('keeps task policy inside MCP services and retains its draft when switching b
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   at({ page: 'settings' })
   await mount(); await click(zh.localConnections)
-  expect(all('.dt-connections-nav button')).toHaveLength(3)
+  expect(all('.dt-connections-nav button')).toHaveLength(4)
   await click(zh.localExternalPolicy)
   await click('研判设置')
   await type(field<HTMLSelectElement>(zh.acceptMode), 'observe')
-  await click('接入')
-  expect(all('.dt-connections-nav button')).toHaveLength(3)
+  await click(find('MCP', '.dt-connections-nav button'))
+  expect(all('.dt-connections-nav button')).toHaveLength(4)
   expect(all('.dt-mcp-tools li').map(item => item.getAttribute('title'))).toEqual([
     'workspace_list', 'task_create', 'task_get', 'task_list', 'task_followup', 'task_stop', 'task_retry',
   ])

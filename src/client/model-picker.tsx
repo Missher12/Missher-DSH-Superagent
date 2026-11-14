@@ -4,23 +4,29 @@ import { usePoll } from './api.ts'
 import { useAction, usePanel } from './provider.tsx'
 import { Select } from './select.tsx'
 import { effortLabel } from './model-labels.ts'
+import type { AriaAttributes } from 'react'
+type Accessible = Pick<AriaAttributes, 'aria-invalid' | 'aria-describedby' | 'aria-labelledby'>
 
-export function ModelSelect({ value, onChange, id, disabled, label, 'aria-label': ariaLabel, defaultLabel }: {
+export function ModelSelect({ value, inherited, onChange, id, disabled, label, 'aria-label': ariaLabel, defaultLabel, ...accessible }: {
   value?: RoleModel | null; onChange: (model: RoleModel | undefined) => void; id?: string; disabled?: boolean; label?: string; 'aria-label'?: string; defaultLabel?: string
-}) {
+  inherited?: RoleModel | null
+} & Accessible) {
   const { t, call } = usePanel()
   const { data, error } = usePoll(() => call('GET models'), [call], 60_000)
   const selected = value ? JSON.stringify([value.provider, value.model]) : ''
   const listed = data?.groups.some(group => group.id === value?.provider && group.models.some(model => model.id === value?.model))
   const group = data?.groups.find(group => group.id === value?.provider)
-  const selectedName = value ? `${group?.name ?? value.provider} · ${group?.models.find(model => model.id === value.model)?.name ?? value.model}` : defaultLabel ?? t('taskModelDefault')
-  return <Select id={id} className="dt-model-select" aria-label={label ?? ariaLabel} disabled={disabled || !data}
+  const effective = inherited ?? data?.taskDefault ?? data?.default
+  const inheritedName = effective && (data?.groups.find(group => group.id === effective.provider)?.models.find(model => model.id === effective.model)?.name ?? effective.model)
+  const defaultName = `${defaultLabel ?? t('taskModelDefault')}${inheritedName ? ` · ${inheritedName}` : ''}${effective?.reasoningEffort ? ` ${effortLabel(effective.reasoningEffort, effective.reasoningEffort, t)}` : ''}`
+  const selectedName = value ? `${group?.name ?? value.provider} · ${group?.models.find(model => model.id === value.model)?.name ?? value.model}` : defaultName
+  return <Select {...accessible} id={id} className="dt-model-select" aria-label={label ?? ariaLabel} disabled={disabled || !data}
     value={selected} title={error ? t('modelPickerError') : selectedName} onChange={event => {
       if (!event.target.value) { onChange(undefined); return }
       const [provider, model] = JSON.parse(event.target.value) as [string, string]
       onChange({ provider, model })
     }}>
-    <option value="">{error ? t('modelPickerError') : defaultLabel ?? t('taskModelDefault')}</option>
+    <option value="">{error ? t('modelPickerError') : defaultName}</option>
     {value && !listed && <option value={selected} data-detail={value.provider}>{value.model}</option>}
     {data?.groups.map(group => <optgroup label={group.name} key={group.id}>
       {group.models.map(model => <option key={model.id} data-detail={group.name} value={JSON.stringify([group.id, model.id])}>{model.name}</option>)}
@@ -29,16 +35,16 @@ export function ModelSelect({ value, onChange, id, disabled, label, 'aria-label'
 }
 
 /** Only expose reasoning efforts supported by the actual selected or inherited model. */
-export function ReasoningSelect({ value, inherited, inherit = 'task', onChange, id, disabled, label, 'aria-label': ariaLabel }: {
+export function ReasoningSelect({ value, inherited, inherit = 'task', onChange, id, disabled, label, 'aria-label': ariaLabel, ...accessible }: {
   value?: RoleModel | null; inherited?: RoleModel | null; onChange: (model: RoleModel | undefined) => void; id?: string; disabled?: boolean; label?: string; 'aria-label'?: string
   inherit?: 'dsh' | 'task'
-}) {
+} & Accessible) {
   const { t, call } = usePanel()
   const { data, error } = usePoll(() => call('GET models'), [call], 60_000)
   const effective = value ?? inherited ?? (inherit === 'task' ? data?.taskDefault : undefined) ?? data?.default
   const options = data?.groups.find(group => group.id === effective?.provider)?.models.find(model => model.id === effective?.model)?.reasoning?.efforts ?? []
   const effort = value ? value.reasoningEffort ?? '' : effective?.reasoningEffort ?? ''
-  return <Select id={id} className="dt-reasoning-select" aria-label={label ?? ariaLabel} value={effort}
+  return <Select {...accessible} id={id} className="dt-reasoning-select" aria-label={label ?? ariaLabel} value={effort}
     disabled={disabled || !data || !effective || !options.length} onChange={event => {
       if (!effective) return
       const { reasoningEffort: _old, ...model } = effective

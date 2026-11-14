@@ -33,7 +33,7 @@ export function settingsView(store: Store, sources: SourceRegistry, health: Heal
       const { id, title, health: parts } = sourceHealth(sources, instance, health)
       return { id, kind: instance.kind, title, description: kind?.description ?? { zh: '', en: '' }, installed: instance.installed,
         state: sourceState(instance, parts, setup),
-        value: { enabled: instance.enabled, config: instance.config }, revision: store.blockRevision(`source:${instance.id}`),
+        value: { enabled: instance.enabled, config: instance.config, ...instance.execution ? { execution: instance.execution } : {} }, revision: store.blockRevision(`source:${instance.id}`),
         restarts: SETUP_FIELDS[instance.id] ?? [], fields: kind?.fields ?? [], facts: kind?.facts?.(setup.deployment) ?? {},
         labels: store.get(KV.sources.labels(instance.id)) ?? {}, ...problem ? { problem } : {}, ...policyOf(sources, instance.id, health) }
     }),

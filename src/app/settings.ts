@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import { UserError, type EngineForSettings } from '../core/index.ts'
-import { EvalConfigSchema, ExecutorConfigSchema, PolicyConfigSchema, SettingsSchema, policyEffects, policyVersion } from '../policy.ts'
+import { EvalConfigSchema, ExecutorConfigSchema, PolicyConfigSchema, SettingsSchema, SourceInstanceSchema, policyEffects, policyVersion } from '../policy.ts'
 import type { Settings as SettingsValue, SettingsBlock, SettingsOrigin, SettingsSave } from '../policy.ts'
 import type { SourceHost } from '../sources/host.ts'
 import type { HealthBoard, HealthEntry } from '../infra/health.ts'
@@ -45,10 +45,13 @@ const BLOCKS: Record<'policy' | 'eval' | 'executor' | 'source', Block> = {
     guard: (current, candidate, origin) => { if (origin !== 'panel' && environment(current) !== environment(candidate)) throw new UserError('panelOnlyEnvironment') },
   },
   source: {
-    parse: (value, sources, id) => sources.validate(id, z.object({ enabled: z.boolean(), config: z.unknown() }).parse(value)),
+    parse: (value, sources, id) => sources.validate(id, SourceInstanceSchema.parse(value)),
     merge: (settings, value, id) => ({ ...settings, sources: { ...settings.sources, [id]: value as SettingsValue['sources'][string] } }),
     // Only the management panel may switch source accounts.
-    guard: (current, candidate, origin) => { if (origin !== 'panel' && setupChanged(current, candidate)) throw new UserError('panelOnlyAccounts') },
+    guard: (current, candidate, origin) => {
+      if (origin !== 'panel' && setupChanged(current, candidate)) throw new UserError('panelOnlyAccounts')
+      if (origin !== 'panel' && Object.keys(candidate.sources).some(id => candidate.sources[id]?.execution !== current.sources[id]?.execution)) throw new UserError('panelOnlyEnvironment')
+    },
   },
 }
 
@@ -132,7 +135,7 @@ export class Settings {
     const settings = store.settings(), id = block.startsWith('source:') ? block.slice('source:'.length) : undefined
     const instance = id === undefined ? undefined : sources.instances(settings).find(item => item.id === id)
     const value = block === 'pause' ? { paused: settings.paused } : block === 'policy' || block === 'eval' || block === 'executor' ? settings[block]
-      : instance ? { enabled: instance.enabled, config: instance.config } : undefined
+      : instance ? { enabled: instance.enabled, config: instance.config, ...instance.execution ? { execution: instance.execution } : {} } : undefined
     if (value === undefined) throw new UserError('unknownBlock', { block })
     return { block, revision: store.blockRevision(block as SettingsSave), value }
   }

@@ -87,7 +87,8 @@ export function Select({ id, className = '', value, children, disabled, title, o
     <Menu open={open} selectedId={String(value ?? '')} items={items} onSelect={choose} onClose={() => close()} portal compact align="start" side={side}
       className="dt-choice-anchor" getAnchorRect={() => trigger.current?.getBoundingClientRect() ?? null}
       anchor={<button id={id} ref={trigger} type="button" className="dt-choice-trigger" disabled={disabled} aria-label={props['aria-label']}
-        aria-labelledby={props['aria-labelledby']} aria-haspopup="menu" aria-expanded={open} title={title ?? caption} onClick={() => setOpen(value => !value)}>
+        aria-labelledby={props['aria-labelledby']} aria-invalid={props['aria-invalid']} aria-describedby={props['aria-describedby']}
+        aria-required={props.required} aria-haspopup="menu" aria-expanded={open} title={title ?? caption} onClick={() => setOpen(value => !value)}>
         <span>{caption}</span><Icon name="chevron-down" size={14} />
       </button>} />
   </span>

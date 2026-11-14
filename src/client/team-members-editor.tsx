@@ -7,10 +7,11 @@ import { usePanel } from './provider.tsx'
 import { ComposerField as Field } from './composer.tsx'
 import type { T } from './text.ts'
 import type { RoleModel } from '../policy.ts'
+import { Select } from './select.tsx'
 
 export function defaultMembers(t: T): TeamMember[] {
-  return [{ id: 'build', name: t('teamDefaultBuild'), instructions: t('teamDefaultBuildWork'), dependencies: [] },
-    { id: 'check', name: t('teamDefaultCheck'), instructions: t('teamDefaultCheckWork'), dependencies: ['build'] }]
+  return [{ id: 'build', name: t('teamDefaultBuild'), instructions: t('teamDefaultBuildWork'), dependencies: [], responsibility: 'implementer' },
+    { id: 'check', name: t('teamDefaultCheck'), instructions: t('teamDefaultCheckWork'), dependencies: ['build'], responsibility: 'reviewer' }]
 }
 export function TeamMembersEditor({ members, onChange, disabled, model }: { members: TeamMember[]; onChange: (members: TeamMember[]) => void; disabled: boolean; model?: RoleModel }) {
   const { t } = usePanel()
@@ -29,12 +30,19 @@ export function TeamMembersEditor({ members, onChange, disabled, model }: { memb
           { dependencies: event.target.checked ? [...member.dependencies, previous.id] : member.dependencies.filter(id => id !== previous.id) })} /><span>{previous.name}</span></label>)}
         {!index && <span className="dt-hint">{t('teamNoDependencies')}</span>}
       </fieldset></Field>
-      <div className="dt-composer-grid"><Field label={t('localTaskModel')}><ModelSelect defaultLabel={t('teamModelInherit')} value={member.model} onChange={model => edit(member.id, { model })} /></Field>
+      <div className="dt-composer-grid"><Field label={t('localTaskModel')}><ModelSelect inherited={model} defaultLabel={t('teamModelInherit')} value={member.model} onChange={model => edit(member.id, { model })} /></Field>
       <Field label={t('modelEffort')}><ReasoningSelect value={member.model} inherited={model} onChange={model => edit(member.id, { model })} /></Field></div>
+      <Field label={t('teamResponsibility')}><Select value={member.responsibility ?? 'implementer'} onChange={event => edit(member.id, { responsibility: event.target.value as TeamMember['responsibility'] })}>
+        {(['implementer', 'reviewer', 'manager'] as const).map(role => <option key={role} value={role}>{t(`teamRole.${role}`)}</option>)}
+      </Select></Field>
+      <Field label={t('teamParent')}><Select value={member.parentId ?? 'coordinator'} onChange={event => edit(member.id, { parentId: event.target.value })}>
+        <option value="coordinator">{t('teamCoordinator')}</option>{members.filter(parent => parent.id !== member.id && parent.responsibility === 'manager').map(parent => <option key={parent.id} value={parent.id}>{parent.name}</option>)}
+      </Select></Field>
       <div className="dt-danger-zone"><Button size="sm" icon={<Icon name="trash" />} disabled={disabled || members.length <= 2} title={members.length <= 2 ? t('teamMinMembers') : undefined}
-        onClick={() => onChange(members.filter(value => value.id !== member.id).map(value => ({ ...value, dependencies: value.dependencies.filter(id => id !== member.id) })))}>{t('teamRemoveMember')}</Button></div>
+        onClick={() => onChange(members.filter(value => value.id !== member.id).map(value => ({ ...value, dependencies: value.dependencies.filter(id => id !== member.id),
+          ...value.parentId === member.id ? { parentId: member.parentId ?? 'coordinator' } : {} })))}>{t('teamRemoveMember')}</Button></div>
     </div>
-  </details>)}<div className="dt-actions"><Button size="sm" icon={<Icon name="plus" />} disabled={disabled || members.length >= 6} onClick={() => {
+  </details>)}<div className="dt-actions"><Button size="sm" icon={<Icon name="plus" />} disabled={disabled || members.length >= 12} onClick={() => {
     const id = `member-${crypto.randomUUID().slice(0, 12)}`
     setExpanded(current => ({ ...current, [id]: true }))
     onChange([...members, { id, name: t('teamMemberNumber', { count: members.length + 1 }), instructions: '', dependencies: [members.at(-1)!.id] }])

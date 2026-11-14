@@ -1,36 +1,34 @@
-/* Approved C2 forms: a writing surface above a compact, responsive property grid. */
-.dt-modal.dt-composer-modal { width:min(648px,100%); height:min(624px,calc(100dvh - 48px)); border-radius:14px; background:var(--dsw-alias-bg-base,var(--dsw-alias-bg-layer-1)); }
-.dt-modal.dt-composer-member { height:min(540px,calc(100dvh - 48px)); }
-.dt-modal.dt-composer-workspace { height:min(360px,calc(100dvh - 48px)); }
+/* Native forms retain stable geometry while editing and disclose optional team details. */
+.dt-modal.dt-composer-modal { width:min(680px,100%); height:min(740px,calc(100dvh - 48px)); border-radius:12px; background:var(--dsw-alias-bg-base,var(--dsw-alias-bg-layer-1)); }
+.dt-modal.dt-composer-member { height:min(640px,calc(100dvh - 48px)); }
+.dt-modal.dt-composer-workspace { height:auto; max-height:calc(100dvh - 48px); }
 .dt-composer-modal .dt-modal-header { box-sizing:border-box; display:grid; grid-template-columns:23px minmax(0,1fr) 28px; gap:8px; height:56px; padding:12px 24px; border-bottom:1px solid var(--dsw-alias-border-l2); }
-.dt-composer-modal .dt-modal-header h2 { font-size:14px; line-height:20px; font-weight:600; }
+.dt-composer-modal .dt-modal-header h2 { font-size:18px; line-height:24px; font-weight:600; }
 .dt-modal-title-icon { display:grid; place-items:center; color:var(--dsw-alias-label-secondary); }
 .dt-composer-modal .dt-modal-close { width:28px; height:28px; border-radius:6px; }
 .dt-composer-modal .dt-modal-body { padding:0; }
 .dt-composer-modal .dt-modal-footer { padding:14px 24px; background:var(--dsw-alias-bg-base,var(--dsw-alias-bg-layer-1)); }
 .dt-composer-form,.dt-composer-fields { display:flex; flex-direction:column; min-width:0; margin:0; padding:0; border:0; }
-.dt-composer-field { display:flex; flex-direction:column; align-items:stretch; min-width:0; gap:7px; }
-.dt-composer-field-heading { display:flex; align-items:center; justify-content:space-between; min-height:18px; gap:8px; }
-.dt-composer-field-heading>label { flex:none; font-size:12px; line-height:18px; color:var(--dsw-alias-label-secondary); }
+.dt-composer-field { display:grid; grid-template-columns:minmax(84px,.4fr) minmax(0,1fr); align-items:center; min-width:0; gap:8px 20px; }
+.dt-composer-field-heading { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; min-height:32px; gap:4px; }
+.dt-composer-field-heading>label { font-size:13px; line-height:20px; color:var(--dsw-alias-label-primary); }
+.dt-composer-field>.dt-hint { grid-column:2; }
 .dt-composer-field-heading>label>span { margin-left:4px; font-size:10px; }
-.dt-composer-field-error { min-width:0; margin:0; font-size:11px; line-height:18px; color:var(--dsw-alias-state-error-primary); text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dt-composer-field-error { min-width:0; margin:0; font-size:11px; line-height:18px; color:var(--dsw-alias-state-error-primary); text-align:left; overflow-wrap:anywhere; }
 .dt-composer-field-error:empty { display:none; }
 .dt-composer-field>.dt-input,.dt-composer-field>.dt-select { width:100%; height:32px; border-radius:7px; font-size:12px; }
 .dt-composer-field>.dt-input input { font-size:13px; }
 .dt-composer-field [aria-invalid=true] { border-color:var(--dsw-alias-state-error-primary); }
 .dt-composer-field>.dt-input:has([aria-invalid=true]) { border-color:var(--dsw-alias-state-error-primary); }
 .dt-composer-brief { display:flex; flex-direction:column; gap:16px; padding:20px 24px 22px; min-width:0; }
-.dt-composer-brief:focus-within { box-shadow:inset 2px 0 0 var(--dsw-alias-brand-primary); }
-.dt-composer-brief:has([aria-invalid=true]) { box-shadow:inset 2px 0 0 var(--dsw-alias-state-error-primary); }
 .dt-composer-brief .dt-composer-field:focus-within label { color:var(--dsw-alias-label-primary); }
-.dt-composer-brief .dt-input.dt-composer-name { height:39px; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; }
-.dt-composer-brief .dt-input.dt-composer-name input { height:39px; padding:0; border:0; border-radius:0; text-align:left; font-size:21px; line-height:29px; font-weight:600; letter-spacing:-.5px; background:transparent; }
+.dt-composer-brief .dt-input.dt-composer-name { height:32px; border-radius:7px; }
+.dt-composer-brief .dt-input.dt-composer-name input { height:30px; text-align:center; font-size:14px; line-height:20px; font-weight:500; }
 .dt-composer-brief .dt-input.dt-composer-name input::placeholder { font:inherit; letter-spacing:inherit; }
-.dt-composer-modal .dt-composer-writing { min-height:128px; max-height:none; padding:0; resize:none; overflow:hidden; border:0; border-radius:0; background:transparent; text-align:left; align-content:start; font-size:14px; line-height:1.85; }
-.dt-composer-brief :is(input,.dt-composer-writing):focus-visible { outline:none; }
+.dt-composer-modal .dt-composer-writing { height:112px; min-height:96px; max-height:220px; padding:10px 12px; resize:vertical; overflow:auto; border:1px solid var(--dsw-alias-border-l2); border-radius:7px; background:transparent; text-align:left; align-content:start; font-size:14px; line-height:1.65; }
 .dt-composer-modal :is(input,textarea)::placeholder { opacity:1; color:var(--dsw-alias-label-tertiary); }
-.dt-composer-properties { display:flex; flex-direction:column; gap:14px; padding:17px 24px 19px; background:var(--dsw-alias-bg-layer-2); border-top:1px solid var(--dsw-alias-border-l2); min-width:0; }
-.dt-composer-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 16px; }
+.dt-composer-properties { display:flex; flex-direction:column; gap:18px; padding:20px 24px; border-top:1px solid var(--dsw-alias-border-l2); min-width:0; }
+.dt-composer-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:18px; }
 .dt-composer-full { grid-column:1/-1; min-width:0; }
 .dt-composer-project { display:flex; flex-direction:column; gap:14px; padding-top:4px; }
 .dt-composer-modal .dt-choice { background:var(--dsw-alias-bg-base,var(--dsw-alias-bg-layer-1)); }
@@ -70,7 +68,7 @@
 @container (max-width:520px) {
   .dt-composer-modal .dt-modal-header { padding-inline:18px; }
   .dt-composer-brief { padding:18px; }
-  .dt-composer-brief .dt-input.dt-composer-name input { font-size:19px; }
+  .dt-composer-field { grid-template-columns:minmax(74px,.38fr) minmax(0,1fr); column-gap:12px; }
   .dt-composer-properties { padding:16px 18px 18px; }
   .dt-composer-grid { grid-template-columns:minmax(0,1fr); gap:16px; }
   .dt-composer-team { padding:12px 18px 16px; }
@@ -83,7 +81,7 @@
 @media (max-width:560px) {
   .dt-modal.dt-composer-task { height:min(728px,calc(100dvh - 32px)); }
   .dt-modal.dt-composer-member { height:min(620px,calc(100dvh - 32px)); }
-  .dt-modal.dt-composer-workspace { height:min(380px,calc(100dvh - 32px)); }
+  .dt-modal.dt-composer-workspace { max-height:calc(100dvh - 32px); }
 }
 @media (prefers-reduced-motion:reduce) { .dt-composer-team>summary>svg { transition:none; } }
 [data-superagent-choice] .dt-choice-option { display:block; min-width:0; font-size:12px; line-height:18px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

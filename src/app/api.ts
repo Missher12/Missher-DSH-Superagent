@@ -45,7 +45,7 @@ export interface Api {
   'POST mcp/clients/:id/test': { body: { token: string; transport: 'stdio' | 'http' }; response: Awaited<ReturnType<McpTasks['checkConnection']>> }
   'POST mcp/clients/:id/enabled': { body: { enabled: boolean }; response: Awaited<ReturnType<McpTasks['setEnabled']>> }
   'DELETE mcp/clients/:id': { response: Awaited<ReturnType<McpTasks['removeClient']>> }
-  'GET local/board': { query: Paged & { column: LocalBoardColumn; q?: string }; response: TicketListView }
+  'GET local/board': { query: Paged & { column: LocalBoardColumn; q?: string }; response: ReturnType<typeof import('./views/tickets.ts').localBoard> }
   'GET local/workspaces': { response: ReturnType<LocalTasks['workspaces']> }
   'GET local/permissions': { response: ReturnType<LocalTasks['permissions']> }
   'POST local/workspaces': { body: { directory: string; title?: string }; response: Awaited<ReturnType<LocalTasks['addWorkspace']>> }

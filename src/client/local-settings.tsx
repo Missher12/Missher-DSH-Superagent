@@ -1,22 +1,20 @@
 /** Local settings with shared model controls and separate connection/prompt editors. */
 import { useState } from 'react'
 import { LIMITS } from '../limits.ts'
-import { Icon, Input, SegmentedTabs, type IconName } from './controls.tsx'
+import { Icon, Input, type IconName } from './controls.tsx'
 import { SaveBar } from './draft.tsx'
 import { usePanel } from './provider.tsx'
 import { PromptsPage } from './prompts.tsx'
 import { Field, Fields, ModelField, SettingsProvider, numberOf, useBlockDraft, useSettings } from './settings-kit.tsx'
 import { McpSettings } from './local-mcp.tsx'
-import { SourceSettings } from './source.tsx'
+import { SourceExecution, SourceSettings } from './source.tsx'
 import { EvalSettings } from './eval.tsx'
 import { Section } from './widgets.tsx'
 import { sourceMark } from './marks.ts'
 import { localized } from './text.ts'
 
 type ConnectionSource = string
-type ConnectionPage = 'setup' | 'policy'
-function Connections({ selected, onSelect, page, onPage }: { selected: ConnectionSource; onSelect: (source: ConnectionSource) => void;
-  page: ConnectionPage; onPage: (page: ConnectionPage) => void }) {
+function Connections({ selected, onSelect }: { selected: ConnectionSource; onSelect: (source: ConnectionSource) => void }) {
   const { t } = usePanel(), { settings: { sources } } = useSettings()
   const connections = sources.filter(source => source.id !== 'local').map(source => ({
     id: source.id, name: source.id === 'mcp' ? 'MCP' : localized(t, source.title) || source.id,
@@ -27,27 +25,22 @@ function Connections({ selected, onSelect, page, onPage }: { selected: Connectio
     connections.push({ id, name: t(`source.${id}`), state: 'missing', policy: false })
   connections.sort((a, b) => Number(b.id === 'mcp') - Number(a.id === 'mcp'))
   const current = connections.find(source => source.id === selected) ?? connections[0]
+  const mcp = sources.find(source => source.id === 'mcp')
   return <div className="dt-connections">
-    <SegmentedTabs className="dt-subtabs" label={t('localConnectionPages')} value={page} onChange={onPage}
-      items={(['setup', 'policy'] as const).map(value => ({ value, label: t(value === 'setup' ? 'localConnectionsSetup' : 'localExternalPolicy'),
-        id: `dt-connections-tab-${value}`, panelId: `dt-connections-panel-${value}` }))} />
-    <div className="dt-connections-panel" id={`dt-connections-panel-${page}`} role="tabpanel" aria-labelledby={`dt-connections-tab-${page}`}>
-    {page === 'policy' ? <EvalSettings layout="local" /> : <>
     <nav className="dt-connections-nav" aria-label={t('localConnectionSources')}>
       {connections.map(source => {
         const id = source.id, status = sourceMark(t, source.state)
         const name = source.name
-        return <button type="button" key={id} aria-label={name} aria-current={current?.id === id ? 'page' : undefined}
+        return <button type="button" key={id} aria-label={name} aria-current={selected !== 'policy' && current?.id === id ? 'page' : undefined}
           aria-controls="dt-connection-content" onClick={() => onSelect(id)}>
           <Icon name={id === 'mcp' ? 'agent' : id === 'github' ? 'pull' : source.policy ? 'message' : 'agent'} size={18} />
           <span><strong>{name}</strong><small data-state={status?.dot}>{id === 'mcp' ? 'HTTP · stdio' : status?.label ?? t('sourceNotInstalled')}</small></span>
         </button>
       })}
+      <button type="button" aria-current={selected === 'policy' ? 'page' : undefined} onClick={() => onSelect('policy')}><Icon name="shield" size={18} /><span><strong>{t('localExternalPolicy')}</strong></span></button>
     </nav>
-    <div id="dt-connection-content" className="dt-connections-body" key={current?.id}>
-      {current?.id === 'mcp' ? <McpSettings /> : current ? <SourceSettings include={[current.id]} /> : null}
-    </div>
-    </>}
+    <div id="dt-connection-content" className="dt-connections-body" key={selected === 'policy' ? 'policy' : current?.id}>
+      {selected === 'policy' ? <EvalSettings layout="local" /> : current?.id === 'mcp' ? <>{mcp && <SourceExecution source={mcp} />}<McpSettings /></> : current ? <SourceSettings include={[current.id]} /> : null}
     </div>
   </div>
 }
@@ -76,7 +69,6 @@ function SettingsBody() {
   const { t } = usePanel()
   const [editor, setEditor] = useState('general')
   const [connection, setConnection] = useState<ConnectionSource>('mcp')
-  const [connectionPage, setConnectionPage] = useState<ConnectionPage>('setup')
   const entries: { id: string; title: string; icon: IconName }[] = [
     { id: 'general', title: t('localGeneralSettings'), icon: 'settings' },
     { id: 'connections', title: t('localConnections'), icon: 'agent' },
@@ -89,7 +81,7 @@ function SettingsBody() {
         <Icon name={entry.icon} /><span>{entry.title}</span></button>)}
     </nav><section id="dt-settings-content" className="dt-local-settings-editor" aria-label={entries.find(entry => entry.id === editor)?.title}>
       <div className="dt-local-settings-content" key={editor}>{editor === 'general' ? <SettingsForm />
-        : editor === 'connections' ? <Connections selected={connection} onSelect={setConnection} page={connectionPage} onPage={setConnectionPage} />
+        : editor === 'connections' ? <Connections selected={connection} onSelect={setConnection} />
         : <PromptsPage />}</div>
     </section></div>
   </div>

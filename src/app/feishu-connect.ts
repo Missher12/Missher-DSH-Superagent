@@ -19,6 +19,7 @@ export const FeishuConnectSchema = z.object({ revision: z.number().int().nonnega
 }).strict()
 export type FeishuConnectRequest = z.input<typeof FeishuConnectSchema>
 export interface FeishuConnectResult { restarting: boolean; appId: string; botId: string; name: string }
+/** Reports a connection failure with its recoverable HTTP status. */
 export class FeishuConnectError extends Error { constructor(readonly status: 400 | 409 | 503, message: string) { super(message) } }
 type Binding = z.infer<typeof FeishuBotSchema>
 interface ConnectionHost {

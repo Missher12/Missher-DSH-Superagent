@@ -108,7 +108,6 @@
 .dt-rules { border-top: 0.5px solid var(--dsw-alias-border-l2); }
 .dt-rule { display: flex; align-items: flex-start; gap: 12px; padding: 6px 0; border-bottom: 0.5px solid var(--dsw-alias-border-l2); }
 .dt-rule > :first-child { flex: 1; min-width: 0; }
-.dt-rule-preview { flex: 1; min-width: 0; margin-left: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--dsw-alias-label-caption); }
 .dt-rule-switch { margin-top: 2px; flex: none; }
 .dt-rule-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--dsw-alias-label-caption); }
 .dt-rule-dot[data-enabled] { background: var(--dsw-alias-brand-primary); }
@@ -490,7 +489,7 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-board-card .dt-stage svg { margin-top: 0; }
 .dt-task-row .dt-stage { padding: 0; margin: 0; background: transparent; }
 .dt-local-page .dt-board-card .dt-stage { color: color-mix(in srgb, var(--dt-task-color) 60%, var(--dsw-alias-label-primary)); }
-.dt-board-card-title { white-space: normal; overflow-wrap: anywhere; font-size: 14px; line-height: 22px; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.dt-board-card-title { max-width: none; text-align: left; white-space: normal; overflow-wrap: anywhere; font-size: 14px; line-height: 22px; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .dt-board-card-title::after { border-radius: 9px; }
 .dt-board-path { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 80px; min-width: 0; max-width: 100%; font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
 .dt-board-path svg { flex: none; }
@@ -539,12 +538,12 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-local-details-body { padding-bottom: 16px; display: grid; gap: 12px; }
 .dt-local-record { border-left: 2px solid var(--dsw-alias-border-l2); padding-left: 12px; }
 .dt-local-settings-root { --dt-settings-row-height: 64px; container: superagent-settings / inline-size; display: flex; flex: 1; flex-direction: column; gap: 24px; min-width: 0; min-height: 0; }
-.dt-local-settings-layout { display: grid; grid-template-columns: 152px minmax(0,1fr); flex: 1; gap: 32px; min-width: 0; min-height: 0; }
-.dt-local-settings-nav { display: flex; flex-direction: column; align-items: stretch; align-self: start; gap: 5px; min-width: 0; max-height: 100%; overflow: auto; }
-.dt-connections { display: flex; flex-direction: column; gap: 28px; min-width: 0; max-width: 800px; }
-.dt-connections-panel { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
-.dt-connections-nav { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
-.dt-connections-nav > button { display: flex; align-items: center; justify-content: center; gap: 10px; min-width: 0; min-height: 64px; padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; cursor: pointer; }
+.dt-local-settings-layout { display: flex; flex-direction: column; flex: 1; gap: 24px; min-width: 0; min-height: 0; }
+.dt-local-settings-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; flex: none; padding-bottom: 12px; border-bottom: .5px solid var(--dsw-alias-border-l2); }
+.dt-local-settings-nav .dt-local-setting-entry { width: auto; padding-inline: 12px; white-space: nowrap; }
+.dt-connections { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+.dt-connections-nav { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(140px,100%),1fr)); gap: 12px; }
+.dt-connections-nav > button { display: flex; align-items: center; justify-content: center; gap: 10px; min-width: 0; min-height: 56px; padding: 8px 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; cursor: pointer; }
 .dt-connections-nav > button:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .dt-connections-nav > button[aria-current] { border-color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
 .dt-connections-nav > button:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
@@ -694,7 +693,6 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-provider-custom { position: relative; min-width: 0; }
 .dt-provider-custom .dt-input input { padding-inline: 32px; }
 .dt-provider-custom > .dt-btn { position: absolute; inset-inline-end: 0; top: 0; width: 32px; height: 32px; }
-.dt-settings-revision { font-size: 11px; line-height: 18px; font-weight: 400; color: var(--dsw-alias-label-tertiary); }
 .dt-local-page .dt-local-form .dt-fieldset { gap: 12px; }
 .dt-local-form .dt-fieldset > .dt-actions { justify-content: flex-end; }
 .dt-local-page .dt-local-form .dt-fieldset > .dt-field { margin-top: 0; }
@@ -733,7 +731,10 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-local-workspace-icon:disabled { opacity: .4; cursor: not-allowed; }
 .dt-local-workspace-icon:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
 .dt-local-workspace-row h3 { margin: 0 0 2px; font-size: 14px; line-height: 22px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.dt-local-workspace-row p { margin: 0; font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-secondary); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dt-workspace-path { display: block; max-width: 100%; margin: 0; padding: 0; border: 0; background: transparent; text-align: left; font: inherit; font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-secondary); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
+.dt-workspace-path:hover { color: var(--dsw-alias-label-primary); }
+.dt-workspace-path:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.dt-workspace-full-path { margin: 0; user-select: text; overflow-wrap: anywhere; font-size: 13px; line-height: 22px; }
 .dt-local-workspace-row > .dt-actions { flex: none; flex-wrap: nowrap; justify-content: flex-end; gap: calc(8px + var(--dt-density-space, 0px)); }
 .dt-local-workspace-row .dt-btn { font-size: 13px; }
 .dt-local-workspace-row > .dt-actions > .dt-btn-ghost:first-child { margin-left: -8px; }
@@ -814,7 +815,7 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-team-nav-item strong { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dt-team-nav-item .dt-count { margin-left: auto; font-size: 12px; }
 .dt-team-avatar { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 7px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); }
-.dt-team-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 18px; font-weight: 400; color: var(--dsw-alias-label-secondary); }
+.dt-team-status { display: inline-flex; align-items: center; flex-shrink: 0; gap: 6px; white-space: nowrap; font-size: 12px; line-height: 18px; font-weight: 400; color: var(--dsw-alias-label-secondary); }
 .dt-team-status .dt-dot { margin: 0; }
 .dt-team-status[data-state='attention'] { color: var(--dsw-alias-state-warn-primary); }
 .dt-team-status[data-state='failed'] { color: var(--dsw-alias-state-error-primary); }
@@ -968,7 +969,6 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 }
 
 /* Dispatch settings share the native row rhythm while showing every registered source. */
-.dt-connections-nav { grid-template-columns: repeat(auto-fit,minmax(min(140px,100%),1fr)); }
 .dt-dispatch-settings { gap: 24px; }
 .dt-page .dt-tabs.dt-dispatch-tabs { width: 100%; overflow: visible; mask-image: none; display: flex; gap: 4px; flex-wrap: wrap; padding: 4px; background: var(--dsw-alias-bg-module-platform); border-radius: 8px; }
 .dt-page .dt-tabs.dt-dispatch-tabs .dt-tab { flex: 1 1 112px; min-height: 32px; border-radius: 6px; padding: 6px 12px; white-space: nowrap; }

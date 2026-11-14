@@ -8,8 +8,9 @@ import { readResource, type ResourceHost } from '../resources.ts'
 import type { Store } from '../store.ts'
 import { reportRelay, threadFollowedNotice } from '../notices.ts'
 import type { Sessions } from '../sessions.ts'
-import { AcknowledgementSchema, readTool, tool, type Tool } from './tool.ts'
-import { DeliverySchema, type DeliveryInput } from '../../teams/contracts.ts'
+import { AcknowledgementSchema, readTool, tool, toolValue, type Tool } from './tool.ts'
+import { DeliverySchema, TeamReviewSchema, TeamPlanPatchSchema, type DeliveryInput } from '../../teams/contracts.ts'
+import type { LocalTeams } from '../../teams/local.ts'
 
 export interface ExecutorToolsHost {
   readonly engine: Pick<EngineForExecutor, 'report' | 'reply' | 'markUnrelated' | 'handback' | 'followForContext'>
@@ -20,11 +21,20 @@ export interface ExecutorToolsHost {
   readonly github: SourceContext
   sendReplies(): Promise<void>
   recordDelivery?(ticket: Ticket, input: DeliveryInput, state: string): void
+  readonly teams?: Pick<LocalTeams, 'contextFor' | 'recordReview' | 'revisePlan' | 'sourceTicket'>
 }
 
 export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
   const ticketId = ticket.id
   return [
+    ...host.teams ? [tool({
+      name: 'orchestrator_team',
+      description: 'Read this managed team’s plan, current round token and delivery evidence. The planner or group manager may revise existing authorized roles during planning/rework; the planner may also revise at final review, including post-completion requests. Changed roles must be sent through team_review revise before passing. This never spawns native agents or changes models, directories or permissions.',
+      schema: z.discriminatedUnion('action', [z.object({ action: z.literal('get') }).strict(),
+        TeamPlanPatchSchema.extend({ action: z.literal('revise_plan') })]),
+      execute: async args => toolValue(args.action === 'get' ? host.teams!.contextFor(ticketId) ?? { team: null }
+        : host.teams!.revisePlan(ticketId, { planVersion: args.planVersion, changes: args.changes })),
+    })] : [],
     readTool('Read one page of a resource of this ticket that the resource parameter lists. Follow next_offset, and next_resource where a page names one.',
       true, (resource, offset, limit, signal) => readResource(host.resources, resource, offset, limit, ticketId, signal)),
     tool({
@@ -84,17 +94,21 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
         pr_number: z.number().int().positive().nullish().describe('The ticket GitHub PR, only when GitHub is connected. Omit for local tasks.'),
         reply_to_trigger_id: z.string().optional().describe('The explicit human question this report answers; never for ordinary progress.'),
         ...(host.recordDelivery ? { delivery: DeliverySchema.optional().describe('Local workspace delivery: real files, exact shell commands actually executed this assignment, their reported outcomes, and unverified items. Commands are matched to actual calls. Omit unavailable evidence rather than inventing it.') } : {}),
+        ...(host.teams ? { team_review: TeamReviewSchema.optional().describe('Version-bound review for a managed team. Read orchestrator_team first. A revise decision completes this review turn, then returns to the planner; it does not complete the team.') } : {}),
       }).strict(),
       execute: async (args, signal) => {
+        const review = args.team_review === undefined ? undefined : TeamReviewSchema.parse(args.team_review)
         const current = host.store.tickets.get(ticketId)
         if (!current || !liveTicket(current)) throw new Error('Ticket ended (PR was closed or work finished); do not resume it')
+        const sourceTicket = host.teams?.sourceTicket(ticketId)
         const pull = args.pr_number != null ? await readPull(host.github, args.pr_number, signal)
-          : args.state === 'ready' ? await findTicketPull(host.github, current, signal) : undefined
+          : args.state === 'ready' ? await findTicketPull(host.github, sourceTicket ?? current, signal) : undefined
         // Claim the PR, record the report, and queue the relay atomically so a rejected PR claim or invalid report leaves no partial state, and a recorded report always reaches the main Session.
         return host.store.atomic(() => {
-          const refused = pull && claimPull(host.github, ticketId, pull)
+          const refused = pull && claimPull(host.github, sourceTicket?.id ?? ticketId, pull)
           if (refused) throw new Error(refused)
-          if (args.delivery) host.recordDelivery?.(current, DeliverySchema.parse(args.delivery), args.state)
+          if (args.delivery) host.recordDelivery?.(current, DeliverySchema.parse(args.delivery), review?.decision === 'revise' ? 'progress' : args.state)
+          host.teams?.recordReview(current, review, args.state)
           const report = { state: args.state, summary: args.summary, ...(args.human_action !== undefined ? { question: args.human_action } : {}),
             ...(args.question_for_trigger_id ? { askedBy: args.question_for_trigger_id } : {}),
             ...(args.reply_to_trigger_id ? { answers: args.reply_to_trigger_id } : {}) }

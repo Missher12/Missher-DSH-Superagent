@@ -68,9 +68,9 @@ export function LocalPages({ route, openTab }: { route: Route; openTab: (tab: Ta
       }}
         items={TABS.map(value => ({ value, label: t(value === 'overview' ? 'localWorkbench' : value === 'execution' ? 'localTasks' : value === 'source' ? 'localWorkspaces' : `tab.${value}`),
           id: `dt-tab-${value}`, panelId: 'dt-page' }))} />
-      <div className="dt-studio-head-end">{page !== 'settings' && <StudioHeaderTools workbench={page === 'overview'} />}<LocalTaskComposer team={page === 'overview'} paused={state?.paused} /></div>
+      <div className="dt-studio-head-end">{page === 'overview' && <StudioHeaderTools workbench />}<LocalTaskComposer team={page === 'overview'} paused={state?.paused} /></div>
     </header>
-    <StudioShell sidebar={page !== 'settings'}><main id="dt-page" role="tabpanel" aria-labelledby={`dt-tab-${page}`} className="dt-main">
+    <StudioShell sidebar={page === 'overview'}><main id="dt-page" role="tabpanel" aria-labelledby={`dt-tab-${page}`} className="dt-main">
       {error && <LoadState error={error} loading={false} />}
       {page === 'overview' ? <LocalWorkbench {...route.page === 'overview' ? { sessionId: route.query?.session, teamId: route.query?.team, memberId: route.query?.member } : {}} /> : page === 'help' ? <LocalHelp /> : page === 'settings' ? <LocalSettings /> : page === 'source' ? <LocalWorkspaces />
         : route.page === 'execution' && route.id ? <TicketPage key={route.id} id={route.id} />

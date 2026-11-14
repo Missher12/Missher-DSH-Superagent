@@ -7,6 +7,7 @@ import type { LocalBoardColumn } from '../api.ts'
 import { channelLink, decisionView, newestFirst, page, snapshot, threadSummary, ticketLine, type Snapshot,
   type ViewHost } from './records.ts'
 import { markdown, preview } from './text.ts'
+import type { TeamView } from '../../teams/contracts.ts'
 
 export type BasisFact =
   | { name: 'addressed'; value: 'mention' | 'direct' } | { name: 'followup' } | { name: 'admission'; value: AdmissionCell } | { name: 'observation' }
@@ -43,17 +44,28 @@ export function ticketList(host: ViewHost, stage: 'open' | TicketStage['stage'],
 }
 export type TicketListView = ReturnType<typeof ticketList>
 /** Filter before paging so a long queue never hides an older running conversation. */
-export function localBoard(host: ViewHost, column: LocalBoardColumn, offset: number, limit: number, query = ''): TicketListView {
+export function localBoard(host: ViewHost, column: LocalBoardColumn, offset: number, limit: number, query = '', teams: TeamView[] = []) {
   const view = snapshot(host)
   const needle = query.trim().toLowerCase()
-  const tickets = (column === 'ended' ? host.store.tickets.list() : host.store.tickets.open()).filter(ticket => {
-    const stage = ticketStage(ticket)
-    const group = stage.stage === 'ended' ? 'ended' : stage.stage === 'working'
-      ? stage.action === 'queued' ? 'queued' : 'running' : stage.stage === 'idle' ? 'idle' : 'attention'
-    return group === column && (!needle || `${ticket.title}\n${ticket.execution?.directory ?? ''}`.toLowerCase().includes(needle))
-  }).sort(newestFirst)
-  const result = page(tickets, offset, limit)
-  return { ...result, items: result.items.map(ticket => ticketRow(view, ticket)) }
+  const grouped = new Set(teams.flatMap(team => [team.sourceTicketId, ...team.members.map(member => member.ticketId)]).filter(Boolean))
+  const rows: (Omit<ReturnType<typeof ticketRow>, 'stage' | 'action' | 'sessionId'> & TicketStage & { sessionId: string | undefined; team?: { id: string; members: number; completed: number } })[] = host.store.tickets.list()
+    .filter(ticket => !grouped.has(ticket.id)).map(ticket => ticketRow(view, ticket))
+  for (const team of teams) {
+    const ticket = host.store.tickets.get(team.sourceTicketId ?? team.coordinatorTicketId ?? '')
+    if (!ticket) continue
+    const row = ticketRow(view, ticket), ended = ['completed', 'stopped'].includes(team.state)
+    const stage: TicketStage = ended ? { stage: 'ended' } : ['attention', 'failed'].includes(team.state)
+      ? { stage: 'person', action: team.state === 'failed' ? 'failed' : 'blocked' } : team.state === 'waiting' ? { stage: 'idle' } : { stage: 'working' }
+    const { stage: _stage, action: _action, ...base } = row as typeof row & { action?: string }
+    rows.push({ ...base, ...stage, title: team.name, summary: team.currentAction || team.summary, directory: team.directory, updatedAt: team.updatedAt,
+      ended: ended ? { at: team.updatedAt, by: team.state === 'stopped' ? 'human' : 'executor', outcome: team.state === 'stopped' ? 'stopped' : 'completed' } : undefined,
+      sessionId: team.members[0]?.sessionId, actions: { ...row.actions, stop: !ended, retry: false },
+      team: { id: team.id, members: team.memberCount, completed: team.completedMembers } })
+  }
+  return page(rows.filter(ticket => {
+    const group = ticket.stage === 'ended' ? 'ended' : ticket.stage === 'working' ? ticket.action === 'queued' ? 'queued' : 'running' : ticket.stage === 'idle' ? 'idle' : 'attention'
+    return group === column && (!needle || `${ticket.title}\n${ticket.directory ?? ''}`.toLowerCase().includes(needle))
+  }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), offset, limit)
 }
 export function ticketRow(view: Snapshot, ticket: Ticket) {
   const line = ticketLine(view, ticket)

@@ -82,6 +82,10 @@ export interface ExecutorHost {
   environment(ticket: Ticket): Variable[]
   /** Trusted existing-workspace binding for this Source, captured once when accepting a task. */
   workspace?(trigger: Trigger): WorkspaceBinding | undefined
+  /** True for a source root owned by the team scheduler; never also launch a single worker. */
+  managed?(ticket: Ticket): boolean
+  /** Revalidate a team's original source grant before launching or waking its local member. */
+  allowed?(ticket: Ticket): boolean
   sourceLink(trigger: Trigger, signal?: AbortSignal): Promise<{ source_url?: string; source_url_read?: string }>
   /** Stored Trigger of the message `trigger` replies to, when it replies to one. */
   repliedTo(trigger: Trigger): Trigger | undefined
@@ -292,15 +296,17 @@ export class DshExecutor implements Executor {
   }
   /** Enqueues a `launch` effect for an accepted or resumed assignment; launches start in queue order as worker slots free up. */
   start(ticket: Ticket, assignment: Assignment): void {
+    if (this.host.managed?.(ticket) || this.host.allowed?.(ticket) === false) return
     this.host.effects.enqueue('launch', assignment.id, { ticketId: ticket.id, assignmentId: assignment.id })
   }
   /** Enqueues a `delivery` effect to steer pending inputs into `ticket`'s running worker session. */
-  deliver(ticket: Ticket, _assignment: Assignment): void { this.host.effects.enqueue('delivery', ticket.id, { ticketId: ticket.id }) }
+  deliver(ticket: Ticket, _assignment: Assignment): void { if (!this.host.managed?.(ticket)) this.host.effects.enqueue('delivery', ticket.id, { ticketId: ticket.id }) }
   /** Launches a queued assignment unless its ticket ended or a newer assignment replaced it meanwhile. */
   private async launchQueued({ ticketId, assignmentId }: { ticketId: string; assignmentId: string }): Promise<void> {
     const ticket = this.host.store.tickets.get(ticketId)
     const assignment = ticket && latestAssignment(ticket)
     if (!ticket || !liveTicket(ticket) || assignment?.id !== assignmentId || assignment.state !== 'pending') return
+    if (this.host.managed?.(ticket)) return
     this.reserveWorker(ticket, 'launch')
     try { await this.launch(ticket, assignment); this.transient.delete(`launch:${assignmentId}`) }
     catch (error) {
@@ -329,7 +335,7 @@ export class DshExecutor implements Executor {
         const ticket = this.host.store.tickets.get(ticketId)
         const assignment = ticket && liveTicket(ticket) ? runningAssignment(ticket) : undefined
         const inputId = ticket?.undelivered[0]
-        if (!ticket || !assignment || inputId === undefined) return
+        if (!ticket || !assignment || inputId === undefined || this.host.allowed?.(ticket) === false) return
         // Waking an idle worker reserves a slot (including the extra slot reserved for human follow-ups).
         const sessionId = workerSessionId(ticketId)
         if (!woken && !this.running(ticket)) {
@@ -390,6 +396,7 @@ export class DshExecutor implements Executor {
    * report with no Input delivered since, and stops its shell jobs and subagents, including jobs it left to a person.
    */
   stop(ticket: Ticket, assignment: Assignment, reason: string): void {
+    if (this.host.managed?.(ticket)) return
     this.transient.delete(assignment.id); this.transient.delete(`launch:${assignment.id}`)
     const report = assignment.report
     const busy = !!assignment.deliveredAt && !!report && assignment.deliveredAt >= report.at
@@ -462,7 +469,7 @@ export class DshExecutor implements Executor {
       if (this.host.closing()) throw new Error('dsh-superagent is stopping')
       if (this.host.paused()) throw new Later('Processing is paused')
       const stored = this.host.store.tickets.get(ticket.id)
-      return !!stored && liveTicket(stored) && latestAssignment(stored)?.id === assignment.id
+      return !!stored && liveTicket(stored) && latestAssignment(stored)?.id === assignment.id && this.host.allowed?.(stored) !== false
     }
     const source = sourceTrigger(this.host, ticket)
     const workspace = ticket.execution?.directory ?? ''
@@ -587,6 +594,7 @@ export class DshExecutor implements Executor {
   resume(): void {
     // Launch pending tickets oldest first (in acceptance order).
     for (const ticket of this.host.store.tickets.open().sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+      if (this.host.managed?.(ticket)) continue
       const running = runningAssignment(ticket), latest = latestAssignment(ticket)
       if (running) {
         // A restart within this process left DSH's Sessions, jobs and subagents running: they stop first. The inbox keeps an

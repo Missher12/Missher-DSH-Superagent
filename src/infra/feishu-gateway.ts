@@ -16,6 +16,7 @@ const credential = (reference: string) => {
   if (!/^dsh-superagent\/feishu-[a-f0-9]{32}$/.test(reference)) throw new Error('飞书凭据引用无效')
   return parseCredentialKey(reference)
 }
+/** Retains the platform error code without exposing stored credentials. */
 export class FeishuGatewayError extends Error { constructor(message: string, readonly code?: number) { super(message) } }
 const domain = (brand: 'feishu' | 'lark') => `https://open.${brand === 'lark' ? 'larksuite.com' : 'feishu.cn'}`
 const field = (args: string[], flag: string) => { const at = args.indexOf(flag); return at < 0 ? undefined : args[at + 1] }
@@ -25,6 +26,7 @@ function normalized(message: any) {
   return { ...message, mentions, content: historyText({ ...message, body: message.body ?? { content: message.content ?? '' } }),
     msg_type: message.msg_type ?? message.message_type }
 }
+/** Runs Feishu API requests and event connections within the plugin lifecycle. */
 export class FeishuGateway {
   constructor(private readonly credentials?: Credentials) {}
   private store(): Credentials { if (!this.credentials) throw new Error('DSH 凭据存储不可用，暂时无法连接飞书'); return this.credentials }

@@ -12,12 +12,14 @@ import { readResource, type MainResourceHost, type ResourceHost } from '../resou
 import type { Sessions } from '../sessions.ts'
 import type { Settings } from '../settings.ts'
 import type { Store } from '../store.ts'
-import { AcknowledgementSchema, readTool, tool, type Tool } from './tool.ts'
+import type { LocalTeams } from '../../teams/local.ts'
+import { AcknowledgementSchema, readTool, tool, toolValue, type Tool } from './tool.ts'
 
 const RoutingNoteSchema = z.string().trim()
   .refine(text => wordCount(text) <= NOTE_WORDS, `Routing note must not exceed ${NOTE_WORDS} words (Chinese uses word segmentation). Shorten it; do not split it across deliveries.`)
   .describe(`Optional routing background or explicit human constraint, at most ${NOTE_WORDS} words. Never add implementation instructions or replace the original source.`)
 export interface MainToolsHost {
+  readonly teams?: Pick<LocalTeams, 'manageSource' | 'sourceResultQueued'>
   readonly context: Context
   readonly engine: Pick<EngineForMainSession, 'decide' | 'attach' | 'reply' | 'requestStatus' | 'note'> & EngineForPeople
   readonly store: Pick<Store, 'tickets' | 'triggers' | 'threads' | 'atomic' | 'replyStatus' | 'settings'>
@@ -158,6 +160,12 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
     readTool('Read one page of a resource the resource parameter lists, such as the ticket list or a ticket. Follow next_offset, and next_resource where a page names one.',
       false, (resource, offset, limit, signal) => readResource(resources, resource, offset, limit, undefined, signal)),
     routeTool(host),
+    ...host.teams ? [tool({
+      name: 'orchestrator_team_manage',
+      description: 'Inspect or dispatch the existing team of an admitted source ticket. Routing acceptance uses the source execution mode. This never creates another ticket, expands permissions, or restarts stopped work. Inspect includes current rounds, member sessions, and real deliveries.',
+      schema: z.object({ ticket_id: z.string(), action: z.enum(['inspect', 'dispatch']) }).strict(),
+      execute: async args => toolValue(await host.teams!.manageSource(args.ticket_id, args.action)),
+    })] : [],
     tool({
       name: 'orchestrator_ticket_retry',
       description: 'Start a new assignment on an explicit human request to retry a ticket whose worker reported failed or blocked, or whose input was not delivered; the stalled one ends.',
@@ -231,6 +239,12 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
         text: z.string().min(1).max(20000),
       }).strict(),
       execute: async args => {
+        const ticketId = args.ticket_id ?? (args.trigger_id ? host.store.tickets.list().find(ticket => ticket.origin.triggerId === args.trigger_id
+          || ticket.inputs.some(input => input.kind === 'trigger' && input.triggerId === args.trigger_id))?.id : undefined)
+        if (args.purpose === 'result' && ticketId && host.teams?.sourceResultQueued(ticketId)) {
+          await host.sendReplies()
+          return { managed: true, reused: true, message: '团队结果已统一回传或排队发送，无需重复回复。' }
+        }
         const reply = host.engine.reply({ purpose: args.purpose, text: args.text, ...(args.trigger_id ? { triggerId: args.trigger_id } : {}),
           ...(args.ticket_id ? { ticketId: args.ticket_id } : {}), ...(args.human_action ? { question: args.human_action } : {}) })
         await host.sendReplies()
