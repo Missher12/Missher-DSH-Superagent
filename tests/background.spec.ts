@@ -16,6 +16,49 @@ function setup(waitForChildren: (agent: Agent) => Promise<boolean>, drainChildre
   return { ctx, agent, jobs, subagents }
 }
 
+/** DSH 0.2.2 exposes tree work and interruption, without the old direct-child methods. */
+function treeSetup() {
+  const { ctx, agent } = setup(async () => false)
+  const subagents = { waitForTreeWork: vi.fn(async () => false),
+    listDescendants: vi.fn(async (): Promise<{ kind: 'child'; id: string; activity: string }[]> => []), interrupt: vi.fn(), drainDescendants: vi.fn() }
+  ;(ctx as unknown as { get: (name: string) => unknown }).get = name => name === 'subagents' ? subagents : undefined
+  const children = new Map<string, Agent>()
+  ;(ctx.agents as unknown as { get: (id: string) => Agent | undefined }).get = id => id === agent.id ? agent : children.get(id)
+  return { ctx, agent, subagents, children }
+}
+
+it('joins tree work on current DSH without calling removed child APIs', async () => {
+  const { ctx, agent, subagents } = treeSetup()
+  expect(await untilQuiet(ctx, agent, new AbortController().signal)).toBe(true)
+  expect(subagents.waitForTreeWork).toHaveBeenCalledWith(agent)
+})
+
+it('finishes cleanup on current DSH when the worker has no descendants', async () => {
+  const { ctx, agent, subagents } = treeSetup()
+  await stopSubagents(ctx, agent)
+  expect(subagents.listDescendants).toHaveBeenCalledWith(agent.id)
+  expect(agent.cancel).not.toHaveBeenCalled()
+  expect(subagents.drainDescendants).not.toHaveBeenCalled()
+})
+
+it('interrupts its current DSH descendants and waits for idle without permanently closing the tree', async () => {
+  const { ctx, agent, subagents, children } = treeSetup()
+  const idle = Promise.withResolvers<void>()
+  children.set('child-1', { id: 'child-1', whenIdle: () => idle.promise } as Agent)
+  subagents.listDescendants.mockResolvedValue([{ kind: 'child', id: 'child-1', activity: 'running' },
+    { kind: 'child', id: 'external-2', activity: 'running' }, { kind: 'child', id: 'old-3', activity: 'inactive' }])
+  let stopped = false
+  const stopping = stopSubagents(ctx, agent, true).then(() => { stopped = true })
+  void stopping.catch(() => {})
+  await vi.waitFor(() => expect(subagents.interrupt).toHaveBeenCalledTimes(2))
+  expect(stopped).toBe(false)
+  expect(subagents.interrupt).toHaveBeenCalledWith('child-1', { kind: 'ancestor', agent })
+  expect(subagents.interrupt).toHaveBeenCalledWith('external-2', { kind: 'ancestor', agent })
+  idle.resolve(); await stopping
+  expect(agent.cancel).toHaveBeenCalledWith({ kind: 'user' }, { keepInbox: true })
+  expect(subagents.drainDescendants).not.toHaveBeenCalled()
+})
+
 it('is not quiet when an end during the subagent check woke the worker, whose own idle looks again', async () => {
   const { ctx, agent, jobs } = setup(async () => {
     // The job settles meanwhile, and its end wakes the worker.

@@ -428,14 +428,16 @@ export async function pollTicketPulls(ctx: SourceContext, signal?: AbortSignal, 
     } catch (error) { if (!stopped(ctx, round)) failed(ctx, round, number, error) }
   }
 }
-/** Polls a PR's CI checks; only changes after the first baseline observation become Triggers. */
+/** Followed PRs receive their first CI snapshot too; fast checks must not leave a task waiting forever. */
 async function pollChecks(ctx: SourceContext, round: Round, number: number, pr: Pull): Promise<void> {
   const snapshot = await pullChecks(ctx.commands.withSignal(round.signal), pr.head.sha, round.tally)
   const fingerprint = key(JSON.stringify(snapshot))
   const previous = ctx.state.get(KV.github.ci(number))
   if (previous?.fingerprint === fingerprint) return
   const revision = previous ? previous.revision + 1 : 0
-  if (previous) await ctx.receive(ciTrigger(pr, revision, ciSummary(snapshot, `PR #${number}`, `github/pulls/${number}/checks`)))
+  if (previous || ctx.tickets.open().some(ticket => pullsOf(ticket, true).includes(number))) {
+    await ctx.receive(ciTrigger(pr, revision, ciSummary(snapshot, `PR #${number}`, `github/pulls/${number}/checks`)))
+  }
   ctx.state.set(KV.github.ci(number), { fingerprint, revision })
   ctx.threads.describe(`github:${number}`, { facts: { ci: ciFact(ciCounts(snapshot)) } })
 }

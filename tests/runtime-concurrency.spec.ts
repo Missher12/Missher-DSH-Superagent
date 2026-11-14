@@ -352,6 +352,9 @@ describe('a worker whose work runs in the background', () => {
   it('frees the slot of a worker that reports blocked, stopping its subagents and leaving its jobs, whose end wakes no one', async () => {
     await handsOff({ state: 'blocked', summary: 'Which color?' })
   })
+  it('preserves an explicit event-wait report and frees its worker slot after the turn', async () => {
+    await handsOff({ state: 'waiting', summary: 'Waiting for the next CI event.' })
+  })
   it('keeps a failed worker from being woken by a job it left, and from failing again', async () => {
     await handsOff({ state: 'failed', summary: 'The build broke.' })
   })

@@ -85,6 +85,7 @@ export interface TeamRecord {
   handoffs: { id: string; from: string; to: string; ticketId: string; at: string; version: string }[]
   finalVersion?: string; finalBaseline?: string; finalAssignment?: string
   continuations?: Record<string, { cycle: string; attempts: number; version: string }>
+  eventWaits?: Record<string, { thread: string; after: string; assignment: string; waiting: boolean }>
   stoppedAt?: string; error?: string
   workflow?: TeamWorkflow
   sourceTicketId?: string

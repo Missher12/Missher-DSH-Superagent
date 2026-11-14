@@ -685,7 +685,7 @@ export class DshExecutor implements Executor {
     const handedOff = (stored: Ticket) => {
       const assignment = runningAssignment(stored), report = assignment?.report
       const since = !!assignment?.deliveredAt && !!report && assignment.deliveredAt >= report.at
-      return ((report?.state === 'ready' || !!stored.attention) && !since) || waitsForPerson(stored)
+      return ((report?.state === 'ready' || report?.state === 'waiting' || !!stored.attention) && !since) || waitsForPerson(stored)
     }
     const before = live()
     if (!before || this.host.closing()) return

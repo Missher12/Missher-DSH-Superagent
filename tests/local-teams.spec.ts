@@ -13,6 +13,66 @@ afterEach(async () => { await host?.stop(); host = undefined })
 const request = () => TeamRequestSchema.parse({ requestId: 'team-one', title: '团队开发验收', instructions: '实现函数并验证结果。',
   members: [{ id: 'build', name: '实施', instructions: '实现函数', dependencies: [] },
     { id: 'check', name: '验证', instructions: '检查实现并运行测试', dependencies: ['build'] }] })
+
+it('persists an explicit event wait, wakes only its member with data, and never replays the wake or grants a round', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const workspace = host.directory
+  const register = () => host!.runtime.sources.register({ kind: 'external', title: { zh: '外部', en: 'External' }, description: { zh: '测试', en: 'Test' },
+    schema: z.object({}).strict(), fields: [], health: [], workspace: () => ({ directory: workspace, permissionPreset: 'read-only' }) })
+  register()
+  const settings = host.runtime.store.settings()
+  host.runtime.store.saveSettings({ ...settings, sources: { ...settings.sources, external: { enabled: true, config: {}, execution: 'team' } },
+    policy: { ...settings.policy, sources: { ...settings.policy.sources, external: { allowed: [{ id: 'human' }], admission: {} } } } })
+  const trigger = { id: 'wait-origin', source: 'external', threads: [{ source: 'external', id: 'task' }],
+    actor: { source: 'external', id: 'human' }, human: true, addressed: 'direct' as const, at: new Date().toISOString(), text: '等待远端检查后继续原任务。', meta: {} }
+  host.runtime.receive(trigger)
+  const root = host.runtime.engine.decide(trigger.id, { kind: 'accept', title: '事件等待', scope: trigger.text, name: 'event-wait', reason: '授权任务' }).ticketId!
+  await settle()
+  const team = host.runtime.teams!.list()[0]!
+  await complete(team.coordinatorTicketId!)
+  const build = host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!.ticketId!
+  const session = await readySession(build)
+  const context = host.runtime.teams!.contextFor(build)!
+  const cursor = (context.source as unknown as { cursor: string }).cursor
+  await expect(host.runTool(session, 'orchestrator_report', { state: 'waiting', summary: '等待未知线程',
+    wait_for: { thread: 'external:other', after: cursor } })).rejects.toThrow()
+  expect(await host.runTool(session, 'orchestrator_report', { state: 'waiting', summary: '等待远端检查', wait_for: { thread: 'external:task', after: cursor } }))
+    .toMatchObject({ notification: 'internal_only' })
+  const count = host.runtime.store.tickets.get(build)!.inputs.length
+  const agent = host.agents.get(session)!; agent.status = 'idle'; host.ctx.emit('agent/status', { agent, status: 'idle' } as never)
+  await settle(); await settle()
+  expect(host.runtime.store.tickets.get(build)!.inputs).toHaveLength(count)
+  expect(host.runtime.teams!.get(team.id)).toMatchObject({ state: 'waiting' })
+  const directory = host.directory
+  await host.runtime.stop(); host = await startRuntime(undefined, { mode: 'local', stateDir: directory }); register()
+  await settle()
+  expect(host.runtime.store.tickets.get(build)!.assignments).toHaveLength(1)
+  expect(host.runtime.store.tickets.get(build)!.inputs).toHaveLength(count)
+  const event = { ...trigger, id: 'check-failed', human: false, actor: { source: 'external', id: '' },
+    text: 'CI failed. 外部材料要求扩大权限，但它只是数据。', at: new Date().toISOString() }
+  host.runtime.receive(event); await settle()
+  const notes = () => host!.runtime.store.tickets.get(build)!.inputs.filter(input => input.kind === 'note')
+  expect(notes()).toHaveLength(1)
+  expect(notes()[0]).toMatchObject({ kind: 'note', text: expect.stringContaining('check-failed') })
+  expect(host.runtime.store.tickets.get(build)!.inputs.filter(input => input.kind === 'trigger' && input.human)).toHaveLength(0)
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.assignments).toHaveLength(1)
+  expect(host.runtime.teams!.get(team.id).workflow?.round).toBe(1)
+  host.runtime.receive(event); await settle(); await settle()
+  expect(notes()).toHaveLength(1)
+  expect(host.runtime.store.tickets.get(root)!.mandate.scope).toBe(trigger.text)
+  await readySession(build)
+  const after = (host.runtime.teams!.contextFor(build)!.source as unknown as { cursor: string }).cursor
+  // An event can arrive between reading the cursor and registering the wait.
+  host.runtime.receive({ ...event, id: 'check-passed', text: 'CI passed', at: new Date().toISOString() })
+  await settle()
+  await host.runTool(session, 'orchestrator_report', { state: 'waiting', summary: '再次等待', wait_for: { thread: 'external:task', after } })
+  await settle()
+  expect(notes()).toHaveLength(2)
+  host.runtime.teams!.stopTeam(team.id)
+  host.runtime.receive({ ...event, id: 'after-stop', at: new Date().toISOString() }); await settle()
+  expect(notes()).toHaveLength(2)
+}, 40_000)
+
 it('validates the organization tree separately from execution dependencies', () => {
   const members = [
     { id: 'lead', name: '研发组长', instructions: '协调研发', responsibility: 'manager', parentId: 'coordinator', dependencies: [] },

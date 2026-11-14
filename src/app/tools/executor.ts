@@ -21,7 +21,7 @@ export interface ExecutorToolsHost {
   readonly github: SourceContext
   sendReplies(): Promise<void>
   recordDelivery?(ticket: Ticket, input: DeliveryInput, state: string): void
-  readonly teams?: Pick<LocalTeams, 'contextFor' | 'recordReview' | 'revisePlan' | 'sourceTicket'>
+  readonly teams?: Pick<LocalTeams, 'contextFor' | 'recordReview' | 'revisePlan' | 'sourceTicket' | 'recordWait'>
 }
 
 export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
@@ -85,10 +85,12 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
     }),
     tool({
       name: 'orchestrator_report',
-      description: 'Report progress, ready, blocked, failed or dropped, as the work and handoff sections say.',
+      description: 'Report progress, waiting for an external event, ready, blocked, failed or dropped. A managed source team must register wait_for when waiting, then end its turn instead of polling.',
       schema: z.object({
-        state: z.enum(['progress', 'ready', 'blocked', 'failed', 'dropped']),
+        state: z.enum(['progress', 'waiting', 'ready', 'blocked', 'failed', 'dropped']),
         summary: z.string().min(1),
+        wait_for: z.object({ thread: z.string().min(1), after: z.string().min(1) }).strict().optional()
+          .describe('With waiting for a managed source team: thread is its source or bound PR (e.g. github:15); after is source.cursor from the latest orchestrator_team get. Read current status first. Matching later events resume this same member; no polling or new permission.'),
         human_action: z.string().trim().min(1).max(1000).nullish().describe('One concrete question for a person, also with state=progress; omit to keep the pending one, null to clear it.'),
         question_for_trigger_id: z.string().optional().describe('With human_action: the human message that raised the question, which is asked where that person wrote.'),
         pr_number: z.number().int().positive().nullish().describe('The ticket GitHub PR, only when GitHub is connected. Omit for local tasks.'),
@@ -109,6 +111,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
           if (refused) throw new Error(refused)
           if (args.delivery) host.recordDelivery?.(current, DeliverySchema.parse(args.delivery), review?.decision === 'revise' ? 'progress' : args.state)
           host.teams?.recordReview(current, review, args.state)
+          host.teams?.recordWait(current, args.state, args.wait_for)
           const report = { state: args.state, summary: args.summary, ...(args.human_action !== undefined ? { question: args.human_action } : {}),
             ...(args.question_for_trigger_id ? { askedBy: args.question_for_trigger_id } : {}),
             ...(args.reply_to_trigger_id ? { answers: args.reply_to_trigger_id } : {}) }
