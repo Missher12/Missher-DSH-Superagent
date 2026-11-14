@@ -6,10 +6,10 @@ import { usePanel } from './provider.tsx'
 const Errors = createContext<Record<string, string>>({})
 
 export function ComposerModal({ open, title, kind, busy, close, form, action, note, children }: {
-  open: boolean; title: string; kind: 'task' | 'member' | 'workspace'; busy: boolean; close: () => void
+  open: boolean; title: string; kind: 'task' | 'member' | 'workspace' | 'followup'; busy: boolean; close: () => void
   form: string; action: string; note?: string; children: ReactNode
 }) {
-  const { t } = usePanel(), icons: Record<typeof kind, IconName> = { task: 'message', member: 'user', workspace: 'folder' }
+  const { t } = usePanel(), icons: Record<typeof kind, IconName> = { task: 'message', member: 'user', workspace: 'folder', followup: 'message' }
   return <Modal open={open} onClose={() => { if (!busy) close() }} title={title} closeLabel={t('close')}
     icon={<Icon name={icons[kind]} size={17} />} className={`dt-composer-modal dt-composer-${kind}`}
     footer={<div className="dt-composer-actions"><span title={note}>{note}</span><div>

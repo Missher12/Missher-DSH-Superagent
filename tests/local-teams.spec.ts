@@ -86,6 +86,19 @@ it('preserves a pending review across reload and refuses work beyond the authori
   expect(host.runtime.teams!.get(team.id)).toMatchObject({ state: 'attention', error: expect.stringContaining('轮次上限') })
   await expect(host.runtime.teams!.retry(team.id)).rejects.toThrow('轮次上限')
   expect(host.runtime.teams!.get(team.id).workflow?.round).toBe(1)
+  host.runtime.teams!.inputReceived(team.coordinatorTicketId!, true)
+  expect(host.runtime.teams!.get(team.id).workflow?.halted).toBeTruthy()
+  await host.runtime.teams!.followup(team.id, 'coordinator', 'human-resume', '已检查失败依据，请补齐输入边界，再执行一轮。')
+  expect(host.runtime.teams!.get(team.id).workflow?.halted).toBeUndefined()
+  await host.runtime.stop(); host = await startRuntime(undefined, { mode: 'local', stateDir: directory })
+  await review(team.coordinatorTicketId!, 'revise', ['build'])
+  expect(host.runtime.teams!.get(team.id).workflow?.round).toBe(2)
+  await complete(host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!.ticketId!)
+  await review(host.runtime.teams!.get(team.id).members.find(member => member.id === 'check')!.ticketId!, 'revise', ['build'])
+  await review(team.coordinatorTicketId!, 'revise', ['build'])
+  expect(host.runtime.teams!.get(team.id)).toMatchObject({ state: 'attention', workflow: { round: 2, halted: expect.any(String) } })
+  await host.runtime.teams!.followup(team.id, 'coordinator', 'human-resume', '已检查失败依据，请补齐输入边界，再执行一轮。')
+  expect(host.runtime.teams!.get(team.id).workflow?.halted).toBeTruthy() // Replaying the same request cannot grant another round.
 }, 40_000)
 it('keeps an external root open through planning and delivers only the verified team result to its original thread', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
@@ -179,6 +192,23 @@ it('keeps an external root open through planning and delivers only the verified 
   host.runtime.sources.register(source); await settle()
   expect(host.runtime.teams!.allowedWorker(team.coordinatorTicketId!)).toBe(true)
   expect(sent.filter(message => message.ticketId === rootId)).toHaveLength(2)
+  // Exhaust the automatic budget, then recover through the original external thread.
+  for (const next of [3, 4]) {
+    host.runtime.receive({ ...followup, id: `external-round-${next}`, text: `继续复查边界 ${next}`, at: new Date().toISOString() }); await settle()
+    await review(team.coordinatorTicketId!, 'revise', ['build'])
+    if (next === 3) {
+      await complete(host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!.ticketId!)
+      await review(host.runtime.teams!.get(team.id).members.find(member => member.id === 'check')!.ticketId!, 'pass')
+      await review(team.coordinatorTicketId!, 'pass')
+    }
+  }
+  expect(host.runtime.teams!.get(team.id).workflow?.halted).toBeTruthy()
+  host.runtime.receive({ ...followup, id: 'external-resume', text: '已核对失败原因，请在原任务继续一轮。', at: new Date().toISOString() }); await settle()
+  expect(host.runtime.teams!.get(team.id).workflow?.halted).toBeUndefined()
+  await review(team.coordinatorTicketId!, 'revise', ['build'])
+  expect(host.runtime.teams!.get(team.id).workflow?.round).toBe(4)
+  expect(host.runtime.teams!.list()).toHaveLength(before)
+  expect(host.agents.has(`worker-${rootId}`)).toBe(false)
   host.runtime.receive({ ...followup, id: 'external-followup-stop', text: '继续检查第二个边界。', at: new Date().toISOString() }); await settle()
   await readySession(team.coordinatorTicketId!)
   const current = host.runtime.store.settings()

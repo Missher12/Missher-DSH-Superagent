@@ -66,6 +66,8 @@ export const TEAM_TEXT = {
   teamModelQuotaWait: ['模型额度不足，等待重试', 'Model quota exhausted; waiting to retry'],
   teamRetry: ['重试派发', 'Retry dispatch'], teamRetryMember: ['重试成员', 'Retry member'],
   teamReviewContinue: ['继续复核', 'Continue review'],
+  teamResume: ['补充并继续', 'Follow up and resume'], teamResumeRound: ['继续一轮', 'Continue one round'],
+  teamResumeHint: ['沿用原团队、会话和权限', 'Keep the same team, sessions, and permissions'],
   teamReviewPending: ['成员已交付，最终复核尚未结束。', 'Members delivered; final review is still pending.'],
   teamStop: ['停止团队', 'Stop team'], teamStopHint: ['停止当前团队的执行任务，并取消尚未派出的成员。已产生的文件会保留。', 'Stop this team’s active tasks and cancel undispatched assignments. Existing files are preserved.'],
   teamCompletedCount: ['{done} / {total} 名成员已交付', '{done} / {total} members delivered'],

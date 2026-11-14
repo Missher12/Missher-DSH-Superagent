@@ -1,5 +1,5 @@
 /** A task's real collaboration, explicit member plans, and completion evidence. */
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import type { TeamMember, TeamView } from '../teams/contracts.ts'
 import { Button, Icon, Input, SegmentedTabs } from './controls.tsx'
 import { ComposerField as Field, ComposerForm, ComposerModal, WritingArea } from './composer.tsx'
@@ -67,6 +67,40 @@ export function TeamCompletion({ team }: { team: TeamView }) {
   </section>
 }
 
+export function ResumeTeam({ team, reload }: { team: TeamView; reload: () => Promise<void> }) {
+  const { t, call } = usePanel(), form = useId()
+  const [open, setOpen] = useState(false), [failure, setFailure] = useState<string>()
+  const storageKey = `dsh-superagent/team-resume/${team.id}`
+  const [draft, setDraft] = useState(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null')
+      if (typeof saved?.text === 'string' && typeof saved?.requestId === 'string') return { text: saved.text, requestId: saved.requestId }
+    } catch { /* Optional draft storage. */ }
+    return { text: '', requestId: crypto.randomUUID() }
+  })
+  useEffect(() => { try { sessionStorage.setItem(storageKey, JSON.stringify(draft)) } catch { /* Optional draft storage. */ } }, [storageKey, draft])
+  const send = useAction(async () => {
+    setFailure(undefined)
+    try {
+      await call('POST local/teams/:id/followup', { id: team.id, body: { memberId: 'coordinator', requestId: draft.requestId, text: draft.text.trim() } })
+      const next = { text: '', requestId: crypto.randomUUID() }
+      try { sessionStorage.setItem(storageKey, JSON.stringify(next)) } catch { /* The pause banner may already have unmounted. */ }
+      setOpen(false); setDraft(next); await reload()
+    } catch (error) { setFailure(errorText(error)); throw error }
+  })
+  if (team.state === 'stopped' || !team.workflow?.halted) return null
+  return <section className="dt-team-issue" role="status"><p>{team.workflow.halted.split(/[；。]/)[0]}</p>
+    <Button size="sm" onClick={() => setOpen(true)}>{t('teamResume')}</Button>
+    <ComposerModal open={open} title={t('teamResume')} kind="followup" busy={send.busy} close={() => setOpen(false)} form={form}
+      action={t('teamResumeRound')} note={t('teamResumeHint')}>
+      <ComposerForm id={form} disabled={send.busy} failure={failure} onSubmit={() => { void send.run() }}>
+        <section className="dt-composer-brief"><Field label={t('teamFollowup')} required><WritingArea required maxLength={64000}
+          value={draft.text} onChange={event => setDraft({ ...draft, text: event.target.value })} /></Field></section>
+      </ComposerForm>
+    </ComposerModal>
+  </section>
+}
+
 export function TeamCollaboration({ team, selected, select, reload, delivery }: {
   team: TeamView; selected: string; select: (id: string) => void; reload: () => Promise<void>; delivery: () => void
 }) {
@@ -87,7 +121,8 @@ export function TeamCollaboration({ team, selected, select, reload, delivery }: 
       ]} /></header>
     <div id="dt-team-collaboration-content" className="dt-team-collaboration-body" role="tabpanel"
       aria-labelledby={tab === 'graph' ? 'dt-team-relations' : tab === 'members' ? 'dt-team-assignments' : 'dt-team-completion'}>
-      {(team.error || review) && <div className="dt-team-issue" role="alert"><p>{team.error ?? (team.completion!.issues.join('\n') || t('teamReviewPending'))}</p><Button size="sm" disabled={retry.busy} onClick={() => { void retry.run() }}>{t(team.error ? 'teamRetry' : 'teamReviewContinue')}</Button></div>}
+      {!team.workflow?.halted && (team.error || review) && <div className="dt-team-issue" role="alert"><p>{team.error ?? (team.completion!.issues.join('\n') || t('teamReviewPending'))}</p>
+        {team.state !== 'stopped' && <Button size="sm" disabled={retry.busy} onClick={() => { void retry.run() }}>{t(team.error ? 'teamRetry' : 'teamReviewContinue')}</Button>}</div>}
       {tab === 'graph' ? <><div className="dt-team-count-line"><span>{t('studioTaskFlow')}</span><span>{t('teamCompletedCount', { done: team.completedMembers, total: team.memberCount })}</span></div>
         {team.workflow && <div className="dt-team-round" role="status">{t('teamRound', { round: team.workflow.round, version: team.workflow.planVersion })}</div>}
         <TeamGraph team={team} selected={selected} select={select} addMember={member => <AddTeamMember key={member.id} team={team} parentId={member.id} reload={reload} select={select} compact />} /><section className="dt-team-selected-plan"><div><h3>{t('studioCurrentAssignment')}</h3><span>{active.name}</span></div>

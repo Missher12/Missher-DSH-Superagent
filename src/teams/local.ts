@@ -377,8 +377,8 @@ export class LocalTeams {
       review.handled = true
       const current = workflow.reviews.find(item => item.ticketId === review.ticketId && item.assignmentId === review.assignmentId)!
       current.handled = true
-      if (workflow.round >= (value.request.workflow?.maxRounds ?? 3) || repeated) {
-        value.error = workflow.halted = repeated ? '返工没有新增依据，已暂停；请补充具体问题后新建任务。' : '已达到本任务返工轮次上限，已暂停；请检查结果后决定后续任务。'
+      if (workflow.round >= (workflow.roundLimit ?? value.request.workflow?.maxRounds ?? 3) || repeated) {
+        value.error = workflow.halted = repeated ? '返工没有新增依据，已暂停。补充具体问题后可继续一轮。' : '已达到本任务返工轮次上限。补充要求后可继续一轮。'
         return
       }
       const affected = new Set([...review.targets, ...workflow.changedMembers ?? []])
@@ -395,7 +395,7 @@ export class LocalTeams {
   private workflowInstructions(team: TeamRecord): string {
     if (!team.workflow) return ''
     const root = this.ticket(team.sourceTicketId)
-    return `\n当前第 ${team.workflow.round}/${team.request.workflow?.maxRounds ?? 3} 轮。你属于 SuperAgent 层级团队；总指挥负责来源与最终交付，当前协调成员负责项目策划。不要另开原生子代理。编排工具连续报错时报告 blocked 并说明接口错误，不搜索或修改宿主程序、数据库、凭据或插件运行文件。\n使用 orchestrator_team action=get 获取当前计划、轮次 token、交付依据。策划可在规划、返工分派或最终复核（含完工后补充）阶段用 revise_plan 调整已有成员，不能扩大成员、模型或权限。分工变更后必须以 decision=revise 指定相关成员重新执行，不能直接通过旧交付。\n检验或管理成员发现缺陷后，用 orchestrator_report state=ready、team_review.decision=revise、targets=具体成员、reason=具体问题回传，并附实际 delivery（失败检查允许作为返工依据）。插件会先交回策划；策划确认后再以同样方式分派下一轮。检验和最终复核通过时用 decision=pass；真正缺权限或信息用 state=blocked、decision=blocked、human_action=具体问题。team_review 必须原样使用最新 token，并引用 evidence 的 ticketId/assignmentId；本轮自己的 delivery 可引用 ownEvidence。没有执行的检查写 unverified。${root ? `\n来源主工单：${root.id}。授权范围：${root.mandate.scope}\n${mandateInstructions(root.mandate)}\n${root.execution?.assignment ?? ''}` : ''}`
+    return `\n当前第 ${team.workflow.round}/${team.workflow.roundLimit ?? team.request.workflow?.maxRounds ?? 3} 轮。你属于 SuperAgent 层级团队；总指挥负责来源与最终交付，当前协调成员负责项目策划。不要另开原生子代理。编排工具连续报错时报告 blocked 并说明接口错误，不搜索或修改宿主程序、数据库、凭据或插件运行文件。\n使用 orchestrator_team action=get 获取当前计划、轮次 token、交付依据。策划可在规划、返工分派或最终复核（含完工后补充）阶段用 revise_plan 调整已有成员，不能扩大成员、模型或权限。分工变更后必须以 decision=revise 指定相关成员重新执行，不能直接通过旧交付。\n检验或管理成员发现缺陷后，用 orchestrator_report state=ready、team_review.decision=revise、targets=具体成员、reason=具体问题回传，并附实际 delivery（失败检查允许作为返工依据）。插件会先交回策划；策划确认后再以同样方式分派下一轮。检验和最终复核通过时用 decision=pass；真正缺权限或信息用 state=blocked、decision=blocked、human_action=具体问题。team_review 必须原样使用最新 token，并引用 evidence 的 ticketId/assignmentId；本轮自己的 delivery 可引用 ownEvidence。没有执行的检查写 unverified。${root ? `\n来源主工单：${root.id}。授权范围：${root.mandate.scope}\n${mandateInstructions(root.mandate)}\n${root.execution?.assignment ?? ''}` : ''}`
   }
   start(): void { if (this.timer || this.stopped) return; this.timer = setInterval(() => this.request(), 1000); this.request() }
   request(): void {
@@ -470,9 +470,9 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}${this.workflowInstructions
     let team = this.require(id)
     if (team.stoppedAt || this.stopped) return
     if (team.sourceTicketId && !this.allowedWorker(team.sourceTicketId)) return
-    if (team.error || team.workflow?.halted) return
     if (!await this.syncSource(team)) return
     team = this.require(id)
+    if (team.error || team.workflow?.halted) return
     const local = this.runtime.local!
     if (!team.coordinatorTicketId) {
       const task = await local.create({ requestId: `team:${id}:coordinator`, title: `${team.request.title} · ${team.request.coordinatorName}`.slice(0, 160),
@@ -514,7 +514,7 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}${this.workflowInstructions
         const pending = team.workflow!.pendingReview!
         const instructions = `检验提出返工，请复核依据并向相关成员分派修复。原始检验数据：\n${JSON.stringify(pending)}\n${this.workflowInstructions(team)}`
         if (done(coordinator) && assignment(coordinator) === team.workflow!.reviewBaseline) {
-          await local.followup(coordinator.id, key('team-review', id, pending.ticketId, pending.assignmentId), instructions)
+          await local.followup(coordinator.id, key('team-review', id, pending.ticketId, pending.assignmentId), instructions, true)
         } else await this.continueTurn(team, coordinator, `review:${pending.assignmentId}`, instructions, true)
         return
       }
@@ -546,7 +546,7 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}${this.workflowInstructions
       } else if ((planned.pendingRound || planned.dependencyVersion !== dependencyVersion) && this.ticket(planned.ticketId)?.ended?.by !== 'human') {
         const revision = team.workflow?.reviews.findLast(review => review.reviewerId === 'coordinator' && review.decision === 'revise')
         await local.followup(planned.ticketId, key('team-handoff', id, planned.plan.id, planned.pendingRound ?? '', dependencyVersion),
-          `前置交付或计划已更新，请按原分工处理本轮需要更新的部分。${revision ? `\n本轮问题：${revision.reason}` : ''}\n${this.memberInstructions(team, planned)}`)
+          `前置交付或计划已更新，请按原分工处理本轮需要更新的部分。${revision ? `\n本轮问题：${revision.reason}` : ''}\n${this.memberInstructions(team, planned)}`, true)
         team = this.patch(id, value => {
           const member = value.members.find(member => member.plan.id === planned.plan.id)!
           member.dependencyVersion = dependencyVersion; delete member.pendingRound
@@ -567,7 +567,7 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}${this.workflowInstructions
         this.deliverSource(team)
       } else if (done(coordinator) && assignment(coordinator) === team.finalBaseline) {
         // Recover a crash between recording finalization and delivering its idempotent follow-up.
-        await local.followup(team.coordinatorTicketId!, key('team-final', id, resultVersion), this.finalInstructions(team))
+        await local.followup(team.coordinatorTicketId!, key('team-final', id, resultVersion), this.finalInstructions(team), true)
       } else {
         await this.continueTurn(team, coordinator, `final:${resultVersion}`, this.reviewInstructions(team), true)
       }
@@ -575,7 +575,7 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}${this.workflowInstructions
     }
     if (!done(coordinator)) return
     team = this.patch(id, value => { value.phase = 'integrating'; value.finalVersion = resultVersion; value.finalBaseline = assignment(coordinator) })
-    await local.followup(team.coordinatorTicketId!, key('team-final', id, resultVersion), this.finalInstructions(team))
+    await local.followup(team.coordinatorTicketId!, key('team-final', id, resultVersion), this.finalInstructions(team), true)
   }
 
   stopTeam(id: string): TeamView {
@@ -611,6 +611,10 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}${this.workflowInstructions
     const target = this.target(ticketId)
     if (!target || this.require(target.team).stoppedAt) return
     this.patch(target.team, team => {
+      if (!automatic && team.workflow?.halted) {
+        team.workflow.roundLimit = team.workflow.round + 1
+        delete team.workflow.halted
+      }
       if (!team.workflow?.halted) delete team.error
       if (!automatic && team.continuations) delete team.continuations[ticketId]
       if (team.phase === 'completed') {

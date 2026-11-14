@@ -2,6 +2,7 @@
 .dt-modal.dt-composer-modal { width:min(680px,100%); height:min(740px,calc(100dvh - 48px)); border-radius:12px; background:var(--dsw-alias-bg-base,var(--dsw-alias-bg-layer-1)); }
 .dt-modal.dt-composer-member { height:min(640px,calc(100dvh - 48px)); }
 .dt-modal.dt-composer-workspace { height:auto; max-height:calc(100dvh - 48px); }
+.dt-modal.dt-composer-followup { height:auto; max-height:calc(100dvh - 48px); }
 .dt-composer-modal .dt-modal-header { box-sizing:border-box; display:grid; grid-template-columns:23px minmax(0,1fr) 28px; gap:8px; height:56px; padding:12px 24px; border-bottom:1px solid var(--dsw-alias-border-l2); }
 .dt-composer-modal .dt-modal-header h2 { font-size:18px; line-height:24px; font-weight:600; }
 .dt-modal-title-icon { display:grid; place-items:center; color:var(--dsw-alias-label-secondary); }

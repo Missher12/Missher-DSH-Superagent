@@ -58,6 +58,8 @@ export interface TeamReviewRecord extends TeamReview { reviewerId: string; ticke
 export interface TeamWorkflow {
   planVersion: number; round: number; roundId: string; reviews: TeamReviewRecord[]
   pendingReview?: TeamReviewRecord; reviewBaseline?: string; halted?: string
+  /** A human follow-up can grant one more round after an automatic pause. */
+  roundLimit?: number
   changedMembers?: string[]
 }
 export type TeamState = 'planning' | 'working' | 'waiting' | 'attention' | 'failed' | 'completed' | 'stopped'

@@ -192,8 +192,8 @@ export class LocalTasks {
     this.runtime.store.atomic(() => {
       this.runtime.receive(trigger)
       if (origin.source !== 'local' && !this.runtime.store.triggers.disposition(trigger.id)?.fanout?.includes(id)) this.runtime.engine.attach(id, trigger.id)
+      this.runtime.teams?.inputReceived(id, automatic)
     })
-    this.runtime.teams?.inputReceived(id, automatic)
     return this.get(id)
   }
   stop(id: string) { this.ticket(id); this.runtime.engine.stopTicket(id); return this.get(id) }

@@ -6,6 +6,27 @@ import { server } from './fixtures/panel-server.ts'
 import { zh } from '../src/client/locales.ts'
 
 usePanel()
+it('does not offer an impossible retry for a stopped team', async () => {
+  server.teamViews['explicit-team'] = { ...team(), state: 'stopped', error: '来源授权已撤销，请重新派单。' }
+  at({ page: 'overview', query: { team: 'explicit-team' } })
+  await mount()
+  expect(text()).toContain('来源授权已撤销')
+  expect(all('button').some(button => button.textContent === '重试派发')).toBe(false)
+})
+it('requires a concrete follow-up to resume a halted team in the original planner session', async () => {
+  server.teamViews['explicit-team'] = { ...team(), state: 'attention', error: '已达到返工轮次上限',
+    workflow: { planVersion: 1, round: 1, roundId: 'round-one', reviews: [], halted: '已达到返工轮次上限' } }
+  at({ page: 'overview', query: { team: 'explicit-team', member: 'check' } })
+  await mount(); await click('补充并继续')
+  await click('继续一轮')
+  expect(server.requests.some(item => item.method === 'POST' && item.path.endsWith('/followup'))).toBe(false)
+  await type(document.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')!, '边界已明确，请补齐空数组情况后继续。')
+  await click('取消'); await click('补充并继续')
+  expect(document.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')!.value).toBe('边界已明确，请补齐空数组情况后继续。')
+  await click('继续一轮')
+  expect(server.requests.find(item => item.method === 'POST' && item.path.endsWith('/followup'))?.body)
+    .toMatchObject({ memberId: 'coordinator', text: '边界已明确，请补齐空数组情况后继续。' })
+})
 it.each(['attention', 'waiting'] as const)('offers a working review action for a legacy final report left %s', async state => {
   const legacy = team(); legacy.state = state
   legacy.completion = { members: true, finalReview: state === 'attention', evidence: false, issues: state === 'attention' ? ['最终检查仍有失败项'] : [], checks: { passed: 1, failed: state === 'attention' ? 1 : 0, notRun: 0 }, unverified: [] }
