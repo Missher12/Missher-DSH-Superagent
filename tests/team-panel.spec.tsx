@@ -48,6 +48,29 @@ beforeEach(() => {
   server.teamViews['explicit-team'] = team(); server.nextTeamId = 'explicit-team'
   at({ page: 'overview' })
 })
+it('opens the real commander in the same team workspace and keeps member chat and context separate', async () => {
+  const view = server.teamViews['explicit-team']!
+  Object.assign(view, { commanderSessionId: 'master', commander: { sessionId: 'master', directory: '/tmp/control', running: false, tools: [],
+    model: { provider: 'router', model: 'router-model' } } })
+  at({ page: 'overview', query: { team: view.id, member: 'check' } })
+  await mount()
+  vi.spyOn(all('.dt-team-focus-workbench')[0]!, 'getBoundingClientRect').mockReturnValue({ width: 1000 } as DOMRect)
+  const card = all('.dt-team-node').find(node => node.textContent?.includes('总指挥'))
+  expect(card).toBeDefined()
+  expect(card!.textContent).toContain('待命')
+  await click(card!)
+  expect(all('[data-test-session="master"]')).toHaveLength(1)
+  expect(all('[data-test-session="worker-check-task"]')).toHaveLength(0)
+  expect(all('.dt-team-workspace-tab')).toHaveLength(1)
+  expect(all('.dt-team-followup')).toHaveLength(0)
+  await click('上下文')
+  expect(all('[data-test-context="master"]')).toHaveLength(1)
+  await click(all('.dt-team-node').find(node => node.textContent?.includes('验证'))!)
+  expect(all('[data-test-context="worker-check-task"]')).toHaveLength(1)
+  expect(all('[data-test-context="master"]')).toHaveLength(0)
+  expect(view.members).toHaveLength(3)
+  expect(server.requests.some(item => item.method === 'POST' && /\/followup$|\/teams$/.test(item.path))).toBe(false)
+})
 it('shows only explicit teams and keeps legacy tasks separate from team collaborators', async () => {
   await mount()
   expect(all('.dt-team-overview-item')).toHaveLength(1)

@@ -11,6 +11,7 @@ import { LoadState, When } from './widgets.tsx'
 import { healthText, shortText } from './text.ts'
 import { PaneDivider, usePaneWidth, useStudio } from './studio-layout.tsx'
 import { Select } from './select.tsx'
+import { teamParticipants } from './team-participants.ts'
 
 interface WorkspaceView { kind: 'team' | 'session'; id: string; title: string; member?: string }
 const STORAGE = 'dsh-superagent/open-workspaces'
@@ -74,7 +75,7 @@ export function LocalWorkbench({ sessionId, teamId, memberId = 'coordinator' }: 
     setViews(remaining)
     if (key === current) selectView(remaining[Math.min(index, remaining.length - 1)])
   }
-  const member = team?.members.find(member => member.id === memberId) ?? team?.members[0]
+  const member = team && (teamParticipants(team, t).find(member => member.id === memberId) ?? team.members[0])
   return <section ref={root} className="dt-team-workbench dt-team-focus-workbench" aria-label={t('localWorkbench')}>
     {state?.paused && <p className="dt-banner">{t('localPauseHint')}</p>}
     {Object.entries(state?.health ?? {}).filter(([, health]) => health.state === 'error').map(([id, health]) => <p className="dt-error" role="status" key={id}>{healthText(t, health)}</p>)}

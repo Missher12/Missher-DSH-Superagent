@@ -4,15 +4,16 @@ import type { TeamMemberView, TeamView } from '../teams/contracts.ts'
 import { Icon } from './controls.tsx'
 import { usePanel } from './provider.tsx'
 import { TeamStatus } from './team-ui.tsx'
-import { SessionButton } from './widgets.tsx'
+import { COMMANDER, participantIcon, participantWork, teamParticipants, type TeamParticipant } from './team-participants.ts'
 
 interface Line { id: string; path: string; dependency: boolean; active: boolean }
 export function TeamGraph({ team, selected, select, addMember }: { team: TeamView; selected: string; select: (id: string) => void; addMember?: (member: TeamMemberView) => ReactNode }) {
   const { t } = usePanel()
+  const participants = teamParticipants(team, t), commander = participants.find(member => member.role === 'commander')
   const root = useRef<HTMLDivElement>(null), nodes = useRef(new Map<string, HTMLButtonElement>())
   const [lines, setLines] = useState<Line[]>([])
   const signature = `${team.state}|${team.handoffs.map(handoff => `${handoff.from}:${handoff.to}`).join(',')}|`
-    + team.members.map(member => `${member.id}:${member.parentId ?? ''}:${member.ticketId ?? ''}:${member.dependencies.join(',')}:${member.state}:${!!member.running}`).join('|')
+    + participants.map(member => `${member.id}:${member.parentId ?? ''}:${member.ticketId ?? ''}:${member.dependencies.join(',')}:${member.state}:${!!member.running}`).join('|')
   useLayoutEffect(() => {
     const measure = () => {
       const bounds = root.current?.getBoundingClientRect(); if (!bounds) return
@@ -29,10 +30,10 @@ export function TeamGraph({ team, selected, select, addMember }: { team: TeamVie
         return [{ id: `${from}:${to}:${dependency}`, dependency, active, path: downward ? `M${x1},${y1} C${x1},${bend} ${x2},${bend} ${x2},${y2}`
           : `M${x1},${y1} C${x1},${bend} ${x2},${bend} ${x2},${end.bottom - bounds.top}` }]
       }
-      setLines(team.members.flatMap(member => member.id === 'coordinator' ? [] : [
+      setLines([...(commander ? connect(COMMANDER, 'coordinator', false) : []), ...team.members.flatMap(member => member.id === 'coordinator' ? [] : [
         ...connect(member.parentId ?? 'coordinator', member.id, false),
         ...member.dependencies.flatMap(from => connect(from, member.id, true)),
-      ]))
+      ])])
     }
     measure()
     if (typeof ResizeObserver === 'undefined') return
@@ -41,15 +42,15 @@ export function TeamGraph({ team, selected, select, addMember }: { team: TeamVie
     for (const node of nodes.current.values()) observer.observe(node)
     return () => observer.disconnect()
   }, [signature, team.id])
-  const node = (member: TeamMemberView) => <button type="button" key={member.id} ref={element => {
+  const node = (member: TeamParticipant) => <button type="button" key={member.id} ref={element => {
     if (element) nodes.current.set(member.id, element); else nodes.current.delete(member.id)
-  }} className="dt-team-node" data-state={member.state} data-running={member.running || undefined} data-coordinator={member.role === 'coordinator' || undefined} aria-pressed={selected === member.id}
+  }} className="dt-team-node" data-role={member.role} data-state={member.state} data-running={member.running || undefined} data-coordinator={member.role === 'coordinator' || undefined} aria-pressed={selected === member.id}
     aria-label={`${member.name} · ${t('teamDetails')}`} title={member.name + (member.dependencies.length ? ' · ' + t('teamPrerequisite', { names: member.dependencies.map(id => team.members.find(item => item.id === id)?.name ?? id).join('、') }) : '')} onClick={() => select(member.id)}>
-    <span className="dt-team-node-head"><span className="dt-team-avatar"><Icon name={member.role === 'coordinator' ? 'agent' : member.id === 'check' ? 'shield' : 'code'} size={18} /></span>
-      <strong>{member.name}</strong><Icon name="chevron-right" size={14} /></span>
-    <span className="dt-team-node-role" title={member.instructions}>{member.role === 'coordinator' ? t('teamCoordinatorWork') : member.instructions}</span>
+    <span className="dt-team-node-head"><span className="dt-team-avatar"><Icon name={participantIcon(member)} size={17} /></span>
+      <strong>{member.name}</strong><Icon name="message" size={14} /></span>
+    <span className="dt-team-node-role" title={member.role === 'commander' ? t('teamCommanderShared') : member.instructions}>{participantWork(member, t)}</span>
     <span className="dt-team-node-bottom"><TeamStatus state={member.state} member />
-      <span className="dt-team-node-model" title={member.model ? `${member.model.model}${member.model.reasoningEffort ? ` · ${member.model.reasoningEffort}` : ''}` : t('teamModelInherit')}>{member.model?.model ?? t('teamModelInherit')}</span></span>
+      <span className="dt-team-node-model" title={member.model ? `${member.model.model}${member.model.reasoningEffort ? ` · ${member.model.reasoningEffort}` : ''}` : t(member.role === 'commander' ? 'localInheritDefault' : 'teamModelInherit')}>{member.model?.model ?? t(member.role === 'commander' ? 'localInheritDefault' : 'teamModelInherit')}</span></span>
   </button>
   const branch = (member: TeamMemberView) => <div className="dt-team-branch" key={member.id} data-parent={member.parentId ?? 'coordinator'}>
     {node(member)}{(member.role === 'coordinator' || member.responsibility === 'manager') && addMember && <div className="dt-team-branch-action">{addMember(member)}</div>}
@@ -63,7 +64,7 @@ export function TeamGraph({ team, selected, select, addMember }: { team: TeamVie
     <svg className="dt-team-lines" aria-hidden="true">{lines.map(line => <g key={line.id}><path d={line.path} data-dependency={line.dependency || undefined} data-active={line.active || undefined} />
       {line.active && <circle className="dt-team-flow-packet" r="2.5"><animateMotion dur={line.dependency ? '2.6s' : '2.1s'} repeatCount="indefinite" path={line.path} /></circle>}
     </g>)}</svg>
-    {team.commanderSessionId && <div className="dt-team-commander"><SessionButton variant="ghost" sessionId={team.commanderSessionId} label={t('teamCommander')} /></div>}
+    {commander && <div className="dt-team-commander">{node(commander)}</div>}
     <div className="dt-team-coordinator">{branch(team.members[0]!)}</div>
     {[...levels].sort(([a], [b]) => a - b).map(([depth, members]) => <div className="dt-team-workers" key={depth}>{members.map(branch)}</div>)}
     <div className="dt-team-legend"><span><i />{t('localDispatch')}</span><span><i data-dependency />{t('teamHandoff')}</span></div>

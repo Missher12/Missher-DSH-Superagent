@@ -121,5 +121,6 @@ export interface TeamView extends TeamIndex {
   model?: RoleModel
   workflow?: TeamWorkflow
   commanderSessionId?: string
+  commander?: Pick<TeamMemberView, 'sessionId' | 'directory' | 'model' | 'running' | 'quotaWait' | 'tools'>
   sourceTicketId?: string
 }

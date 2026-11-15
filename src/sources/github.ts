@@ -142,9 +142,12 @@ async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
   let interval = 60
   let failures = 0
   await ctx.ready
-  // Setup restarts dsh-superagent once it resolves the accounts; until then nothing is polled.
-  if (!ctx.configured()) { ctx.report('github', health('paused', 'setupPending')); return }
   while (!signal.aborted) {
+    if (!ctx.configured()) {
+      ctx.report('github', health('paused', 'setupPending'))
+      await pause(5000, signal)
+      continue
+    }
     const config = ctx.config<GithubConfig>(SOURCE)
     try {
       if (config) interval = await pollRound(ctx, signal)

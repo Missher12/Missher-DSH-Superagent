@@ -5,6 +5,7 @@ import { Button, Icon, Input, SegmentedTabs } from './controls.tsx'
 import { ComposerField as Field, ComposerForm, ComposerModal, WritingArea } from './composer.tsx'
 import { ModelSelect, ReasoningSelect } from './model-picker.tsx'
 import { TeamGraph } from './team-graph.tsx'
+import { participantIcon, participantWork, teamParticipants } from './team-participants.ts'
 import { TeamStatus, TeamText } from './team-ui.tsx'
 import { useAction, usePanel } from './provider.tsx'
 import { errorText, shortText } from './text.ts'
@@ -109,11 +110,11 @@ export function TeamCollaboration({ team, selected, select, reload, delivery }: 
   const coordinator = team.members[0]
   const review = team.state !== 'stopped' && !!team.completion && ((team.completion.finalReview && !!team.completion.issues.length)
     || (team.completion.members && !team.completion.finalReview && coordinator?.state === 'waiting' && !coordinator.running))
-  const active = team.members.find(member => member.id === selected) ?? team.members[0]!
+  const participants = teamParticipants(team, t), active = participants.find(member => member.id === selected) ?? team.members[0]!
   const recent = team.members.flatMap(member => member.events.filter(event => event.summary?.trim()).map(event => ({ ...event, member: member.name })))
     .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 3)
   return <aside className="dt-team-collaboration" aria-label={t('teamCollaboration')}>
-    <header><div className="dt-team-collaboration-title"><div><h2>{t('teamCollaboration')}</h2><small>{t('studioMemberCount', { count: team.members.length })}</small></div><AddTeamMember key={team.id} team={team} reload={reload} select={select} /></div>
+    <header><div className="dt-team-collaboration-title"><div><h2>{t('teamCollaboration')}</h2><small>{t('teamConversationCount', { count: participants.filter(member => member.sessionId).length })}</small></div><AddTeamMember key={team.id} team={team} reload={reload} select={select} /></div>
       <SegmentedTabs value={tab} onChange={setTab} label={t('teamCollaboration')} items={[
         { value: 'graph', label: t('teamRelations'), id: 'dt-team-relations', panelId: 'dt-team-collaboration-content' },
         { value: 'members', label: t('teamMembers'), id: 'dt-team-assignments', panelId: 'dt-team-collaboration-content' },
@@ -126,13 +127,13 @@ export function TeamCollaboration({ team, selected, select, reload, delivery }: 
       {tab === 'graph' ? <><div className="dt-team-count-line"><span>{t('studioTaskFlow')}</span><span>{t('teamCompletedCount', { done: team.completedMembers, total: team.memberCount })}</span></div>
         {team.workflow && <div className="dt-team-round" role="status">{t('teamRound', { round: team.workflow.round, version: team.workflow.planVersion })}</div>}
         <TeamGraph team={team} selected={selected} select={select} addMember={member => <AddTeamMember key={member.id} team={team} parentId={member.id} reload={reload} select={select} compact />} /><section className="dt-team-selected-plan"><div><h3>{t('studioCurrentAssignment')}</h3><span>{active.name}</span></div>
-          <p className="dt-team-assignment-summary">{active.role === 'coordinator' ? t('teamCoordinatorWork') : shortText(active.instructions, 80)}</p>{active.role === 'coordinator' && active.state === 'waiting' && <p className="dt-hint">{t(team.completion?.members ? 'teamReviewPending' : 'teamPlanningRound')}</p>}
+          <p className="dt-team-assignment-summary">{shortText(participantWork(active, t), 80)}</p>{active.role === 'commander' && <p className="dt-hint">{t('teamCommanderShared')}</p>}{active.role === 'coordinator' && active.state === 'waiting' && <p className="dt-hint">{t(team.completion?.members ? 'teamReviewPending' : 'teamPlanningRound')}</p>}
           <Button size="sm" icon={<Icon name="message" size={14} />} onClick={() => select(active.id)}>{t('teamOpenSession')}</Button></section>
         {!!recent.length && <section className="dt-studio-recent"><h3>{t('studioRecentCollaboration')}</h3>{recent.map(event => <div key={`${event.member}:${event.id}`}>
           <Icon name={event.state === 'started' ? 'running' : 'message'} size={13} /><span title={event.summary}>{event.member} · {shortText(event.summary, 55)}</span><When at={event.at} /></div>)}</section>}
         <details className="dt-team-goal-disclosure"><summary>{t('teamGoal')}</summary><TeamText text={team.instructions} /></details></>
-        : tab === 'members' ? <ul className="dt-team-assignment-list">{team.members.map(member => <li key={member.id} data-selected={member.id === selected || undefined}>
-          <button type="button" className="dt-team-assignment-open" onClick={() => select(member.id)}><span className="dt-team-avatar"><Icon name={member.role === 'coordinator' ? 'queue' : 'user'} /></span>
+        : tab === 'members' ? <ul className="dt-team-assignment-list">{participants.map(member => <li key={member.id} data-selected={member.id === selected || undefined}>
+          <button type="button" className="dt-team-assignment-open" onClick={() => select(member.id)}><span className="dt-team-avatar"><Icon name={participantIcon(member)} /></span>
             <span><strong>{member.name}</strong><TeamStatus state={member.state} member /></span><Icon name="chevron-right" size={14} /></button>
           <TeamText text={member.instructions} /><div className="dt-team-assignment-meta"><span>{member.model?.model ?? t('teamModelInherit')}{member.model?.reasoningEffort ? ` · ${member.model.reasoningEffort}` : ''}</span>
             <Button size="sm" onClick={() => select(member.id)}>{t('teamOpenSession')}</Button></div>

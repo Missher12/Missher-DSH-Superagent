@@ -1098,6 +1098,18 @@ describe('feishu event consumer', () => {
     return { ctx: sourceContextOf(deps, feishuKind), health, store, turnOff }
   }
 
+  it('starts its existing loops when the bot account recovers after startup', async () => {
+    const { ctx, health, store } = consumerSource(cli('ready'))
+    const identity = ctx.deployment.feishu
+    ctx.deployment.feishu = undefined
+    running = runFeishu(ctx, controller.signal)
+    await vi.waitFor(() => expect(health.history?.state).toBe('paused'), until)
+    expect(runs()).toBe(0)
+    ctx.deployment.feishu = identity
+    try { await vi.waitFor(() => expect(health.feishu?.state).toBe('ready'), { timeout: 12_000, interval: 50 }) }
+    finally { controller.abort(); await running; store.close() }
+  }, 15_000)
+
   /** A message event line as `event consume` prints it; a group message mentions the bot. */
   const event = (id: string, chat: string, type: 'group' | 'p2p') => JSON.stringify({ message_id: id, chat_id: chat, chat_type: type,
     sender_id: 'ou_alice', sender_type: 'user', content: 'fix it', create_time: String(Date.now()),

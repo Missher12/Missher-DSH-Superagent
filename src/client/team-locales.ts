@@ -4,6 +4,8 @@ export const TEAM_TEXT = {
   'teamRole.manager': ['管理', 'Manager'], 'teamRole.implementer': ['实施', 'Implementation'], 'teamRole.reviewer': ['检验', 'Review'],
   teamAddAndRun: ['添加并执行', 'Add and run'], teamRound: ['第 {round} 轮 · 计划 {version}', 'Round {round} · Plan {version}'],
   teamRoundLimit: ['最多轮次', 'Round limit'], teamCommander: ['总指挥', 'Commander'],
+  teamCommanderWork: ['全局调度与来源回传', 'Shared dispatch and source replies'], teamCommanderIdle: ['待命', 'Standing by'],
+  teamConversationCount: ['{count} 个会话', '{count} conversations'], teamCommanderShared: ['所有团队共用此调度会话', 'This dispatch session is shared across teams'],
   workspaceRename: ['重命名', 'Rename'], workspacePath: ['查看路径', 'Show path'],
   teamCollaboration: ['团队协作', 'Team collaboration'], teamRelations: ['协作关系', 'Connections'],
   teamTasks: ['任务', 'Tasks'], teamStatusOpen: ['打开此任务的工作台', 'Open this task workspace'],

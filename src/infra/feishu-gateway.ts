@@ -51,8 +51,8 @@ export class FeishuGateway {
     catch (error) {
       signal.throwIfAborted()
       // SDK / Axios errors can carry request headers and credentials. Only explicit API diagnostics cross this boundary.
-      const failure = (error as { response?: { data?: { code?: number; msg?: string } } }).response?.data
-      throw new FeishuGatewayError(failure?.code ? `飞书接口拒绝请求 (${failure.code})` : '飞书连接失败，请检查网络或应用权限', failure?.code)
+      const response = (error as { response?: { status?: number; data?: { code?: number; msg?: string } } }).response, failure = response?.data
+      throw new FeishuGatewayError(failure?.code ? `飞书接口拒绝请求 (${failure.code})` : response?.status ? `飞书接口拒绝请求 (HTTP ${response.status})` : '飞书连接失败，请检查网络或应用权限', failure?.code)
     }
     if (result.code !== 0) throw new FeishuGatewayError(`${String(result.msg ?? '飞书接口请求失败').slice(0, 500)} (${result.code})`, result.code)
     return result.data ?? result

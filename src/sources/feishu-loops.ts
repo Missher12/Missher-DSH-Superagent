@@ -42,10 +42,9 @@ function available(ctx: SourceContext): boolean {
 /** Runs the live event consumer only while the Source is enabled; disabling it stops the consumer within five seconds. */
 async function watch(ctx: SourceContext, signal: AbortSignal): Promise<void> {
   await ctx.ready
-  // Setup restarts dsh-superagent once it resolves the bot; until then nothing runs.
-  if (!available(ctx)) return
   let retry: number | undefined
   while (!signal.aborted) {
+    if (!available(ctx)) { await delay(5000, undefined, { signal }).catch(() => {}); continue }
     if (!enabled(ctx)) {
       ctx.report('feishu', health('paused', 'sourceOff'))
       await delay(5000, undefined, { signal }).catch(() => {})
@@ -142,8 +141,8 @@ export async function refreshChatNames(ctx: SourceContext, signal?: AbortSignal)
 /** Rereads the chat list every minute independently of history backfill (whose rounds can take much longer), so newly joined chats appear within a minute. */
 async function chatNamesLoop(ctx: SourceContext, signal: AbortSignal): Promise<void> {
   await ctx.ready
-  if (!available(ctx)) return
   while (!signal.aborted) {
+    if (!available(ctx)) { await delay(5000, undefined, { signal }).catch(() => {}); continue }
     if (enabled(ctx)) {
       try { await refreshChatNames(ctx, signal) }
       catch { /* Names are a display aid; the stored list stays until a later read succeeds. */ }
@@ -153,8 +152,11 @@ async function chatNamesLoop(ctx: SourceContext, signal: AbortSignal): Promise<v
 }
 async function backfillLoop(ctx: SourceContext, signal: AbortSignal): Promise<void> {
   await ctx.ready
-  if (!available(ctx)) { ctx.report('history', health('paused', 'feishuBotMissing')); return }
   while (!signal.aborted) {
+    if (!available(ctx)) {
+      ctx.report('history', health('paused', 'feishuBotMissing'))
+      await delay(5000, undefined, { signal }).catch(() => {}); continue
+    }
     const config = enabled(ctx)
     if (!config) {
       ctx.report('history', health('paused', 'sourceOff'))

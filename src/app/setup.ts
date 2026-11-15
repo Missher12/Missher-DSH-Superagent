@@ -19,6 +19,12 @@ const setupFields = (settings: Settings) =>
 export const setupChanged = (before: Settings, after: Settings, local = false): boolean => setupFields(before) !== setupFields(after)
   || local && ['github', 'feishu'].some(id => !!before.sources[id]?.enabled !== !!after.sources[id]?.enabled)
 
+/** Retry transport failures; invalid projects, credentials and permissions still need a configuration change. */
+const temporary = (problem: SetupProblem | undefined) => !!problem &&
+  ['agentCliSignedOut', 'repositoryUnreadable', 'githubAccessIncomplete', 'feishuGatewayFailed', 'feishuCliFailed'].includes(problem.code)
+  && !/HTTP (?:400|401|403|404)\b|bad credentials|unauthorized|forbidden/i.test(problem.values.output ?? '')
+  && /\bEOF\b|ECONN|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|UND_ERR|socket hang up|fetch failed|network error|connection error|timed out|HTTP (?:408|429|50\d)\b|飞书连接失败/i.test(problem.values.output ?? '')
+
 /**
  * Resolves the target repository, GitHub account, and optional Feishu bot by probing CLIs, then writes and applies the isolated git and shim environment used by worker processes.
  * `Runtime` runs it at startup to gate orchestration readiness, while `Settings` uses it to validate account changes, update blocked command shims, and schedule restarts.
@@ -33,6 +39,7 @@ export class Setup {
   /** Environment variables pointing agent subprocesses at the isolated git config and command shims. */
   private readonly variables: Record<string, string | undefined>
   private restoreEnvironment?: () => void
+  private recoveryTimer?: ReturnType<typeof setTimeout>
   constructor(private readonly host: SetupHost) {
     this.path = withoutDirectory(process.env.PATH ?? '', workerBin(host.machine.stateDir))
     this.variables = agentVariables(host.machine.stateDir)
@@ -49,7 +56,7 @@ export class Setup {
   get local(): boolean { return this.host.machine.mode === 'local' }
   /** Resolve deployment accounts and apply the worker environment, recording `SetupError` failures in `problem`/`feishuProblem` and rethrowing unexpected errors. */
   async run(settings: Settings): Promise<boolean> {
-    try { this.resolved = await this.resolve(settings); return true }
+    try { this.resolved = await this.resolve(settings); this.problem = undefined; this.scheduleRecovery(settings); return true }
     catch (error) {
       if (!(error instanceof SetupError)) throw error
       this.problem = error.problem
@@ -83,7 +90,31 @@ export class Setup {
   async blockCommands(blocked: readonly string[]): Promise<void> {
     if (this.resolved?.github) await writeEnvironment(this.resolved, blocked)
   }
-  restore(): void { this.restoreEnvironment?.(); this.restoreEnvironment = undefined }
+  restore(): void { clearTimeout(this.recoveryTimer); this.recoveryTimer = undefined; this.restoreEnvironment?.(); this.restoreEnvironment = undefined }
+  /** Refresh only disconnected accounts. Healthy sources and in-flight task sessions keep running. */
+  private scheduleRecovery(settings: Settings, wait = 60_000): void {
+    clearTimeout(this.recoveryTimer)
+    if (!this.local || this.host.lifetime.aborted || !temporary(this.githubProblem) && !temporary(this.feishuProblem)) return
+    this.recoveryTimer = setTimeout(async () => {
+      await Promise.all((['github', 'feishu'] as const).map(async id => {
+        const key = id === 'github' ? 'githubProblem' : 'feishuProblem', source = settings.sources[id]
+        if (this.host.lifetime.aborted || !source?.enabled || !temporary(this[key])) return
+        try {
+          const account = await this.localAccount(id, source.config)
+          if (this.host.lifetime.aborted || !this.resolved) return
+          this.resolved = id === 'github' ? { ...this.resolved, repository: (account as Deployment).repository, github: (account as Deployment).github }
+            : { ...this.resolved, feishu: account as Deployment['feishu'] }
+          this[key] = undefined
+        } catch (error) {
+          if (this.host.lifetime.aborted) return
+          if (error instanceof SetupError) this[key] = error.problem
+          else this.host.context.logger.warn('dsh-superagent account recovery failed: %s', id)
+        }
+      }))
+      this.scheduleRecovery(settings, Math.min(wait * 2, 300_000))
+    }, wait)
+    this.recoveryTimer.unref?.()
+  }
   /** Probes CLIs the way worker shells run them, using `stateDir` as `cwd` since it exists even before the repository clone is valid. */
   private probe() {
     const { context, machine, lifetime } = this.host

@@ -720,6 +720,8 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}${this.workflowInstructions
       summary: state === 'completed' ? latestReport(coordinator!)?.summary ?? '' : members.find(member => ['attention', 'failed', 'working'].includes(member.state))?.summary ?? '',
       members, handoffs: team.handoffs, error: team.error, completion, model: team.request.model ?? this.runtime.store.settings().executor.model ?? undefined,
       workflow: team.workflow, commanderSessionId: this.runtime.masterId, sourceTicketId: team.sourceTicketId,
+      commander: { sessionId: this.runtime.masterId, directory: this.runtime.machine.stateDir, model: this.runtime.sessions.model(this.runtime.masterId),
+        ...this.runtime.sessions.activity(this.runtime.masterId) },
       activeMembers: members.filter(member => member.running).length,
       currentAction: members.filter(member => member.running || member.quotaWait).map(member => {
         const tool = member.tools.find(tool => tool.state === 'running')
@@ -728,7 +730,7 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}${this.workflowInstructions
       deliveries: members.flatMap(member => member.delivery ? [{ memberId: member.id, name: member.name, record: member.delivery }] : []) }
   }
   list(): TeamIndex[] { return this.all().map(team => {
-    const { members: _members, handoffs: _handoffs, deliveries: _deliveries, error: _error, completion: _completion, model: _model, ...entry } = this.get(team.id); return entry
+    const { members: _members, commander: _commander, handoffs: _handoffs, deliveries: _deliveries, error: _error, completion: _completion, model: _model, ...entry } = this.get(team.id); return entry
   }) }
   file(id: string, path: string) {
     const team = this.get(id)

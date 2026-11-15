@@ -46,7 +46,7 @@ const fromPerson = (input?: TicketInput): boolean => input?.kind === 'trigger' ?
  */
 class PrepareFailed extends Error {}
 const PASSING = new RegExp(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND', 'EPIPE', 'UND_ERR', 'socket hang up', 'fetch failed',
-  'network error', 'overloaded', 'rate limit', '\\b(?:408|429|50[0-4])\\b'].join('|'), 'i')
+  'network error', 'connection error', 'overloaded', 'rate limit', '\\b(?:408|429|50[0-4])\\b'].join('|'), 'i')
 /**
  * True when an error represents a transient network or model-provider failure: an HTTP 408, 429, or 5xx status, or a
  * connection that was refused, reset, timed out, or could not resolve its host.

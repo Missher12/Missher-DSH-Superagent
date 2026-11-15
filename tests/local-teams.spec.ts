@@ -14,6 +14,18 @@ const request = () => TeamRequestSchema.parse({ requestId: 'team-one', title: '�
   members: [{ id: 'build', name: '实施', instructions: '实现函数', dependencies: [] },
     { id: 'check', name: '验证', instructions: '检查实现并运行测试', dependencies: ['build'] }] })
 
+it('exposes the real shared commander without counting it as an executing member', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const view = () => host!.runtime.teams!.get(team.id)
+  expect(view().commander).toMatchObject({ sessionId: host.runtime.masterId, directory: host.runtime.machine.stateDir, running: false })
+  host.agents.get(host.runtime.masterId)!.status = 'running'
+  expect(view().commander?.running).toBe(true)
+  host.agents.get(host.runtime.masterId)!.status = 'idle'
+  expect(view().members.map(member => member.id)).toEqual(['coordinator', 'build', 'check'])
+  expect(view().memberCount).toBe(2)
+})
+
 it('persists an explicit event wait, wakes only its member with data, and never replays the wake or grants a round', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const workspace = host.directory
