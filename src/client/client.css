@@ -829,8 +829,6 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-team-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: -1; }
 .dt-team-lines path { fill: none; stroke: var(--dsw-alias-label-caption); stroke-width: 1; opacity: .65; }
 .dt-team-lines path[data-dependency] { stroke-dasharray: 5 5; stroke: var(--dsw-alias-label-secondary); }
-.dt-team-coordinator { display: flex; justify-content: center; padding-bottom: 32px; }
-.dt-team-workers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px 18px; padding-bottom: 26px; }
 .dt-team-node { display: flex; position: relative; flex-direction: column; gap: 9px; min-width: 0; width: 100%; padding: 14px; border: .5px solid var(--dsw-alias-border-l3); border-radius: 10px; color: inherit; background: var(--dsw-alias-bg-base, var(--dsw-alias-bg-layer-1)); text-align: left; font: inherit; cursor: pointer; }
 .dt-team-node[data-coordinator] { max-width: 250px; }
 .dt-team-node[aria-pressed='true'] { border-color: var(--dsw-alias-label-primary); outline: 1px solid var(--dsw-alias-label-primary); outline-offset: -1px; }
@@ -839,10 +837,6 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-team-node-head { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; }
 .dt-team-node-head strong { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 14px; line-height: 22px; font-weight: 600; }
 .dt-team-node-model { font-size: 11px; line-height: 17px; color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; padding-top: 2px; }
-.dt-team-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 18px; padding-top: 6px; font-size: 11px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
-.dt-team-legend > span { display: inline-flex; align-items: center; gap: 6px; }
-.dt-team-legend i { width: 24px; height: 0; border-top: 1px solid var(--dsw-alias-label-caption); }
-.dt-team-legend i[data-dependency] { border-top-style: dashed; }
 .dt-team-details { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 16px 0 0 20px; border-left: .5px solid var(--dsw-alias-border-l2); }
 .dt-team-detail-head { display: flex; flex: none; flex-direction: row; gap: 12px; padding-bottom: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .dt-team-member-heading { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }

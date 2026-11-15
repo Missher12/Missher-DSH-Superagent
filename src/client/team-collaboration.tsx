@@ -112,7 +112,7 @@ export function TeamCollaboration({ team, selected, select, reload, delivery }: 
     || (team.completion.members && !team.completion.finalReview && coordinator?.state === 'waiting' && !coordinator.running))
   const participants = teamParticipants(team, t), active = participants.find(member => member.id === selected) ?? team.members[0]!
   const recent = team.members.flatMap(member => member.events.filter(event => event.summary?.trim()).map(event => ({ ...event, member: member.name })))
-    .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 3)
+    .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 2)
   return <aside className="dt-team-collaboration" aria-label={t('teamCollaboration')}>
     <header><div className="dt-team-collaboration-title"><div><h2>{t('teamCollaboration')}</h2><small>{t('teamConversationCount', { count: participants.filter(member => member.sessionId).length })}</small></div><AddTeamMember key={team.id} team={team} reload={reload} select={select} /></div>
       <SegmentedTabs value={tab} onChange={setTab} label={t('teamCollaboration')} items={[
@@ -124,11 +124,10 @@ export function TeamCollaboration({ team, selected, select, reload, delivery }: 
       aria-labelledby={tab === 'graph' ? 'dt-team-relations' : tab === 'members' ? 'dt-team-assignments' : 'dt-team-completion'}>
       {!team.workflow?.halted && (team.error || review) && <div className="dt-team-issue" role="alert"><p>{team.error ?? (team.completion!.issues.join('\n') || t('teamReviewPending'))}</p>
         {team.state !== 'stopped' && <Button size="sm" disabled={retry.busy} onClick={() => { void retry.run() }}>{t(team.error ? 'teamRetry' : 'teamReviewContinue')}</Button>}</div>}
-      {tab === 'graph' ? <><div className="dt-team-count-line"><span>{t('studioTaskFlow')}</span><span>{t('teamCompletedCount', { done: team.completedMembers, total: team.memberCount })}</span></div>
-        {team.workflow && <div className="dt-team-round" role="status">{t('teamRound', { round: team.workflow.round, version: team.workflow.planVersion })}</div>}
-        <TeamGraph team={team} selected={selected} select={select} addMember={member => <AddTeamMember key={member.id} team={team} parentId={member.id} reload={reload} select={select} compact />} /><section className="dt-team-selected-plan"><div><h3>{t('studioCurrentAssignment')}</h3><span>{active.name}</span></div>
+      {tab === 'graph' ? <><div className="dt-team-count-line"><span title={team.workflow ? t('teamRound', { round: team.workflow.round, version: team.workflow.planVersion }) : undefined}>{team.workflow ? t('teamRoundShort', { round: team.workflow.round }) : t('studioTaskFlow')}</span><span>{t('teamDeliveredShort', { done: team.completedMembers, total: team.memberCount })}</span></div>
+        <TeamGraph team={team} selected={selected} select={select} addMember={member => <AddTeamMember key={member.id} team={team} parentId={member.id} reload={reload} select={select} compact />} /><details className="dt-team-selected-plan"><summary><span>{t('studioCurrentAssignment')}</span><span>{active.name}</span><Icon name="chevron-right" size={14} /></summary>
           <p className="dt-team-assignment-summary">{shortText(participantWork(active, t), 80)}</p>{active.role === 'commander' && <p className="dt-hint">{t('teamCommanderShared')}</p>}{active.role === 'coordinator' && active.state === 'waiting' && <p className="dt-hint">{t(team.completion?.members ? 'teamReviewPending' : 'teamPlanningRound')}</p>}
-          <Button size="sm" icon={<Icon name="message" size={14} />} onClick={() => select(active.id)}>{t('teamOpenSession')}</Button></section>
+          <Button size="sm" icon={<Icon name="message" size={14} />} onClick={() => select(active.id)}>{t('teamOpenSession')}</Button></details>
         {!!recent.length && <section className="dt-studio-recent"><h3>{t('studioRecentCollaboration')}</h3>{recent.map(event => <div key={`${event.member}:${event.id}`}>
           <Icon name={event.state === 'started' ? 'running' : 'message'} size={13} /><span title={event.summary}>{event.member} · {shortText(event.summary, 55)}</span><When at={event.at} /></div>)}</section>}
         <details className="dt-team-goal-disclosure"><summary>{t('teamGoal')}</summary><TeamText text={team.instructions} /></details></>

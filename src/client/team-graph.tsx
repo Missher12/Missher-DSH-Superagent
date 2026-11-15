@@ -5,8 +5,9 @@ import { Icon } from './controls.tsx'
 import { usePanel } from './provider.tsx'
 import { TeamStatus } from './team-ui.tsx'
 import { COMMANDER, participantIcon, participantWork, teamParticipants, type TeamParticipant } from './team-participants.ts'
+import { effortLabel } from './model-labels.ts'
 
-interface Line { id: string; path: string; dependency: boolean; active: boolean }
+interface Line { id: string; to: string; path: string; dependency: boolean; active: boolean }
 export function TeamGraph({ team, selected, select, addMember }: { team: TeamView; selected: string; select: (id: string) => void; addMember?: (member: TeamMemberView) => ReactNode }) {
   const { t } = usePanel()
   const participants = teamParticipants(team, t), commander = participants.find(member => member.role === 'commander')
@@ -20,15 +21,15 @@ export function TeamGraph({ team, selected, select, addMember }: { team: TeamVie
       const connect = (from: string, to: string, dependency: boolean): Line[] => {
         const start = nodes.current.get(from)?.getBoundingClientRect(), end = nodes.current.get(to)?.getBoundingClientRect()
         if (!start || !end) return []
-        const downward = end.top > start.bottom + 10
-        const x1 = start.left + start.width / 2 - bounds.left, y1 = start.bottom - bounds.top
-        const x2 = end.left + end.width / 2 - bounds.left, y2 = end.top - bounds.top
-        const bend = downward ? (y1 + y2) / 2 : Math.max(y1, end.bottom - bounds.top) + 18
+        const x1 = (dependency ? start.right : start.left) - bounds.left, y1 = start.top + start.height / 2 - bounds.top
+        const x2 = (dependency ? end.right : end.left) - bounds.left, y2 = end.top + end.height / 2 - bounds.top
+        const lane = dependency ? Math.max(x1, x2) + 9 : Math.min(x1, x2) - 15
+        const direction = y2 >= y1 ? 1 : -1, inset = dependency ? -5 : 5
         const target = team.members.find(member => member.id === to), source = team.members.find(member => member.id === from)
         const active = !!target?.running && !['attention', 'failed', 'stopped', 'completed'].includes(team.state)
           && (!dependency || source?.state === 'finished' && team.handoffs.some(handoff => handoff.from === from && handoff.to === to))
-        return [{ id: `${from}:${to}:${dependency}`, dependency, active, path: downward ? `M${x1},${y1} C${x1},${bend} ${x2},${bend} ${x2},${y2}`
-          : `M${x1},${y1} C${x1},${bend} ${x2},${bend} ${x2},${end.bottom - bounds.top}` }]
+        return [{ id: `${from}:${to}:${dependency}`, to, dependency, active,
+          path: `M${x1},${y1} H${lane + inset} Q${lane},${y1} ${lane},${y1 + 5 * direction} V${y2 - 5 * direction} Q${lane},${y2} ${lane + inset},${y2} H${x2}` }]
       }
       setLines([...(commander ? connect(COMMANDER, 'coordinator', false) : []), ...team.members.flatMap(member => member.id === 'coordinator' ? [] : [
         ...connect(member.parentId ?? 'coordinator', member.id, false),
@@ -47,26 +48,28 @@ export function TeamGraph({ team, selected, select, addMember }: { team: TeamVie
   }} className="dt-team-node" data-role={member.role} data-state={member.state} data-running={member.running || undefined} data-coordinator={member.role === 'coordinator' || undefined} aria-pressed={selected === member.id}
     aria-label={`${member.name} · ${t('teamDetails')}`} title={member.name + (member.dependencies.length ? ' · ' + t('teamPrerequisite', { names: member.dependencies.map(id => team.members.find(item => item.id === id)?.name ?? id).join('、') }) : '')} onClick={() => select(member.id)}>
     <span className="dt-team-node-head"><span className="dt-team-avatar"><Icon name={participantIcon(member)} size={17} /></span>
-      <strong>{member.name}</strong><Icon name="message" size={14} /></span>
+      <strong>{member.name}</strong><TeamStatus state={member.state} member /></span>
     <span className="dt-team-node-role" title={member.role === 'commander' ? t('teamCommanderShared') : member.instructions}>{participantWork(member, t)}</span>
-    <span className="dt-team-node-bottom"><TeamStatus state={member.state} member />
-      <span className="dt-team-node-model" title={member.model ? `${member.model.model}${member.model.reasoningEffort ? ` · ${member.model.reasoningEffort}` : ''}` : t(member.role === 'commander' ? 'localInheritDefault' : 'teamModelInherit')}>{member.model?.model ?? t(member.role === 'commander' ? 'localInheritDefault' : 'teamModelInherit')}</span></span>
+    <span className="dt-team-node-bottom"><span className="dt-team-node-model" title={member.model ? `${member.model.provider} · ${member.model.model}` : undefined}>
+      <span>{member.model?.model ?? t(member.role === 'commander' ? 'localInheritDefault' : 'teamModelInherit')}</span>
+      {member.model?.reasoningEffort && <span className="dt-team-node-effort">{effortLabel(member.model.reasoningEffort, member.model.reasoningEffort, t)}</span>}
+    </span><Icon name="message" size={13} /></span>
   </button>
   const branch = (member: TeamMemberView) => <div className="dt-team-branch" key={member.id} data-parent={member.parentId ?? 'coordinator'}>
     {node(member)}{(member.role === 'coordinator' || member.responsibility === 'manager') && addMember && <div className="dt-team-branch-action">{addMember(member)}</div>}
   </div>
-  const levels = Map.groupBy(team.members.slice(1), member => {
-    const seen = new Set<string>(); let depth = 1, parent = member.parentId
-    while (parent && parent !== 'coordinator' && !seen.has(parent)) { seen.add(parent); depth++; parent = team.members.find(member => member.id === parent)?.parentId }
-    return depth
-  })
+  const ordered: TeamMemberView[] = [], seen = new Set<string>()
+  const visit = (member: TeamMemberView) => {
+    if (seen.has(member.id)) return
+    seen.add(member.id); ordered.push(member)
+    for (const child of team.members) if (child.id !== 'coordinator' && (child.parentId ?? 'coordinator') === member.id) visit(child)
+  }
+  for (const member of team.members) visit(member)
   return <div className="dt-team-graph" ref={root} aria-label={t('teamGraph')}>
-    <svg className="dt-team-lines" aria-hidden="true">{lines.map(line => <g key={line.id}><path d={line.path} data-dependency={line.dependency || undefined} data-active={line.active || undefined} />
+    <svg className="dt-team-lines" aria-hidden="true">{lines.map(line => <g key={line.id}><path d={line.path} data-dependency={line.dependency || undefined} data-selected={line.to === selected || undefined} data-active={line.active || undefined} />
       {line.active && <circle className="dt-team-flow-packet" r="2.5"><animateMotion dur={line.dependency ? '2.6s' : '2.1s'} repeatCount="indefinite" path={line.path} /></circle>}
     </g>)}</svg>
-    {commander && <div className="dt-team-commander">{node(commander)}</div>}
-    <div className="dt-team-coordinator">{branch(team.members[0]!)}</div>
-    {[...levels].sort(([a], [b]) => a - b).map(([depth, members]) => <div className="dt-team-workers" key={depth}>{members.map(branch)}</div>)}
-    <div className="dt-team-legend"><span><i />{t('localDispatch')}</span><span><i data-dependency />{t('teamHandoff')}</span></div>
+    {commander && node(commander)}
+    {ordered.map(branch)}
   </div>
 }

@@ -3,6 +3,7 @@ export const TEAM_TEXT = {
   teamParent: ['上级', 'Reports to'], teamResponsibility: ['职责', 'Responsibility'],
   'teamRole.manager': ['管理', 'Manager'], 'teamRole.implementer': ['实施', 'Implementation'], 'teamRole.reviewer': ['检验', 'Review'],
   teamAddAndRun: ['添加并执行', 'Add and run'], teamRound: ['第 {round} 轮 · 计划 {version}', 'Round {round} · Plan {version}'],
+  teamRoundShort: ['第 {round} 轮', 'Round {round}'], teamDeliveredShort: ['{done} / {total} 已交付', '{done} / {total} delivered'],
   teamRoundLimit: ['最多轮次', 'Round limit'], teamCommander: ['总指挥', 'Commander'],
   teamCommanderWork: ['全局调度与来源回传', 'Shared dispatch and source replies'], teamCommanderIdle: ['待命', 'Standing by'],
   teamConversationCount: ['{count} 个会话', '{count} conversations'], teamCommanderShared: ['所有团队共用此调度会话', 'This dispatch session is shared across teams'],
