@@ -357,9 +357,13 @@ export class Sessions {
   commandEvidence(sessionId: string, command: string, since: string) {
     const prefix = this.commandKey(sessionId)
     if (!prefix) return undefined
-    return this.host.store.keys(prefix).flatMap(name => this.host.store.get<SessionCommandProof>(name) ?? [])
-      .filter(proof => proof.at >= since && proof.command === command.trim())
-      .sort((a, b) => a.sequence - b.sequence || a.at.localeCompare(b.at)).at(-1)
+    const proofs = this.host.store.keys(prefix).flatMap(name => this.host.store.get<SessionCommandProof>(name) ?? [])
+      .filter(proof => proof.at >= since).sort((a, b) => a.sequence - b.sequence || a.at.localeCompare(b.at))
+    const match = proofs.findLast(proof => proof.command === command.trim())
+    const completed = proofs.filter(proof => ['done', 'error'].includes(proof.state) && proof.command.length <= 6000).slice(-3)
+    if (!match && completed.length) throw new Error('检查结果需要对应本轮真实执行结束的完整命令。请原样复制 command（包括引号、cd 和重定向）后重报；不要把已执行的检查改成未验证。最近已结束的命令：'
+      + JSON.stringify(completed.map(({ command, state, exitCode }) => ({ command, state, exitCode }))))
+    return match
   }
   /** Returns the prompt version a Session runs under (the one bound on its latest model request, or the current version). */
   promptVersion(sessionId: string): PromptVersion {

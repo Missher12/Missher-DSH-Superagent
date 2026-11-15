@@ -24,7 +24,7 @@ const RULES: [rule: string, file: string, says: string[], gone?: string[]][] = [
     ['report such scope failures internally, without unsolicited clarification'], ['proactively admitted']],
   ['An out-of-scope proactive ticket ends as dropped', 'work', ['stop and report dropped without expanding scope'], ['report blocked internally']],
   ['An out-of-scope proactive ticket ends as dropped', 'team/scope', ['report blocked, or dropped on a proactive ticket']],
-  ['A report is progress, ready, blocked, failed or dropped', 'work', ['Call orchestrator_report with progress, ready, blocked, failed or dropped;']],
+  ['A report is progress, waiting, ready, blocked, failed or dropped', 'work', ['Call orchestrator_report with progress, waiting, ready, blocked, failed or dropped;']],
   // The assessment rules are stated once, in the main Session's admission text, which orchestrator_eval no longer repeats.
   ['An assessment judges every enabled rule and accepts only a settled, bounded change', 'dispatch', [], ['Submit rule_assessments']],
   ['An assessment judges every enabled rule and accepts only a settled, bounded change', 'admission',

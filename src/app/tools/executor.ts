@@ -24,6 +24,8 @@ export interface ExecutorToolsHost {
   readonly teams?: Pick<LocalTeams, 'contextFor' | 'recordReview' | 'revisePlan' | 'sourceTicket' | 'recordWait'>
 }
 
+const EventWaitSchema = z.object({ thread: z.string().min(1), after: z.string().min(1) }).strict()
+
 export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
   const ticketId = ticket.id
   return [
@@ -85,12 +87,12 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
     }),
     tool({
       name: 'orchestrator_report',
-      description: 'Report progress, waiting for an external event, ready, blocked, failed or dropped. A managed source team must register wait_for when waiting, then end its turn instead of polling.',
+      description: 'Report progress, waiting for an external event, ready, blocked, failed or dropped.' + (host.teams ? ' A managed source team must register wait_for when waiting, then end its turn instead of polling.' : ''),
       schema: z.object({
         state: z.enum(['progress', 'waiting', 'ready', 'blocked', 'failed', 'dropped']),
         summary: z.string().min(1),
-        wait_for: z.object({ thread: z.string().min(1), after: z.string().min(1) }).strict().optional()
-          .describe('With waiting for a managed source team: thread is its source or bound PR (e.g. github:15); after is source.cursor from the latest orchestrator_team get. Read current status first. Matching later events resume this same member; no polling or new permission.'),
+        ...(host.teams ? { wait_for: EventWaitSchema.optional()
+          .describe('With waiting for a managed source team: thread is its source or bound PR (e.g. github:15); after is source.cursor from the latest orchestrator_team get. Read current status first. Matching later events resume this same member; no polling or new permission.') } : {}),
         human_action: z.string().trim().min(1).max(1000).nullish().describe('One concrete question for a person, also with state=progress; omit to keep the pending one, null to clear it.'),
         question_for_trigger_id: z.string().optional().describe('With human_action: the human message that raised the question, which is asked where that person wrote.'),
         pr_number: z.number().int().positive().nullish().describe('The ticket GitHub PR, only when GitHub is connected. Omit for local tasks.'),
@@ -100,6 +102,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
       }).strict(),
       execute: async (args, signal) => {
         const review = args.team_review === undefined ? undefined : TeamReviewSchema.parse(args.team_review)
+        const wait = args.wait_for === undefined ? undefined : EventWaitSchema.parse(args.wait_for)
         const current = host.store.tickets.get(ticketId)
         if (!current || !liveTicket(current)) throw new Error('Ticket ended (PR was closed or work finished); do not resume it')
         const sourceTicket = host.teams?.sourceTicket(ticketId)
@@ -111,7 +114,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
           if (refused) throw new Error(refused)
           if (args.delivery) host.recordDelivery?.(current, DeliverySchema.parse(args.delivery), review?.decision === 'revise' ? 'progress' : args.state)
           host.teams?.recordReview(current, review, args.state)
-          host.teams?.recordWait(current, args.state, args.wait_for)
+          host.teams?.recordWait(current, args.state, wait)
           const report = { state: args.state, summary: args.summary, ...(args.human_action !== undefined ? { question: args.human_action } : {}),
             ...(args.question_for_trigger_id ? { askedBy: args.question_for_trigger_id } : {}),
             ...(args.reply_to_trigger_id ? { answers: args.reply_to_trigger_id } : {}) }

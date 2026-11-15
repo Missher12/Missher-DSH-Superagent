@@ -568,6 +568,32 @@ it('does not accept invented files or commands as successful delivery evidence',
   expect(await host.api('GET', 'local/workbench')).not.toHaveProperty('body.members.0.command')
 })
 
+it('helps a worker correct a shortened check command without accepting it or reusing an earlier assignment', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const task = await host.runtime.local!.create({ requestId: 'copy-check-command', title: '核对命令', instructions: '实际检查后交付', directory: host.directory })
+  await host.runtime.idle(); host.step(task.sessionId)
+  const agent = host.ctx.agents.get(task.sessionId as never)!
+  const command = 'cd "/workspace with spaces" && "/Applications/DeepSeek Harness.app/node" --test normalize.test.mjs'
+  host.ctx.emit('session/event', agent.session, { type: 'tool/call', seq: 1, time: Date.now(), data: {
+    callId: 'quoted-check', name: 'pwsh', arguments: JSON.stringify({ command }),
+  } } as never)
+  await nativeShellResult(task.sessionId, 'quoted-check', { exitCode: 0 })
+  const report = (command: string) => host!.runTool(task.sessionId, 'orchestrator_report', { state: 'ready', summary: '检查通过',
+    delivery: { checks: [{ command, outcome: 'passed' }] } })
+  await expect(report('node --test normalize.test.mjs')).rejects.toThrow(JSON.stringify({ command, state: 'done', exitCode: 0 }))
+  expect(host.runtime.store.tickets.get(task.ticketId)!.ended).toBeUndefined()
+  await report(command)
+  expect(await host.api('GET', `tickets/${task.ticketId}`)).toMatchObject({ body: {
+    deliveryReport: { checks: [{ command, toolCallId: 'quoted-check', outcome: 'passed' }], unverified: [] },
+  } })
+  await host.runtime.local!.followup(task.ticketId, 'check-again', '改动后重新检查')
+  await host.runtime.idle(); host.step(task.sessionId)
+  const stale = await report(command).then(() => '', error => String(error))
+  expect(stale).toContain('真实执行')
+  expect(stale).not.toContain(JSON.stringify(command))
+  expect(host.runtime.store.tickets.get(task.ticketId)!.ended).toBeUndefined()
+})
+
 it.each(['many later activities', 'released session bindings'])('keeps actual check evidence after %s', async circumstance => {
   host = await startRuntime(undefined, { mode: 'local' })
   const task = await host.runtime.local!.create({ requestId: 'durable-evidence', title: '长任务交付', instructions: '运行检查并交付', directory: host.directory })
