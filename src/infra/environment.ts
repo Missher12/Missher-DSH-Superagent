@@ -60,7 +60,7 @@ export function agentVariables(stateDir: string): Record<string, string | undefi
 /** True when a regular file starts with the dsh-superagent marker in its first two lines; a symbolic link, directory, or other non-regular file never counts as written by dsh-superagent. */
 async function written(file: string): Promise<boolean> {
   if (!(await lstat(file)).isFile()) return false
-  const head = (await readFile(file, 'utf8')).split('\n', 2)
+  const head = (await readFile(file, 'utf8')).split('\n', 2).map(line => line.trimEnd().replace(/^(?:rem |\/\/ )/, ''))
   return [MARKER, ...LEGACY_MARKERS].some(marker => head.includes(marker))
 }
 async function own(file: string, text: string, mode = 0o644): Promise<void> {
@@ -91,6 +91,23 @@ export async function writeEnvironment(deployment: Pick<Deployment, 'stateDir' |
     await rename(temporary, join(dir, name))
     kept.add(name)
   }
+  // PowerShell/cmd resolve .cmd via PATHEXT; retain the POSIX shim for Git Bash too.
+  const windowsShim = async (name: string, program?: string, message?: string): Promise<void> => {
+    if (process.platform !== 'win32') return
+    const launcher = `${name}.cjs`
+    await own(join(dir, launcher), `// ${MARKER}\n` + (program ? `
+const { spawnSync } = require('node:child_process');
+const { resolve, delimiter } = require('node:path');
+const env = { ...process.env };
+const pathKey = Object.keys(env).find(key => key.toLowerCase() === 'path') || 'PATH';
+env[pathKey] = (env[pathKey] || '').split(delimiter).filter(path => resolve(path).toLowerCase() !== ${JSON.stringify(resolve(dir).toLowerCase())}).join(delimiter);
+const result = spawnSync(${JSON.stringify(program)}, process.argv.slice(2), { env, stdio: 'inherit', windowsHide: true });
+if (result.error) console.error(result.error.message);
+process.exit(result.status ?? 1);
+` : `console.error(${JSON.stringify(message)}); process.exit(1);\n`))
+    await own(join(dir, `${name}.cmd`), `@echo off\nrem ${MARKER}\nsetlocal DisableDelayedExpansion\n"${process.execPath.replaceAll('%', '%%')}" "%~dp0${launcher}" %*\n`)
+    kept.add(launcher); kept.add(`${name}.cmd`)
+  }
   const withoutShims = [
     `self=${shellQuote(dir)}`, 'rest=', 'IFS=:', 'set -f',
     'for entry in $PATH; do [ "$entry" = "$self" ] || rest="${rest:+$rest:}$entry"; done',
@@ -99,11 +116,15 @@ export async function writeEnvironment(deployment: Pick<Deployment, 'stateDir' |
   const run = (program: string): string => `${withoutShims}\nexec ${shellQuote(program)} "$@"`
   const fail = (message: string): string => `echo ${shellQuote(message)} >&2\nexit 1`
   await shim('gh', run(github.cli))
-  await shim('lark-cli', feishu?.cli ? run(feishu.cli) : fail(feishu?.credential
+  await windowsShim('gh', github.cli)
+  const unavailable = feishu?.credential
     ? 'lark-cli is unavailable: use orchestrator_read for Feishu context and the task reply channel for results.'
-    : 'lark-cli is unavailable: this installation has no Feishu bot.'))
+    : 'lark-cli is unavailable: this installation has no Feishu bot.'
+  await shim('lark-cli', feishu?.cli ? run(feishu.cli) : fail(unavailable))
+  await windowsShim('lark-cli', feishu?.cli, unavailable)
   for (const name of new Set(blockedCommands.filter(name => !WORKER_COMMANDS.includes(name)))) {
-    await shim(name, fail(`${name} is blocked in this installation; use gh, which acts as ${github.login}.`))
+    const message = `${name} is blocked in this installation; use gh, which acts as ${github.login}.`
+    await shim(name, fail(message)); await windowsShim(name, undefined, message)
   }
   for (const name of before) if (!kept.has(name)) await unlink(join(dir, name))
   await own(workerGitConfig(stateDir), [

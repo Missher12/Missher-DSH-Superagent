@@ -101,13 +101,14 @@ it('keeps completed work and review intact for a rename, but dispatches a change
   expect(host.runtime.store.tickets.get(ticketId)!.assignments).toHaveLength(2)
 }, 40_000)
 
-it('exposes the real shared commander without counting it as an executing member', async () => {
+it('keeps the team commander separate from the shared dispatcher and member count', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
   const view = () => host!.runtime.teams!.get(team.id)
-  expect(view().commander).toMatchObject({ sessionId: host.runtime.masterId, directory: host.runtime.machine.stateDir, running: false })
+  expect(view().commander).toMatchObject({ directory: realpathSync(host.directory), running: false, state: 'planned' })
+  expect(view().commander?.sessionId).toBeUndefined()
   host.agents.get(host.runtime.masterId)!.status = 'running'
-  expect(view().commander?.running).toBe(true)
+  expect(view().commander?.running).toBe(false)
   host.agents.get(host.runtime.masterId)!.status = 'idle'
   expect(view().members.map(member => member.id)).toEqual(['coordinator', 'build', 'check'])
   expect(view().memberCount).toBe(2)
@@ -222,6 +223,7 @@ async function review(ticketId: string, decision: 'pass' | 'revise', targets: st
     delivery: { files: [], checks: [], unverified: ['隔离调度测试，未调用模型'] }, team_review })
   const agent = host!.agents.get(session)!; agent.status = 'idle'; host!.ctx.emit('agent/status', { agent, status: 'idle' } as never)
   await settle()
+  await finishCommander()
   return team_review
 }
 it('preserves a pending review across reload and refuses work beyond the authorized round limit', async () => {
@@ -308,11 +310,11 @@ it('keeps an external root open through planning and delivers only the verified 
   expect(host.runtime.teams!.list()).toHaveLength(before)
   const resultBoard = await host.api('GET', 'local/board?column=ended')
   expect(resultBoard.body).toMatchObject({ total: 1, items: [{ team: { id: team.id, members: 2 } }] })
-  expect((await host.api('GET', `tickets/${rootId}`)).body).toMatchObject({ sessionId: `worker-${team.coordinatorTicketId}`,
+  expect((await host.api('GET', `tickets/${rootId}`)).body).toMatchObject({ sessionId: host.runtime.teams!.get(team.id).commander!.sessionId,
     deliveryReport: { ticketId: team.coordinatorTicketId } })
   expect((await host.api('GET', `tickets/${rootId}`)).body.assignments).toEqual(expect.arrayContaining([expect.not.objectContaining({ ref: `worker-${rootId}` })]))
   const search = await host.api('GET', 'search?q=' + encodeURIComponent('外部团队'))
-  expect(search.body.tickets).toEqual(expect.arrayContaining([expect.objectContaining({ id: rootId, sessionId: `worker-${team.coordinatorTicketId}` })]))
+  expect(search.body.tickets).toEqual(expect.arrayContaining([expect.objectContaining({ id: rootId, sessionId: host.runtime.teams!.get(team.id).commander!.sessionId })]))
   const followup = { ...trigger, id: 'external-followup', at: new Date().toISOString(), text: '补充检查一个边界，仍在原任务内完成。' }
   host.runtime.receive(followup); await settle()
   expect(host.runtime.store.tickets.get(rootId)!.ended).toBeUndefined()
@@ -377,7 +379,7 @@ it('keeps an external root open through planning and delivers only the verified 
   expect(host.agents.get(`worker-${team.coordinatorTicketId}`)!.cancel).toHaveBeenCalled()
   expect(host.runtime.teams!.allowedWorker(team.coordinatorTicketId!)).toBe(false)
   await expect(host.runtime.teams!.manageSource(rootId, 'dispatch')).rejects.toThrow('授权已撤销')
-}, 60_000)
+}, 90_000)
 async function settle() { await host!.runtime.idle(); await host!.runtime.teams!.reconcile(); await host!.runtime.idle() }
 async function readySession(ticketId: string) {
   await settle(); const session = `worker-${ticketId}`
@@ -396,6 +398,18 @@ async function complete(ticketId: string, summary = '本成员分工完成', del
   const agent = host!.agents.get(session)!
   agent.status = 'idle'; host!.ctx.emit('agent/status', { agent, status: 'idle' } as never)
   await settle()
+  await finishCommander()
+}
+/** Complete the separate reporting stage in orchestration tests; no model output is simulated as native acceptance. */
+async function finishCommander() {
+  for (const item of host!.runtime.teams!.list()) {
+    const team = host!.runtime.teams!.get(item.id), id = team.commander?.ticketId
+    if (!id || host!.runtime.teams!.contextFor(id)?.phase !== 'reporting' || host!.runtime.store.tickets.get(id)?.ended) continue
+    const session = await readySession(id)
+    await host!.runTool(session, 'orchestrator_report', { state: 'ready', summary: team.finalDelivery!.summary })
+    const agent = host!.agents.get(session)!; agent.status = 'idle'; host!.ctx.emit('agent/status', { agent, status: 'idle' } as never)
+    await settle()
+  }
 }
 it.each(['coordinator', 'build'])('team retry resumes an exhausted %s in its original session', async role => {
   host = await startRuntime(undefined, { mode: 'local' })
@@ -649,7 +663,7 @@ it('dispatches actual dependent work, delivers its predecessor report, and finis
   expect(host.runtime.teams!.get(team.id).state).not.toBe('completed')
   await complete(team.coordinatorTicketId!, '第二版目标复核完成')
   expect(host.runtime.teams!.get(team.id).state).toBe('completed')
-  expect(host.runtime.store.tickets.list()).toHaveLength(3)
+  expect(host.runtime.store.tickets.list()).toHaveLength(4)
 }, 40_000)
 
 it('preserves finished work and shows the actual member needing a human instead of finishing the team', async () => {

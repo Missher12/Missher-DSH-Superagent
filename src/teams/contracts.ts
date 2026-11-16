@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { planIssues } from './plan.ts'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import { RoleModelSchema, type RoleModel } from '../policy.ts'
+import type { GitTeam } from './git-workspaces.ts'
 
 export const TeamMemberSchema = z.object({
   id: z.string().regex(/^[\w-]{1,60}$/).refine(id => id !== 'coordinator', '成员标识不能使用 coordinator'),
@@ -18,7 +19,7 @@ const TeamRequestFields = z.object({
   permissionPreset: z.string().trim().min(1).max(200).optional(),
   coordinatorName: z.string().trim().min(1).max(60).default('协调'),
   members: z.array(TeamMemberSchema).max(12),
-  workflow: z.object({ maxRounds: z.number().int().min(1).max(8).default(3) }).strict().optional(),
+  workflow: z.object({ maxRounds: z.number().int().min(1).max(8).default(3), workspace: z.enum(['shared', 'worktree']).optional() }).strict().optional(),
 }).strict()
 function validatePlan(request: { members: TeamMember[] }, context: z.RefinementCtx) {
   for (const issue of planIssues(request.members)) context.addIssue({ code: 'custom', ...issue })
@@ -66,8 +67,16 @@ export interface DeliveryRecord extends Omit<DeliveryInput, 'files' | 'checks'> 
   checks: (DeliveryInput['checks'][number] & { toolCallId?: string; exitCode?: number })[]
 }
 export interface TeamRecord {
+  git?: GitTeam
+  commanderReporting?: true
+  commanderTicketId?: string
+  commanderVersion?: string
+  commanderAssignment?: string
+  finalDelivery?: { version: string; summary: string; record: DeliveryRecord;
+    artifacts?: (DeliveryRecord['files'][number] & { memberId: string; name: string })[] }
+  commanderInputs?: { id: string; text: string; native?: UserMessage }[]
   id: string; request: TeamRequest; encoded: string; createdAt: string; updatedAt: string
-  phase: 'draft' | 'creating' | 'planning' | 'working' | 'reviewing' | 'integrating' | 'completed'
+  phase: 'draft' | 'creating' | 'planning' | 'working' | 'reviewing' | 'integrating' | 'reporting' | 'completed'
   setupSessionId?: string
   pendingMessages?: UserMessage[]
   planRevision?: number
@@ -88,6 +97,7 @@ export interface TeamRecord {
 
 /** Public views intentionally distinguish planned roles, ended member runs, and completed team goals. */
 export interface TeamMemberView {
+  branch?: string
   plan?: TeamMember
   id: string; name: string; instructions: string; dependencies: string[]; role: 'coordinator' | 'member'
   parentId?: string; responsibility?: TeamMember['responsibility']
@@ -100,6 +110,7 @@ export interface TeamMemberView {
   quotaWait?: boolean
 }
 export interface TeamCompletion {
+  commander?: boolean
   members: boolean; finalReview: boolean; evidence: boolean; issues: string[]
   checks: { passed: number; failed: number; notRun: number }; unverified: string[]
 }
@@ -109,6 +120,8 @@ export interface TeamIndex {
   activeMembers?: number; currentAction?: string
 }
 export interface TeamView extends TeamIndex {
+  git?: { repository: string; branch: string; head?: string }
+  finalDelivery?: TeamRecord['finalDelivery']
   planRevision?: number
   retiredMembers?: { id: string; name: string; ticketId?: string; sessionId?: string; removedAt: string }[]
   members: TeamMemberView[]; handoffs: TeamRecord['handoffs']; error?: string
@@ -118,5 +131,6 @@ export interface TeamView extends TeamIndex {
   workflow?: TeamWorkflow
   commanderSessionId?: string
   commander?: Pick<TeamMemberView, 'sessionId' | 'directory' | 'model' | 'running' | 'quotaWait' | 'tools'>
+    & Partial<Pick<TeamMemberView, 'ticketId' | 'summary' | 'state' | 'retry' | 'events' | 'delivery' | 'attention' | 'branch'>>
   sourceTicketId?: string
 }

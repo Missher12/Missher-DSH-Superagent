@@ -1,4 +1,4 @@
-/** The shared dispatcher has a real session, but is not an executing team member. */
+/** The team commander reports verified deliveries; legacy teams retain their shared dispatcher. */
 import type { TeamMemberView, TeamView } from '../teams/contracts.ts'
 import type { T } from './text.ts'
 
@@ -9,9 +9,10 @@ export type TeamParticipant = Omit<TeamMemberView, 'role' | 'state'> & {
 }
 export function teamParticipants(team: TeamView, t: T): TeamParticipant[] {
   const commander = team.commander
-  if (!commander?.sessionId) return team.members
+  if (!commander) return team.members
   return [{ ...commander, id: COMMANDER, role: 'commander', name: t('teamCommander'), instructions: t('teamCommanderWork'),
-    state: commander.running || commander.quotaWait ? 'working' : 'idle', dependencies: [], summary: '', retry: false, events: [] }, ...team.members]
+    state: commander.state ?? (commander.running || commander.quotaWait ? 'working' : 'idle'), dependencies: [],
+    summary: commander.summary ?? '', retry: commander.retry ?? false, events: commander.events ?? [] }, ...team.members]
 }
 export function participantIcon(member: TeamParticipant) {
   return member.role === 'commander' ? 'queue' : member.role === 'coordinator' || member.responsibility === 'manager' ? 'agent'

@@ -58,7 +58,8 @@ function AddTeamMember({ team, reload, select, parentId = 'coordinator', compact
 export function TeamCompletion({ team }: { team: TeamView }) {
   const { t } = usePanel(), facts = team.completion
   return <section className="dt-team-completion"><h3>{t('teamCompletionTitle')}</h3><ol>
-    {([['teamCompletionMembers', facts?.members], ['teamCompletionReview', facts?.finalReview], ['teamCompletionEvidence', facts?.evidence]] as const)
+    {([['teamCompletionMembers', facts?.members], ['teamCompletionReview', facts?.finalReview], ['teamCompletionEvidence', facts?.evidence],
+      ...(facts?.commander !== undefined ? [['teamCompletionCommander', facts.commander] as const] : [])] as const)
       .map(([label, done]) => <li key={label} data-done={done || undefined}><Icon name={done ? 'decision' : 'clock'} /><span>{t(label)}</span></li>)}
   </ol>{!facts && <p className="dt-hint">{t('teamCompletionLegacy')}</p>}
     {facts?.issues.map(issue => <p className="dt-error" key={issue}>{issue}</p>)}

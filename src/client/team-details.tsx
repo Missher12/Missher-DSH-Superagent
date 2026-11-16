@@ -36,7 +36,9 @@ export function TeamDetails({ team, member, reload, view: selectedView, onView, 
   const { t, call, renderSession, renderContext, nativeSession, navigate } = usePanel()
   const [ownView, setOwnView] = useState<'activity' | 'conversation' | 'context' | 'delivery'>('conversation')
   const view = selectedView ?? ownView, setView = onView ?? setOwnView
-  const commander = member.role === 'commander', directory = commander ? member.directory : team.directory
+  const commander = member.role === 'commander', directory = member.directory ?? team.directory
+  const sharedCommander = commander && !member.ticketId
+  const files = [...team.finalDelivery?.artifacts ?? team.finalDelivery?.record.files ?? [], ...team.deliveries.flatMap(delivery => delivery.record.files)].map(file => file.path)
   const currentTool = member.tools.findLast(tool => tool.state === 'running')
   const activity = member.quotaWait ? t('teamModelQuotaWait') : currentTool ? `${workbenchToolLabel(t, currentTool.name)}${currentTool.detail ? ` · ${currentTool.detail}` : ''}`
     : member.running ? t('teamMemberWorking') : member.summary || t(commander ? 'teamCommanderIdle' : 'teamNoProgress')
@@ -49,7 +51,8 @@ export function TeamDetails({ team, member, reload, view: selectedView, onView, 
       <div className="dt-actions dt-team-native-controls">
         {member.sessionId && renderContext && <Button variant="ghost" size="sm" aria-pressed={view === 'context'} onClick={() => setView('context')}>{t('sessionContextTitle')}</Button>}
         {directory && <OpenWorkspaceButton directory={directory} compact />}
-        {!commander && <TeamFilesButton team={team} />}
+        <Button variant="ghost" size="sm" aria-pressed={view === 'delivery'} onClick={() => setView('delivery')}>{t('teamProducts')}</Button>
+        <TeamFilesButton team={team} />
         {view !== 'conversation' && <Button variant="ghost" size="sm" aria-label={t('teamOpenSession')} title={t('teamOpenSession')} disabled={!member.sessionId} icon={<Icon name="session" />} onClick={() => setView('conversation')} />}
       </div>
     </header>
@@ -66,8 +69,8 @@ export function TeamDetails({ team, member, reload, view: selectedView, onView, 
     {view === 'conversation' && member.sessionId && !nativeSession && <div className="dt-team-model-bar"><SessionModelPicker key={member.sessionId} sessionId={member.sessionId} running={member.state === 'working'} /></div>}
     <div className={`dt-team-detail-content${view === 'conversation' ? ' dt-team-native-session' : view === 'context' ? ' dt-team-native-context' : ''}`} id="dt-member-content" role="region" aria-label={t(view === 'activity' ? 'teamActivity' : view === 'conversation' ? 'workbenchConversation' : view === 'context' ? 'sessionContextTitle' : 'teamDelivery')}>
       {view === 'context' && member.sessionId && renderContext ? renderContext(member.sessionId) : view === 'activity' ? <MemberActivity member={member} /> : view === 'delivery' ? <TeamDelivery team={team} />
-        : member.sessionId && renderSession ? <SessionFiles scope={{ kind: commander ? 'session' : 'team', id: commander ? member.sessionId : team.id, directory, sessionId: member.sessionId,
-          files: commander ? [] : team.deliveries.flatMap(delivery => delivery.record.files.map(file => file.path)) }}>{renderSession(member.sessionId)}</SessionFiles> : <p className="dt-hint">{t('teamNotStarted')}</p>}
+        : member.sessionId && renderSession ? <SessionFiles scope={{ kind: sharedCommander ? 'session' : 'team', id: sharedCommander ? member.sessionId : team.id, directory, sessionId: member.sessionId,
+          files: sharedCommander ? [] : files }}>{renderSession(member.sessionId)}</SessionFiles> : <p className="dt-hint">{t('teamNotStarted')}</p>}
     </div>
     {!nativeSession && view === 'conversation' && member.ticketId && team.state !== 'stopped' && member.state !== 'stopped' && <div className="dt-team-followup"><LocalFollowup key={member.ticketId} id={member.ticketId} teamId={team.id} memberId={member.id}
       completed={member.state === 'finished'} onSent={reload} /></div>}

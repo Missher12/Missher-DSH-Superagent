@@ -47,7 +47,7 @@ export type TicketListView = ReturnType<typeof ticketList>
 export function localBoard(host: ViewHost, column: LocalBoardColumn, offset: number, limit: number, query = '', teams: TeamView[] = []) {
   const view = snapshot(host)
   const needle = query.trim().toLowerCase()
-  const grouped = new Set(teams.flatMap(team => [team.sourceTicketId, ...team.members.map(member => member.ticketId)]).filter(Boolean))
+  const grouped = new Set(teams.flatMap(team => [team.sourceTicketId, team.commander?.ticketId, ...team.members.map(member => member.ticketId)]).filter(Boolean))
   const rows: (Omit<ReturnType<typeof ticketRow>, 'stage' | 'action' | 'sessionId'> & TicketStage & { sessionId: string | undefined; team?: { id: string; members: number; completed: number } })[] = host.store.tickets.list()
     .filter(ticket => !grouped.has(ticket.id)).map(ticket => ticketRow(view, ticket))
   for (const team of teams) {

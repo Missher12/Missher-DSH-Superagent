@@ -2,6 +2,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { createReadStream } from 'node:fs'
+import { basename } from 'node:path'
+import { pipeline } from 'node:stream/promises'
 import { z } from 'zod'
 import { LOCAL_BOARD_COLUMNS, THREAD_FILTERS, TICKET_FILTERS, type Api, type ApiResponse, type RouteParams } from './api.ts'
 import { sourceSkills } from './context.ts'
@@ -129,7 +132,7 @@ export function stateView(runtime: HttpHost) {
 const views = (runtime: HttpHost): ViewHost => ({ store: runtime.store, sources: runtime.sources, links: runtime.links(),
   sessionId: ticket => {
     const target = runtime.teams?.target(ticket.id), team = target && runtime.teams!.get(target.team)
-    return team?.sourceTicketId === ticket.id ? team.members.find(member => member.role === 'coordinator')?.sessionId ?? '' : undefined
+    return team?.sourceTicketId === ticket.id ? team.commander?.sessionId ?? team.members.find(member => member.role === 'coordinator')?.sessionId ?? '' : undefined
   } })
 const setupState = (runtime: HttpHost): SetupState => ({ deployment: runtime.configured() ? runtime.deployment : undefined,
   problem: runtime.setupProblem, feishuProblem: runtime.feishuProblem, githubProblem: runtime.githubProblem })
@@ -339,11 +342,20 @@ export function registerHttp(ctx: Context, runtime: HttpHost): () => void {
       if (!sameOrigin(req, ctx.webServer.port ?? -1)) { json(res, 403, { error: 'Same-origin management request required' }); return }
       try {
         await runtime.ready
+        const download = /^\/orchestrator\/api\/local\/(teams|tasks)\/([^/]+)\/download$/.exec(url.pathname)
+        if (req.method === 'GET' && download) {
+          const id = decodeURIComponent(download[2]!), path = url.searchParams.get('path') ?? ''
+          const file = download[1] === 'teams' ? runtime.teams?.artifact(id, path) : runtime.local?.file(id, path)
+          if (!file) throw new RouteError(404, '找不到交付文件')
+          res.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
+            'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(basename(file.path))}` })
+          await pipeline(createReadStream(file.path), res); return
+        }
         const route = match(table, req.method ?? 'GET', url.pathname.slice('/orchestrator/api/'.length).split('/'))
         if (!route) throw new RouteError(404, 'Unknown operation')
         const query = Object.fromEntries(url.searchParams)
         json(res, 200, await route.run({ params: route.params as never, query, body: maxBytes => readBody(req, maxBytes) }))
-      } catch (error) { json(res, ...failure(error)) }
+      } catch (error) { if (res.headersSent) res.destroy(error instanceof Error ? error : undefined); else json(res, ...failure(error)) }
     } })]
   return () => { for (const dispose of disposers) dispose() }
 }

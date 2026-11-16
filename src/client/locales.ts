@@ -178,7 +178,7 @@ const TEXT = {
   localInheritModel: ['跟随默认（{model}）', 'Default ({model})'],
   localInheritDefault: ['跟随 DSH', 'Follow DSH'],
   localMaxWorkers: ['同时执行', 'Concurrent tasks'],
-  localConcurrencyHint: ['同一项目始终依次执行。', 'Tasks in the same project always run in order.'],
+  localConcurrencyHint: ['共享目录依次执行；Git 独立工作区可并行。', 'Shared directories run in order; separate Git worktrees can run in parallel.'],
   localPermissionTitle: ['执行权限', 'Permissions'],
   localPermissionDefault: ['跟随 DSH（{preset}）', 'Follow DSH ({preset})'],
   localPermissionReadOnly: ['只读', 'Read only'],

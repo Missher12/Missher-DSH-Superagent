@@ -12,6 +12,7 @@ import { EvalSettings } from './eval.tsx'
 import { Section } from './widgets.tsx'
 import { sourceMark } from './marks.ts'
 import { localized } from './text.ts'
+import { Select } from './select.tsx'
 
 type ConnectionSource = string
 function Connections({ selected, onSelect }: { selected: ConnectionSource; onSelect: (source: ConnectionSource) => void }) {
@@ -59,6 +60,10 @@ function SettingsForm() {
         <Field label={t('localMaxWorkers')} hint={t('localConcurrencyHint')}><Input type="number" required
           min={LIMITS.maxWorkers.min} max={LIMITS.maxWorkers.max} value={draft.value.maxWorkers}
           onChange={event => draft.edit({ ...draft.value, maxWorkers: event.target.value })} /></Field>
+        <Field label={t('teamWorkspaceMode')} hint={t('teamWorkspaceDefaultHint')}><Select value={draft.value.teamWorkspace ?? 'shared'}
+          onChange={event => draft.edit({ ...draft.value, teamWorkspace: event.target.value as 'shared' | 'worktree' })}>
+          <option value="shared">{t('teamWorkspaceShared')}</option><option value="worktree">{t('teamWorkspaceGit')}</option>
+        </Select></Field>
       </Section>
     </Fields>
     <SaveBar {...draft} onDiscard={draft.discard} />

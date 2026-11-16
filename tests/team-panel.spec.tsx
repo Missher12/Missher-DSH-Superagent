@@ -7,6 +7,30 @@ import { server } from './fixtures/panel-server.ts'
 import { zh } from '../src/client/locales.ts'
 
 usePanel()
+it('shows final products and the actual commander report directly in its workspace', async () => {
+  const view = team()
+  const record = { ticketId: 'planner-task', assignmentId: 'final', sessionId: 'worker-planner-task', at: view.updatedAt,
+    files: [{ path: '/tmp/project/plugin.tgz', summary: '可安装插件', exists: true, size: 24 }], checks: [], unverified: [] }
+  view.finalDelivery = { version: 'delivery-one', summary: '策划已复核', record }
+  view.commander = { ticketId: 'commander', sessionId: 'worker-commander', directory: '/tmp/project', running: false, state: 'finished', tools: [], summary: '总指挥最终报告' }
+  view.summary = '总指挥最终报告'; view.state = 'completed'
+  server.teamViews[view.id] = view
+  at({ page: 'overview', query: { team: view.id, member: '$commander' } })
+  await mount(); await click('成品')
+  expect(text()).toContain('plugin.tgz')
+  expect(text()).toContain('总指挥最终报告')
+  expect(all('button').some(button => button.textContent === '下载')).toBe(true)
+})
+it('dispatches the selected Git workspace mode without losing it when editing members', async () => {
+  await mount(); await click('新建任务')
+  await type(field<HTMLSelectElement>('团队执行'), 'worktree')
+  await type(field<HTMLInputElement>(zh.localDirectory), '/tmp/project')
+  await click(all('[data-node="build"] .dt-flow-node-body')[0]!)
+  await type(field<HTMLTextAreaElement>('分工'), '独立实现前端')
+  await click('进入会话')
+  expect(server.requests.find(item => item.path === 'local/teams/prepare' && item.method === 'POST')?.body)
+    .toMatchObject({ directory: '/tmp/project', workflow: { workspace: 'worktree' } })
+})
 it('does not offer an impossible retry for a stopped team', async () => {
   server.teamViews['explicit-team'] = { ...team(), state: 'stopped', error: '来源授权已撤销，请重新派单。' }
   at({ page: 'overview', query: { team: 'explicit-team' } })

@@ -90,7 +90,7 @@ function StudioSidebar() {
   const { t, call, navigate, openWorkspace } = usePanel(), { data, route, closeDrawer, setPane } = useStudio()
   const [file, setFile] = useState<string>()
   const team = data?.team, session = data?.members.find(member => member.id === route.query?.session)
-  const directory = team?.directory ?? session?.directory, files = [...new Map((team ? team.deliveries.flatMap(delivery => delivery.record.files) : session?.files ?? []).map(file => [file.path, file])).values()]
+  const directory = team?.directory ?? session?.directory, files = [...new Map((team ? team.finalDelivery?.artifacts ?? team.deliveries.flatMap(delivery => delivery.record.files) : session?.files ?? []).map(file => [file.path, file])).values()]
   const scope: FileScope = { kind: team ? 'team' : session?.taskId ? 'task' : 'session', id: team?.id ?? session?.taskId ?? session?.id ?? '',
     directory, sessionId: team?.members.find(member => member.role === 'coordinator')?.sessionId ?? session?.id, files: files.map(file => file.path) }
   const groups = Map.groupBy(files, file => file.path.replace(`${directory}/`, '').split('/').slice(0, -1).join('/'))

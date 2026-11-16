@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { TeamView } from '../teams/contracts.ts'
 import { Button, Icon, Modal } from './controls.tsx'
 import { usePanel } from './provider.tsx'
-import { FilePreview } from './team-file-preview.tsx'
+import { ArtifactDownload, FilePreview } from './team-file-preview.tsx'
 import { MarkdownLite, SessionButton, When } from './widgets.tsx'
 
 export function TeamFilesButton({ team }: { team: TeamView }) {
@@ -16,20 +16,22 @@ export function TeamFilesButton({ team }: { team: TeamView }) {
 export function TeamDelivery({ team, compact = false }: { team: TeamView; compact?: boolean }) {
   const { t } = usePanel()
   const [path, setPath] = useState<string>()
-  const deliveries = team.deliveries
-  const files = [...new Map(deliveries.flatMap(delivery => delivery.record.files.map(file => [file.path, { ...file, name: delivery.name }] as const))).values()]
+  const final = team.finalDelivery && { memberId: 'coordinator', name: t('teamCoordinator'), record: team.finalDelivery.record }
+  const deliveries = [...team.deliveries.filter(delivery => !final || delivery.record.assignmentId !== final.record.assignmentId), ...(final ? [final] : [])]
+  const files = team.finalDelivery?.artifacts ?? [...new Map(deliveries.flatMap(delivery => delivery.record.files.map(file => [file.path, { ...file, name: delivery.name }] as const))).values()]
   const checks = deliveries.flatMap(delivery => delivery.record.checks.map((check, index) => ({ ...check, name: delivery.name, sessionId: delivery.record.sessionId, id: `${delivery.record.assignmentId}:${index}` })))
   // A coordinator's final review supersedes stage-specific caveats such as “tests not run by the implementer”.
   const finalReview = team.state === 'completed' ? deliveries.find(delivery => delivery.memberId === 'coordinator') : undefined
   const unverified = (finalReview ? [finalReview] : deliveries).flatMap(delivery => delivery.record.unverified.map(text => ({ text, name: delivery.name })))
   return <div className="dt-team-delivery">
-    {!compact && <details className="dt-team-result-summary"><summary>{t('teamProgress')}</summary><MarkdownLite text={team.summary || t('teamNoProgress')} /></details>}
+    {!compact && <section className="dt-team-result-summary"><h3>{t(team.completion?.commander !== undefined ? 'teamFinalReport' : 'teamResultReport')}</h3><MarkdownLite text={team.commander?.summary || team.summary || t('teamReportPending')} /></section>}
     <section><h3>{t(compact ? 'teamSharedFiles' : 'teamFiles')}<span className="dt-count">{files.length}</span></h3>
       {files.length ? <ul className="dt-team-files">{files.map(file => <li key={file.path}>
         <Icon name="folder" size={16} /><div><button className="dt-open" type="button" disabled={!file.exists} title={file.path}
-          onClick={() => setPath(file.path)}>{file.path.replace(`${team.directory}/`, '')}</button>
+          onClick={() => setPath(file.path)}>{file.path.replaceAll('\\', '/').replace(`${(team.members.find(member => member.delivery?.files.some(item => item.path === file.path))?.directory ?? team.directory ?? '').replaceAll('\\', '/')}/`, '')}</button>
           <span>{t('teamReportedBy', { name: file.name })}{!file.exists ? ` · ${t('teamFileMissing')}` : ''}</span>
           {!compact && file.summary && <p>{file.summary}</p>}</div>
+        {file.exists && <ArtifactDownload scope={{ kind: 'team', id: team.id, files: files.map(item => item.path) }} path={file.path} />}
       </li>)}</ul> : <p className="dt-hint">{t('teamNoFiles')}</p>}</section>
     {!compact && <><section><h3>{t('teamChecks')}</h3>{checks.length ? <ul className="dt-team-checks">{checks.map(check => <li key={check.id}>
       <span className="dt-team-status" data-state={check.outcome === 'failed' ? 'failed' : check.outcome === 'passed' ? 'completed' : 'waiting'}><Icon name={check.outcome === 'passed' ? 'decision' : check.outcome === 'failed' ? 'alert' : 'clock'} size={15} />
@@ -39,7 +41,8 @@ export function TeamDelivery({ team, compact = false }: { team: TeamView; compac
       <section><h3>{t('teamUnverified')}</h3>{unverified.length ? <ul className="dt-team-unverified">{unverified.map((item, index) => <li key={index}>{item.text}<span>{item.name}</span></li>)}</ul>
         : <p className="dt-hint">{t('teamNoUnverified')}</p>}</section>
       {deliveries.length > 0 && <div className="dt-team-attribution">{deliveries.map(delivery => <span key={delivery.memberId}>{delivery.name} <When at={delivery.record.at} /></span>)}</div>}</>}
-    {path && <FilePreview key={path} scope={{ kind: 'team', id: team.id, directory: team.directory,
-      files: files.map(file => file.path), sessionId: team.members.find(member => member.role === 'coordinator')?.sessionId }} paths={[path]} onClose={() => setPath(undefined)} />}
+    {path && <FilePreview key={path} scope={{ kind: 'team', id: team.id,
+      directory: team.members.find(member => member.delivery?.files.some(file => file.path === path))?.directory ?? team.directory,
+      files: files.map(file => file.path), sessionId: team.members.find(member => member.delivery?.files.some(file => file.path === path))?.sessionId }} paths={[path]} onClose={() => setPath(undefined)} />}
   </div>
 }

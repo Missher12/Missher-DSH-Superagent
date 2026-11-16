@@ -2,12 +2,42 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { ApiResponse } from '../app/api.ts'
 import { Button, Icon, Modal } from './controls.tsx'
-import { usePanel } from './provider.tsx'
+import { useAction, usePanel } from './provider.tsx'
 import { LoadState, SessionButton } from './widgets.tsx'
 
 export interface FileScope {
   kind: 'team' | 'task' | 'session'
   id: string; directory?: string; sessionId?: string; files: string[]
+}
+
+async function artifactBlob(scope: FileScope, path: string) {
+  if (!scope.files.includes(path) || scope.kind === 'session') throw new Error('文件不在当前交付清单内')
+  const result = await fetch(`/orchestrator/api/local/${scope.kind === 'team' ? 'teams' : 'tasks'}/${encodeURIComponent(scope.id)}/download?path=${encodeURIComponent(path)}`,
+    { headers: { 'x-orchestrator-request': '1' } })
+  if (!result.ok) throw new Error((await result.json().catch(() => ({}))).error ?? '下载失败')
+  return result.blob()
+}
+export function ArtifactDownload({ scope, path }: { scope: FileScope; path: string }) {
+  const { t, notify } = usePanel()
+  const action = useAction(async () => {
+    try {
+      const url = URL.createObjectURL(await artifactBlob(scope, path)), link = document.createElement('a')
+      link.href = url; link.download = path.split(/[\\/]/).at(-1) ?? 'download'; link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 30_000)
+    } catch (error) { notify(error instanceof Error ? error.message : String(error)) }
+  })
+  return <Button size="sm" variant="ghost" disabled={action.busy} onClick={() => { void action.run() }}>{t('artifactDownload')}</Button>
+}
+function ArtifactImage({ scope, path }: { scope: FileScope; path: string }) {
+  const [url, setUrl] = useState<string>(), [error, setError] = useState<Error>()
+  useEffect(() => {
+    let active = true, created: string | undefined
+    void artifactBlob(scope, path).then(blob => {
+      if (active) { created = URL.createObjectURL(blob); setUrl(created) }
+    }, failure => { if (active) setError(failure instanceof Error ? failure : new Error(String(failure))) })
+    return () => { active = false; if (created) URL.revokeObjectURL(created) }
+  }, [scope.id, scope.kind, path])
+  return <><LoadState loading={!url} error={error} />{url && <img src={url} alt={path.split(/[\\/]/).at(-1)} style={{ maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain' }} />}</>
 }
 
 function FileContents({ scope, path }: { scope: FileScope; path: string }) {
@@ -26,14 +56,15 @@ function FileContents({ scope, path }: { scope: FileScope; path: string }) {
   }, [call, scope.id, scope.kind, path, reported])
   const original = scope.sessionId && <SessionButton sessionId={scope.sessionId} external label={t('teamOriginalSession')} />
   if (!reported || scope.kind === 'session') return <><p className="dt-hint">{t('fileNotReported')}</p>{original}</>
-  return <><LoadState loading={!file} error={error} />{error && original}{file && (file.binary ? <p className="dt-hint">{t('teamBinaryFile')}</p>
+  return <><LoadState loading={!file} error={error} />{error && original}{file && (file.binary ? /\.(png|jpe?g|gif|webp|avif)$/i.test(path)
+    ? <ArtifactImage scope={scope} path={path} /> : <p className="dt-hint">{t('teamBinaryFile')}</p>
     : <><pre className="dt-team-file-preview">{file.text}</pre>{file.truncated && <p className="dt-hint">{t('teamFileTruncated')}</p>}</>)}</>
 }
 
 export function FilePreview({ scope, paths, changes = false, onClose }: { scope: FileScope; paths: string[]; changes?: boolean; onClose: () => void }) {
   const { t, notify } = usePanel(), [path, setPath] = useState(paths.length === 1 ? paths[0] : undefined)
   return <Modal open onClose={onClose} title={path?.split(/[\\/]/).at(-1) ?? t('teamWorkingFiles')} closeLabel={t('close')} className="dt-team-file-modal"
-    footer={path && <div className="dt-actions">{changes && scope.files.includes(path) && scope.sessionId && <SessionButton sessionId={scope.sessionId} external label={t('teamOriginalSession')} />}<Button variant="outline" icon={<Icon name="copy" />} onClick={() => {
+    footer={path && <div className="dt-actions">{scope.files.includes(path) && scope.kind !== 'session' && <ArtifactDownload scope={scope} path={path} />}{changes && scope.files.includes(path) && scope.sessionId && <SessionButton sessionId={scope.sessionId} external label={t('teamOriginalSession')} />}<Button variant="outline" icon={<Icon name="copy" />} onClick={() => {
       void navigator.clipboard.writeText(path).then(() => notify(t('teamCopyPath')), error => notify(String(error)))
     }}>{t('teamCopyPath')}</Button></div>}>
     {path && changes && scope.files.includes(path) && <p className="dt-hint">{t('fileCurrentContents')}</p>}
