@@ -3,13 +3,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 import { mkdirSync } from 'node:fs'
 import { basename, join, relative } from 'node:path'
 import { key, latestReport, ticketStage, canRetry, hasUnreadRequest, type ThreadFacts, type Ticket, type Trigger } from '../core/index.ts'
 import type { Runtime } from '../app/runtime.ts'
 import { resolveRoleModel, sessionModels } from '../app/role-models.ts'
 import { executionRoot } from '../app/execution-environment.ts'
-import { mandateInstructions, workerSessionId } from '../executor/dsh.ts'
+import { mandateInstructions, ticketOfSession, workerSessionId } from '../executor/dsh.ts'
 import { IM_WORDS, wordCount } from '../infra/text.ts'
 import { family } from '../kv.ts'
 import { settingsPolicy } from '../policy.ts'
@@ -37,16 +38,39 @@ export class LocalTeams {
   private stopped = false
   private readonly releases: (() => void)[] = []
   private readonly preparedAgents = new WeakSet<Agent>()
+  private readonly commanders = new WeakSet<Agent>()
   private readonly git: GitWorkspaces
   constructor(private readonly runtime: Runtime, private readonly context: Context) {
     this.git = new GitWorkspaces(join(executionRoot(runtime.store.settings(), runtime.machine.stateDir), 'git-teams'), runtime.lifetime)
     // The setup conversation is an input surface, never an independent agent. Its
     // original native parts are durably forwarded to the planner before execution.
     this.releases.push(context.on('agent/pre-step', async ({ agent, messages }, next) => {
+      const ticketId = ticketOfSession(agent.id), target = ticketId && this.target(ticketId)
+      if (target && target.member === COMMANDER) {
+        this.guardCommander(agent)
+        for (const message of messages.filter(message => message.source.kind === 'user')) {
+          this.runtime.local!.receiveNative(ticketId!, message)
+          // Keep the user's text and attachments in this conversation without running a second worker.
+          if (!agent.session.snapshotEvents().some(event => event.type === 'user/message' && event.data.id === message.id)) agent.session.append('user/message', message, { surfaceOp: 'append' })
+          agent.inbox.remove(message.id)
+        }
+        if (this.require(target.team).phase !== 'reporting') return { kind: 'reject' }
+        return next()
+      }
       if (!this.all().some(team => team.setupSessionId === agent.id)) return next()
       await this.acceptPrepared(agent.id, messages.filter(message => message.source.kind === 'user'))
       return { kind: 'reject' }
     }), context.on('agent/created', ({ agent }) => { this.guardPrepared(agent) }))
+  }
+  private guardCommander(agent: Agent): void {
+    if (this.commanders.has(agent)) return
+    this.commanders.add(agent)
+    const allow = ['read', 'read_image'].filter(name => agent.ctx.tools.get(name, scopeParentOf(agent)))
+    this.releases.push(agent.ctx.tools.restrict({ allow }), agent.ctx.tools.guard(execution => {
+      if (['read', 'read_image', 'orchestrator_read', 'orchestrator_report'].includes(execution.name)) return
+      if (execution.name === 'orchestrator_team' && (execution.arguments as { action?: string })?.action === 'get') return
+      return '总指挥只读取已复核的成品并回传最终报告；补充要求由插件转交原策划，不在此会话执行修改、命令或重新派单。'
+    }))
   }
   private guardPrepared(agent: Agent): void {
     if (this.preparedAgents.has(agent) || !this.all().some(team => team.setupSessionId === agent.id)) return

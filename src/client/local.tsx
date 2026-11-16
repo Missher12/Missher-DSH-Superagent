@@ -117,8 +117,8 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
       <ComposerForm key={draft.requestId} id={formId} disabled={submit.busy || paused} failure={failure} onSubmit={() => { void submit.run() }}>
         <WorkflowEditor storageKey={`new-team/${draft.requestId}`} members={draft.members ?? defaultMembers(t)} onChange={members => edit({ members })} model={draft.model} disabled={submit.busy || paused}
           settings={<><ComposerField label={t('teamName')}><Input maxLength={160} value={draft.title} placeholder={t('flowNewTeam')} onChange={event => edit({ title: event.target.value })} /></ComposerField>
-            <ComposerField label={t('localWorkspaceMode')}><Select value={draft.existing ? 'existing' : 'independent'} onChange={event => edit({ existing: event.target.value === 'existing' })}>
-              <option value="independent">{t('localIndependent')}</option><option value="existing">{t('localExistingProject')}</option></Select></ComposerField>
+            <ComposerField label={t('localWorkspaceMode')}><Select value={draft.existing || (draft.workspace ?? defaultWorkspace) === 'worktree' ? 'existing' : 'independent'} onChange={event => edit({ existing: event.target.value === 'existing' })}>
+              <option value="independent" disabled={(draft.workspace ?? defaultWorkspace) === 'worktree'}>{t('localIndependent')}</option><option value="existing">{t('localExistingProject')}</option></Select></ComposerField>
             <ComposerField label={t('teamWorkspaceMode')}><Select value={draft.workspace ?? defaultWorkspace} onChange={event => edit({ workspace: event.target.value as 'shared' | 'worktree', ...(event.target.value === 'worktree' ? { existing: true } : {}) })}>
               <option value="shared">{t('teamWorkspaceShared')}</option><option value="worktree">{t('teamWorkspaceGit')}</option></Select></ComposerField>
             {(draft.workspace ?? defaultWorkspace) === 'worktree' && <p className="dt-hint">{t('teamWorkspaceGitHint')}</p>}

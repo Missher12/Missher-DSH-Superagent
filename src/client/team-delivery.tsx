@@ -24,7 +24,7 @@ export function TeamDelivery({ team, compact = false }: { team: TeamView; compac
   const finalReview = team.state === 'completed' ? deliveries.find(delivery => delivery.memberId === 'coordinator') : undefined
   const unverified = (finalReview ? [finalReview] : deliveries).flatMap(delivery => delivery.record.unverified.map(text => ({ text, name: delivery.name })))
   return <div className="dt-team-delivery">
-    {!compact && <section className="dt-team-result-summary"><h3>{t(team.completion?.commander !== undefined ? 'teamFinalReport' : 'teamResultReport')}</h3><MarkdownLite text={team.commander?.summary || team.summary || t('teamReportPending')} /></section>}
+    {!compact && <details className="dt-team-result-summary"><summary>{t(team.completion?.commander !== undefined ? 'teamFinalReport' : 'teamResultReport')}</summary><MarkdownLite text={team.commander?.summary || team.summary || t('teamReportPending')} /></details>}
     <section><h3>{t(compact ? 'teamSharedFiles' : 'teamFiles')}<span className="dt-count">{files.length}</span></h3>
       {files.length ? <ul className="dt-team-files">{files.map(file => <li key={file.path}>
         <Icon name="folder" size={16} /><div><button className="dt-open" type="button" disabled={!file.exists} title={file.path}

@@ -100,6 +100,26 @@ it('hands the verified result to the task commander and waits for its actual fin
   const forwarded = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs.filter(input => input.kind === 'trigger')
     .map(input => host.runtime.store.triggers.get(input.triggerId)?.text)
   expect(forwarded).toContain('补充 README 使用方法')
+  expect(host.runtime.store.tickets.get(finished.commander!.ticketId!)!.ended?.outcome).toBe('completed')
+  await complete(team.coordinatorTicketId!, ['result.md'])
+  await complete(finished.commander!.ticketId!)
+  expect(host.runtime.teams!.get(team.id).state).toBe('completed')
+  const commander = host.ctx.agents.get(finished.commander!.sessionId! as never)!
+  const image = { type: 'image', attachment: { id: 'commander-image', mediaType: 'image/png' } }
+  const message = { id: 'commander-native', role: 'user', source: { kind: 'user' },
+    content: [{ type: 'text', text: '按图片补充' }, image] }
+  host.ctx.emit('agent/inbox/inserted', { agent: commander, message } as never)
+  const next = vi.fn(async () => ({ kind: 'enter' as const, messages: [] }))
+  const decision = await host.ctx.waterfall('agent/pre-step', { agent: commander, messages: [message],
+    signal: new AbortController().signal, turn: 1, step: 1 } as never, next)
+  expect(decision.kind).toBe('reject'); expect(next).not.toHaveBeenCalled()
+  await settle()
+  const native = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs.flatMap(input => input.kind === 'trigger'
+    ? host.runtime.store.triggers.get(input.triggerId)?.meta.nativeInput ?? [] : []) as { content: unknown[] }[]
+  expect(native).toHaveLength(1); expect(native[0]!.content).toContainEqual(image)
+  expect(commander.session.append).toHaveBeenCalledWith('user/message', message, { surfaceOp: 'append' })
+  const guards = vi.mocked(commander.ctx.tools.guard).mock.calls.map(([guard]) => guard)
+  expect(guards.some(guard => guard({ name: 'edit' } as never))).toBe(true)
 }, 30_000)
 
 it('rejects a dirty project before creating a parallel team or a session', async () => {
