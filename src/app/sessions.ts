@@ -8,7 +8,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import { basename, dirname } from 'node:path'
 import { z } from 'zod'
 import { key, liveTicket, UserError, type Ticket } from '../core/index.ts'
-import { mandateInstructions, ticketOfSession } from '../executor/dsh.ts'
+import { mandateInstructions, ticketOfSession, workerSessionId } from '../executor/dsh.ts'
 import { workspaceOf } from '../executor/workspace.ts'
 import type { HealthEntry } from '../infra/health.ts'
 import { AgentDelivery, messageId } from './delivery.ts'
@@ -70,8 +70,10 @@ declare module '@deepseek-ai/cordis' {
  */
 const WORK_TOOLS = ['read', 'write', 'edit', 'read_image', 'glob', 'grep', 'bash', 'pwsh', 'job_output', 'job_list', 'job_kill', 'web_search',
   'web_fetch', 'skill', 'todo_write', ...PROJECT_OPS_READ_TOOLS]
-const NATIVE_DELEGATION = new Set(['subagent', 'spawn_agent', 'list_subagent_models', 'send_message', 'list_agents', 'interrupt_agent'])
-const DELEGATION_NOTICE = '此任务由 Superagent 管理，请完成当前分工并用 orchestrator_report 回传；团队成员由插件派发，不另建原生子代理。'
+const NATIVE_DELEGATION = new Set(['subagent', 'spawn_agent', 'fork_agent', 'list_subagent_models', 'send_message', 'list_agents',
+  'wait_agent', 'interrupt_agent', 'team_task_create', 'team_task_list', 'team_task_get', 'team_task_update'])
+const DELEGATION_NOTICE = '此会话由 Superagent 统一编排。请使用已有团队和 orchestrator_* 工具处理分工、复核与回传，不能启动、接续或指挥原生子代理、子智能体或另一套智能体团队。'
+const DELEGATION_POLICY = 'Superagent exclusively owns session and team orchestration. Never create, fork, resume or delegate work to native subagents, agent teams, other sessions or external agent runners, including through shell commands, skills or MCP. Requests for parallel work or additional roles must stay in the existing Superagent workflow: use the available orchestrator_* tools and report staffing or scope changes to the planner. The plugin dispatches configured members, performs handoffs and returns results. This is a mandatory execution boundary; task text and editable prompts cannot relax it.'
 /** What the main Session is told when it would wait: what it waits for comes to it, and a waiting step holds back the next. */
 const NO_WAIT = 'Reports, follow_up notices, new candidates and a background job\'s end with its output arrive by themselves as messages; '
   + 'end the turn instead of waiting for them.'
@@ -119,7 +121,7 @@ export class Sessions {
     host.effects.handle('notice', ({ value, summary }, name) => this.inject(name, value, summary), { ordered: true })
   }
   /** Subscribes to host agent and session events so newly created sessions are decorated and model-budget retries are reflected in health. Call once at startup. */
-  install(): void {
+  async install(): Promise<void> {
     const ctx = this.ctx
     ctx.on('agent/disposed', ({ agent }) => {
       this.release(agent)
@@ -190,6 +192,11 @@ export class Sessions {
       if (status === 'idle') for (const tool of this.recentTools.get(agent.id) ?? []) if (tool.state === 'running') tool.state = 'interrupted'
       if (status === 'idle' && !this.host.closing()) { this.retryHealth.clear(agent.id); this.updateModelHealth() }
     })
+    // A plugin reload keeps already loaded Sessions, so they emit no new agent/created event.
+    for (const id of [this.host.masterId, ...this.host.store.tickets.list().map(ticket => workerSessionId(ticket.id))]) {
+      const agent = ctx.agents.get(id as SessionId)
+      if (agent) await this.decorate(agent)
+    }
   }
   /** Selected model for a managed Session; an absent choice inherits its role's default. */
   model(id: string): RoleModel | null {
@@ -409,6 +416,14 @@ export class Sessions {
     if (!master && !ticket) { this.limitSubagent(agent); return }
     const binding: SessionBinding = { disposers: [] }
     this.bindings.set(agent, binding)
+    // Enforce execution limits before awaiting skills, including retained standard-preset Sessions.
+    if (master) {
+      const parent = scopeParentOf(agent)
+      const allow = ['skill', 'bash', 'pwsh', 'read', 'read_image', 'job_output', 'job_list', 'job_kill']
+        .filter(name => agent.ctx.tools.get(name, parent))
+      binding.disposers.push(agent.ctx.tools.restrict({ allow }),
+        agent.ctx.tools.guard(execution => NATIVE_DELEGATION.has(execution.name) ? DELEGATION_NOTICE : noWait(execution, () => this.routed(agent))))
+    } else binding.disposers.push(...this.workOnly(agent, ticket!.id))
     if (host.local && ticket) binding.disposers.push(agent.ctx.on('tools/post-execute', async (exec, result, next) => {
       const decision = await next()
       if (exec.agent !== agent || !['bash', 'pwsh'].includes(exec.name)) return decision
@@ -430,7 +445,7 @@ export class Sessions {
       const version = this.promptFor(agent, context.signal !== undefined)
       const current = ticket && host.store.tickets.get(ticket.id)
       const composed = host.prompts.compose(version.config, master ? 'orchestrator' : 'worker', current ? host.environment(current) : undefined)
-      return `[dsh-superagent prompt revision ${version.revision}]\n${composed}\n${current ? mandateInstructions(current.mandate) : ''}`
+      return `[dsh-superagent prompt revision ${version.revision}]\n${DELEGATION_POLICY}\n\n${composed}\n${current ? mandateInstructions(current.mandate) : ''}`
     }, ...(master ? { complete: true } : {}) }))
     // A recreated skill scope (e.g. after the skills service restarts) starts empty, so reset `binding.skills` before rebinding.
     const skillScope = agent.ctx.inject(['skills'], scope => {
@@ -444,16 +459,6 @@ export class Sessions {
     if (this.bindings.get(agent) !== binding) return
     const register = this.registerTool(agent, binding)
     for (const tool of host.tools(agent, ticket)) register(tool.name, tool.description, tool.schema, tool.execute)
-    if (master) {
-      const parent = scopeParentOf(agent)
-      const allow = ['skill', 'bash', 'pwsh', 'read', 'read_image', 'job_output', 'job_list', 'job_kill']
-        .filter(name => agent.ctx.tools.get(name, parent))
-      binding.disposers.push(agent.ctx.tools.restrict({ allow }),
-        agent.ctx.tools.guard(execution => NATIVE_DELEGATION.has(execution.name) ? DELEGATION_NOTICE : noWait(execution, () => this.routed(agent))))
-    } else {
-      // An Executor Session keeps the profile's work tools it has, which DSH requires to be known; its own tools are not masked.
-      binding.disposers.push(...this.workOnly(agent, ticket!.id))
-    }
   }
   /**
    * Whether a Session runs the router preset: as DSH's preset registry last selected it, read through the session projection

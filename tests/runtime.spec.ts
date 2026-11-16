@@ -1751,13 +1751,31 @@ it('selects its own preset again for a main Session or worker a person switched 
   await expect(presets.select.mock.results[0]!.value).rejects.toMatchObject({ code: 'agent-preset/locked' })
 })
 
-it('blocks native delegation from managed workers, including already loaded local subagent tools', async () => {
+it('blocks native subagents and native team tasks for both the commander and workers', async () => {
   const { sessionId } = await acceptedTicket()
-  const check = guards.get(sessionId)!
-  for (const name of ['subagent', 'spawn_agent', 'list_subagent_models', 'list_agents', 'send_message', 'interrupt_agent']) {
-    expect(check({ name, arguments: {} }), name).toMatch(/Superagent/)
+  for (const id of [runtime.masterId, sessionId]) {
+    const check = guards.get(id)!
+    for (const name of ['subagent', 'spawn_agent', 'fork_agent', 'list_subagent_models', 'list_agents', 'wait_agent',
+      'send_message', 'interrupt_agent', 'team_task_create', 'team_task_list', 'team_task_get', 'team_task_update']) {
+      expect(check({ name, arguments: {} }), `${id}: ${name}`).toMatch(/Superagent/)
+    }
+    expect(check({ name: 'read', arguments: {} })).toBeUndefined()
+    expect(check({ name: id === runtime.masterId ? 'orchestrator_team_manage' : 'orchestrator_team', arguments: { action: 'get' } })).toBeUndefined()
   }
-  expect(check({ name: 'read', arguments: {} })).toBeUndefined()
+  expect(guards.get(sessionId)!({ name: 'orchestrator_report', arguments: { state: 'progress' } })).toBeUndefined()
+})
+
+it('restores delegation restrictions on an already loaded ended worker after a plugin restart', async () => {
+  const { sessionId, ticket } = await acceptedTicket()
+  runtime.engine.stopTicket(ticket.id)
+  await runtime.idle()
+  guards.clear()
+  await restart()
+  await runtime.ready
+  const check = guards.get(sessionId)
+  expect(check).toBeTypeOf('function')
+  expect(check!({ name: 'spawn_agent', arguments: {} })).toMatch(/Superagent/)
+  expect(check!({ name: 'read', arguments: {} })).toBe('Ticket ended; new work needs a new authorized ticket')
 })
 
 it('gives a subagent of a worker only the worker\'s work tools, and none once the ticket ended', async () => {

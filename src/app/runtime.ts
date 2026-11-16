@@ -240,7 +240,7 @@ export class Runtime extends Service implements SourceHost {
       this.runtimeHealth.set({ ...health('paused', 'setupPending'), at: now() })
       return
     }
-    this.sessions.install()
+    await this.sessions.install()
     this.executor.install()
     this.local?.installTools()
     await this.local?.ensureWorkspace()
