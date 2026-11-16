@@ -1,0 +1,44 @@
+name: Native DSH installation
+on:
+  workflow_dispatch:
+    inputs:
+      plugin_version:
+        description: Published Superagent package to install
+        default: '1.12.0'
+        required: true
+      dsh_version:
+        description: Published DSH runtime to install
+        default: '0.2.2-rc.1'
+        required: true
+permissions:
+  contents: read
+jobs:
+  installation:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      DSH_TEST_VERSION: ${{ inputs.dsh_version }}
+      SUPERAGENT_TEST_VERSION: ${{ inputs.plugin_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.7.0'
+      - name: Install published DSH
+        shell: bash
+        run: npm install --prefix "$RUNNER_TEMP/dsh-native-cli" "@deepseek-ai/dsh@$DSH_TEST_VERSION"
+      - name: Install Superagent and start the real host
+        run: node scripts/native-host-smoke.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-host-${{ matrix.os }}
+          path: native-host-result.json
+          if-no-files-found: ignore
