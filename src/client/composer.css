@@ -17,7 +17,7 @@
 .dt-composer-field-heading>label>span { margin-left:4px; font-size:10px; }
 .dt-composer-field-error { min-width:0; margin:0; font-size:11px; line-height:18px; color:var(--dsw-alias-state-error-primary); text-align:left; overflow-wrap:anywhere; }
 .dt-composer-field-error:empty { display:none; }
-.dt-composer-field>.dt-input,.dt-composer-field>.dt-select { width:100%; height:32px; border-radius:7px; font-size:12px; }
+.dt-composer-field>.dt-input,.dt-composer-field>.dt-select { width:100%; height:32px; border-radius:7px; font-size:13px; }
 .dt-composer-field>.dt-input input { font-size:13px; }
 .dt-composer-field [aria-invalid=true] { border-color:var(--dsw-alias-state-error-primary); }
 .dt-composer-field>.dt-input:has([aria-invalid=true]) { border-color:var(--dsw-alias-state-error-primary); }
@@ -85,9 +85,6 @@
   .dt-modal.dt-composer-workspace { max-height:calc(100dvh - 32px); }
 }
 @media (prefers-reduced-motion:reduce) { .dt-composer-team>summary>svg { transition:none; } }
-[data-superagent-choice] .dt-choice-option { display:block; min-width:0; font-size:12px; line-height:18px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-[data-superagent-choice] .dt-choice-option>strong { display:block; overflow:hidden; text-overflow:ellipsis; font-size:12px; line-height:18px; font-weight:550; }
-[data-superagent-choice] .dt-choice-option>small { display:block; overflow:hidden; text-overflow:ellipsis; margin-top:3px; font-size:11px; line-height:16px; color:var(--dsw-alias-label-secondary); }
 .dt-choice-trigger>svg { transition:transform 130ms ease; }
 .dt-choice[data-open] .dt-choice-trigger>svg { transform:translateY(-50%) rotate(180deg); }
 @media (prefers-reduced-motion:reduce) { .dt-choice-trigger>svg { transition:none; } }

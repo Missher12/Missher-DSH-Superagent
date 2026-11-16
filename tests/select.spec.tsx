@@ -106,6 +106,22 @@ it('handles host-level Escape for a focused menu before dismissing its task dial
   expect(document.querySelector('[role="dialog"]')).toBeNull()
 })
 
+it('keeps a dialog menu open when an unrelated host conversation scrolls', async () => {
+  await mount(<><div data-chat-scroll /><Modal open title="添加成员" closeLabel="关闭" onClose={() => { throw new Error('Dialog dismissed') }}>
+    <div data-form-scroll><Select aria-label="职责" value="implementer" onChange={() => {}}><option value="implementer">实施</option><option value="reviewer">检验</option></Select></div>
+  </Modal></>)
+  const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="职责"]')!
+  await act(async () => trigger.click())
+  await act(async () => document.querySelector('[data-chat-scroll]')!.dispatchEvent(new Event('scroll')))
+  expect(document.querySelector('[role="menu"]')).not.toBeNull()
+  await act(async () => document.querySelector('[role="menuitem"]')!.dispatchEvent(new Event('scroll')))
+  expect(document.querySelector('[role="menu"]')).not.toBeNull()
+  await act(async () => document.querySelector('[data-form-scroll]')!.dispatchEvent(new Event('scroll')))
+  expect(document.querySelector('[role="menu"]')).toBeNull()
+  expect(document.activeElement).toBe(trigger)
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+})
+
 it.each([[390, 240], [220, 196]])('gives narrow model choices room while staying within a %i px viewport', async (viewport, width) => {
   vi.stubGlobal('innerWidth', viewport)
   onTestFinished(() => { vi.unstubAllGlobals() })

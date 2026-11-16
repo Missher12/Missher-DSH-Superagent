@@ -16,7 +16,7 @@ export function Select({ id, className = '', value, children, disabled, title, o
     if (!select) return
     setCaption(select.selectedOptions[0]?.label ?? String(value ?? ''))
     setItems([...select.options].map(option => ({ id: option.value, disabled: option.disabled || (option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled),
-      label: <span className="dt-choice-option" data-choice-owner={owner} title={option.dataset.detail ? `${option.label} · ${option.dataset.detail}` : option.label}>
+      label: <span className="dt-choice-option" data-choice-owner={owner} data-choice-selected={option.selected || undefined} title={option.dataset.detail ? `${option.label} · ${option.dataset.detail}` : option.label}>
         {option.dataset.detail ? <><strong>{option.label}</strong><small>{option.dataset.detail}</small></> : option.label}</span> })))
   }, [children, value, owner])
   useLayoutEffect(() => {
@@ -55,7 +55,10 @@ export function Select({ id, className = '', value, children, disabled, title, o
     const index = enabled.findIndex(item => item.id === String(value ?? ''))
     let disposed = false
     queueMicrotask(() => { if (!disposed) { const selected = rows[index] ?? rows[0]; selected?.focus({ preventScroll: true }); selected?.scrollIntoView?.({ block: 'nearest' }) } })
-    const scrolled = (event: Event) => { if (!(event.target instanceof Node) || !panel.contains(event.target)) close(true) }
+    // Only scrolling the anchor's ancestors moves this choice; host chats can scroll behind a dialog.
+    const scrolled = (event: Event) => {
+      if (event.target === window || event.target instanceof Node && event.target.contains(trigger.current)) close(true)
+    }
     const resized = () => close(true)
     window.addEventListener('scroll', scrolled, true); window.addEventListener('resize', resized)
     const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(size)
@@ -84,7 +87,7 @@ export function Select({ id, className = '', value, children, disabled, title, o
   return <span className={`dt-select dt-choice ${className}`} data-open={open || undefined} onKeyDown={keys}>
     <select {...props} ref={native} className="dt-choice-native" value={value} disabled={disabled} onChange={onChange} hidden tabIndex={-1} aria-hidden="true"
       onInvalid={event => { event.preventDefault(); trigger.current?.focus(); setOpen(true) }}>{children}</select>
-    <Menu open={open} selectedId={String(value ?? '')} items={items} onSelect={choose} onClose={() => close()} portal compact align="start" side={side}
+    <Menu open={open} selectedId={String(value ?? '')} items={items} onSelect={choose} onClose={() => close()} portal align="start" side={side}
       className="dt-choice-anchor" getAnchorRect={() => trigger.current?.getBoundingClientRect() ?? null}
       anchor={<button id={id} ref={trigger} type="button" className="dt-choice-trigger" disabled={disabled} aria-label={props['aria-label']}
         aria-labelledby={props['aria-labelledby']} aria-invalid={props['aria-invalid']} aria-describedby={props['aria-describedby']}

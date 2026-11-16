@@ -85,12 +85,17 @@
 .dt-choice-trigger > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dt-choice-trigger > svg { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--dsw-alias-label-secondary); }
 .dt-choice-trigger:focus { outline: none; }
-.dt-choice:has(.dt-choice-trigger:focus-visible), .dt-choice[data-open] { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+.dt-choice[data-open] { border-color: var(--dsw-alias-label-secondary); }
+.dt-choice:has(.dt-choice-trigger:focus-visible) { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
 .dt-choice:has(.dt-choice-trigger:disabled) { color: var(--dsw-alias-label-tertiary); background: var(--dsw-alias-bg-layer-2); }
 .dt-choice-trigger:disabled { cursor: default; }
-[role='menu']:has(.dt-choice-option) { box-sizing: border-box; font-family: inherit; font-size: 13px; max-height: min(300px, calc(100dvh - 24px)); }
+[role='menu']:has(.dt-choice-option) { box-sizing: border-box; padding: 6px; border-radius: 10px; font-family: inherit; font-size: 13px; max-height: min(300px, calc(100dvh - 24px)); }
 [role='menu']:has(.dt-choice-option) > :has([role='menuitem']) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
-.dt-choice-option { display: block; white-space: normal; overflow-wrap: anywhere; font-size: 13px; line-height: 20px; }
+[role='menu']:has(.dt-choice-option) [role='menuitem'] { box-sizing: border-box; min-height: 36px; padding: 8px 12px; border-radius: 6px; }
+[role='menu']:has(.dt-choice-option) [role='menuitem']:has([data-choice-selected]) { background: var(--dsw-alias-bg-layer-2); }
+.dt-choice-option { display: block; min-width: 0; white-space: normal; overflow-wrap: anywhere; font-size: 13px; line-height: 20px; }
+.dt-choice-option > strong { display: block; font-size: 13px; line-height: 20px; font-weight: 550; }
+.dt-choice-option > small { display: block; margin-top: 2px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary); }
 .dt-mono { font-family: var(--ds-font-family-code, Menlo, monospace); font-size: 12px; overflow-wrap: anywhere; }
 .dt-detail { margin-top: 2px; color: var(--dsw-alias-label-secondary); }
 .dt-savebar .dt-error { white-space: pre-line; }

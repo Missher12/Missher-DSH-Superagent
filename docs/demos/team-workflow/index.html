@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Superagent · 团队工作流 Demo</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><span class="brand-mark" data-icon="team"></span><strong>Superagent</strong><span class="divider">/</span><span>团队协作</span><span class="demo-label">交互 Demo</span></div>
+    <div class="header-actions"><span id="save-state">仅演示，不会派单</span><button class="icon-button" id="theme" aria-label="切换深浅主题" title="切换深浅主题" data-icon="sun"></button><button id="save" class="primary">保存草稿</button></div>
+  </header>
+  <main>
+    <section class="workspace" aria-label="团队工作流">
+      <div class="workspace-head"><div><h1>开发一个 DSH 插件</h1><span class="subtle" id="team-count">5 个角色</span></div><button id="add-member"><span data-icon="plus"></span>添加成员</button></div>
+      <div class="toolbar">
+        <div class="view-tabs" role="tablist" aria-label="关系视图"><button id="hierarchy" role="tab" aria-selected="true"><span data-icon="team"></span>分工层级</button><button id="delivery" role="tab" aria-selected="false"><span data-icon="route"></span>交付顺序</button></div>
+        <div class="toolbar-actions"><button id="undo" class="icon-button" aria-label="撤销" title="撤销" data-icon="undo" disabled></button><button id="arrange" title="整理卡片位置"><span data-icon="layout"></span><span class="optional">自动排列</span></button><button id="toggle-details" class="icon-button" aria-label="切换成员分工面板" title="成员分工" data-icon="sidebar"></button></div>
+      </div>
+      <div class="stage" id="stage" aria-label="可拖动的工作流画布">
+        <div id="world"><svg id="edges" width="1900" height="1200" aria-label="协作连线"></svg><div id="nodes"></div></div>
+        <div id="canvas-note"><span class="legend-line"></span><span id="legend-text">归属关系</span></div>
+        <div class="zoom"><button id="zoom-out" aria-label="缩小" data-icon="minus"></button><span id="zoom-value">100%</span><button id="zoom-in" aria-label="放大" data-icon="plus"></button><span class="zoom-divider"></span><button id="fit" aria-label="适应画布" title="适应画布" data-icon="expand"></button></div>
+        <div id="edge-action" hidden><span id="edge-label"></span><button id="remove-edge" aria-label="移除交付连线" data-icon="trash"></button></div>
+      </div>
+      <footer class="canvas-footer"><span data-icon="cursor"></span><span id="hint">拖动排版 · 放到管理成员上改上级 · 从圆点连线设置交付</span><button id="reset">重置示例</button></footer>
+    </section>
+    <div id="splitter" role="separator" aria-label="调整成员分工面板宽度" aria-orientation="vertical" tabindex="0"></div>
+    <aside id="inspector" aria-label="成员分工"></aside>
+  </main>
+  <dialog id="member-dialog" aria-labelledby="dialog-title">
+    <form id="member-form">
+      <header class="dialog-head"><span data-icon="user-plus"></span><h2 id="dialog-title">添加成员</h2><button type="button" id="close-dialog" class="icon-button" aria-label="关闭添加成员" data-icon="close"></button></header>
+      <div class="dialog-body">
+        <section class="form-section">
+          <div class="field"><label for="member-name">名称 <span class="required">*</span></label><input id="member-name" name="name" required maxlength="60" placeholder="例如：设计负责人"></div>
+          <div class="field"><label for="member-work">分工 <span class="required">*</span></label><textarea id="member-work" name="instructions" required maxlength="4000" placeholder="说明负责的内容。&#10;补充交付要求和协作边界。"></textarea></div>
+        </section>
+        <section class="form-section" id="member-properties"></section>
+      </div>
+      <footer class="dialog-footer"><span class="subtle">只添加到当前演示草稿</span><div><button type="button" id="cancel-dialog">取消</button><button class="primary" type="submit">添加成员</button></div></footer>
+    </form>
+  </dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./script.js"></script>
+</body>
+</html>
