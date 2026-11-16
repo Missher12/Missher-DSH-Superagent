@@ -25,7 +25,7 @@
 
 **继续原任务**：在总指挥会话补充要求，插件保留原消息与附件并转交原策划；总指挥不会同时启动修改任务。复核后的新成品仍回到同一个总指挥会话，由它再次报告。
 
-**平台验证**：1.12.0 已通过 [macOS、Windows、Linux CI](https://github.com/Missher12/Missher-DSH-Superagent/actions/runs/43844839536) 的 Git 工作区、团队交付、路径、启动器、界面组件、类型与构建检查。macOS 日常 DSH 已实测并行开发、成品预览下载和总指挥回传；Windows/Linux 尚未进行完整桌面宿主实测。三平台使用同一插件包，Git 并行模式需要系统已安装 Git。
+**平台验证**：三平台均通过 [60 项兼容检查、类型与构建](https://github.com/Missher12/Missher-DSH-Superagent/actions/runs/43850944315)。1.12.0 还已在 [Windows、Linux 临时测试机](https://github.com/Missher12/Missher-DSH-Superagent/actions/runs/43850841212) 实际安装到官方 DSH 0.2.2-rc.1 Web 宿主，插件启动与工作台接口通过。macOS 日常 DSH 已实测模型并行开发、成品预览下载和总指挥回传；Windows/Linux 的模型任务与桌面 GUI 仍未验收。手动运行 `Native DSH installation` 可复查正式安装包；启用模型测试需要单独配置测试凭据。三平台使用同一插件包，Git 并行模式需要系统已安装 Git。
 
 会话标题右侧常驻“会话、上下文、目录、成品、工作文件”，切换内容时按钮位置不变，也不新增返回行。切换成员保留正在查看的上下文、成品或活动；点“会话”回到所选成员的原会话。“上下文”打开该成员的上下文管理插件页面；单成员会话也有对应标签。工作台、任务、工作区使用统一的页面边界、导航间距和内容起点；各页隐藏滚动条，保留滚轮、触控板和键盘滚动。
 

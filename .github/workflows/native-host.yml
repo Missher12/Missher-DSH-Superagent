@@ -10,6 +10,10 @@ on:
         description: Published DSH runtime to install
         default: '0.2.2-rc.1'
         required: true
+      model_test:
+        description: Run the real model team task using dedicated test credentials
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -36,6 +40,10 @@ jobs:
         run: npm install --prefix "$RUNNER_TEMP/dsh-native-cli" "@deepseek-ai/dsh@$DSH_TEST_VERSION"
       - name: Install Superagent and start the real host
         run: node scripts/native-host-smoke.mjs
+        env:
+          DSH_TEST_MODEL_CONFIG: ${{ inputs.model_test && secrets.DSH_TEST_MODEL_CONFIG || '' }}
+          DSH_TEST_MODEL_KEY: ${{ inputs.model_test && secrets.DSH_TEST_MODEL_KEY || '' }}
+          DSH_TEST_MODEL_REQUIRED: ${{ inputs.model_test }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
