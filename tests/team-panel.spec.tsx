@@ -7,6 +7,47 @@ import { server } from './fixtures/panel-server.ts'
 import { zh } from '../src/client/locales.ts'
 
 usePanel()
+it('shows active work and prerequisite names without opening each member', async () => {
+  const view = team(); view.phase = 'working'
+  Object.assign(view.members[1]!, { state: 'working', running: true, tools: [{ id: 'edit', name: 'edit', state: 'running', at: view.updatedAt, detail: 'domain.mjs' }] })
+  Object.assign(view.members[2]!, { state: 'planned', attention: undefined, summary: '' })
+  server.teamViews[view.id] = view
+  at({ page: 'overview', query: { team: view.id, member: 'check' } }); await mount()
+  expect(all('.dt-team-node[aria-label="验证 · 成员详情"]')[0]?.textContent).toContain('等待 实施')
+  expect(all('.dt-team-node[aria-label="实施 · 成员详情"]')[0]?.textContent).toContain('domain.mjs')
+  expect(all('.dt-team-count-line')[0]?.textContent).toContain('1 人处理中')
+  expect(all('.dt-team-details h2')[0]?.textContent).toBe('验证')
+})
+it('puts the exact blocker on its member card even when another member is selected', async () => {
+  at({ page: 'overview', query: { team: 'explicit-team', member: 'build' } }); await mount()
+  expect(all('.dt-team-node[aria-label="验证 · 成员详情"]')[0]?.textContent).toContain('请登录测试环境')
+})
+it('opens deliverables in the visible pane from compact team collaboration', async () => {
+  const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(900)
+  try {
+    at({ page: 'overview', query: { team: 'explicit-team', member: 'build' } }); await mount()
+    await click('显示或隐藏团队协作')
+    expect(all('.dt-team-focus-layout')[0]?.dataset.compactPane).toBe('team')
+    await click('交付结果')
+    expect(all('.dt-team-focus-layout')[0]?.dataset.compactPane).toBe('conversation')
+    expect(all('.dt-team-delivery')).toHaveLength(1)
+  } finally { width.mockRestore() }
+})
+it('shows the final product count and a reported commander state', async () => {
+  const view = team(); view.phase = 'completed'; view.state = 'completed'
+  const record = { ticketId: 'planner-task', assignmentId: 'final', sessionId: 'worker-planner-task', at: view.updatedAt,
+    files: [{ path: '/tmp/project/result.txt', summary: '结果', exists: true }], checks: [], unverified: [] }
+  view.finalDelivery = { version: 'final', summary: '复核通过', record }
+  view.deliveries = [{ memberId: 'build', name: '实施', record: { ...record, assignmentId: 'member-delivery',
+    files: [...record.files, { path: '/tmp/project/member.txt', summary: '成员文件', exists: true }] } }]
+  view.commander = { state: 'finished', tools: [], running: false, summary: '已交付' }
+  server.teamViews[view.id] = view
+  at({ page: 'overview', query: { team: view.id } }); await mount()
+  expect(all('.dt-team-node')[0]?.textContent).toContain('已汇报')
+  expect(all('.dt-team-collaboration footer .dt-count')[0]?.textContent).toBe('2')
+  await click('交付结果')
+  expect(text()).toContain('result.txt')
+})
 it.each(['reviewing', 'working'] as const)('shows the real return path during %s and opens its existing conversation', async phase => {
   const view = team(), review = { reviewerId: 'check', ticketId: 'check-task', assignmentId: 'check-one', at: view.updatedAt,
     planVersion: 1, roundId: 'round-one', inputVersion: 'input-one', decision: 'revise' as const,
@@ -20,7 +61,7 @@ it.each(['reviewing', 'working'] as const)('shows the real return path during %s
   at({ page: 'overview', query: { team: view.id } })
   await mount()
   vi.spyOn(all('.dt-team-focus-workbench')[0]!, 'getBoundingClientRect').mockReturnValue({ width: 1000 } as DOMRect)
-  const card = all('.dt-team-node').find(node => node.textContent?.includes('验证'))!
+  const card = all('.dt-team-node[aria-label="验证 · 成员详情"]')[0]!
   expect(card.textContent).toContain(phase === 'reviewing' ? '已退回' : '等待复审')
   expect(all('.dt-team-lines path[data-feedback]')).toHaveLength(1)
   const feedback = all('.dt-team-feedback')[0]!
@@ -111,7 +152,7 @@ it('opens the real commander in the same team workspace and keeps member chat an
   expect(all('.dt-team-followup')).toHaveLength(0)
   await click('上下文')
   expect(all('[data-test-context="master"]')).toHaveLength(1)
-  await click(all('.dt-team-node').find(node => node.textContent?.includes('验证'))!)
+  await click(all('.dt-team-node[aria-label="验证 · 成员详情"]')[0]!)
   expect(all('[data-test-context="worker-check-task"]')).toHaveLength(1)
   expect(all('[data-test-context="master"]')).toHaveLength(0)
   expect(view.members).toHaveLength(3)

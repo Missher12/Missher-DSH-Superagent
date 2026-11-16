@@ -12,7 +12,7 @@ import { OpenWorkspaceButton } from './local-workspaces.tsx'
 import { TeamStatus } from './team-ui.tsx'
 import { SessionButton, When } from './widgets.tsx'
 import { shortText, workbenchToolLabel } from './text.ts'
-import { participantIcon, participantWork, participantStatus, teamParticipants, type TeamParticipant } from './team-participants.ts'
+import { participantIcon, participantWork, participantDetail, participantStatus, teamParticipants, type TeamParticipant } from './team-participants.ts'
 
 function MemberActivity({ team, member }: { team: TeamView; member: TeamParticipant }) {
   const { t } = usePanel()
@@ -39,15 +39,13 @@ export function TeamDetails({ team, member, reload, view: selectedView, onView, 
   const commander = member.role === 'commander', directory = member.directory ?? team.directory
   const sharedCommander = commander && !member.ticketId
   const files = [...team.finalDelivery?.artifacts ?? team.finalDelivery?.record.files ?? [], ...team.deliveries.flatMap(delivery => delivery.record.files)].map(file => file.path)
-  const currentTool = member.tools.findLast(tool => tool.state === 'running')
-  const activity = member.quotaWait ? t('teamModelQuotaWait') : currentTool ? `${workbenchToolLabel(t, currentTool.name)}${currentTool.detail ? ` · ${currentTool.detail}` : ''}`
-    : member.running ? t('teamMemberWorking') : member.summary || t(commander ? 'teamCommanderIdle' : 'teamNoProgress')
+  const activity = participantDetail(team, member, t)
   const retry = useAction(async () => { if (member.ticketId) { await call('POST tickets/:id/retry', { id: member.ticketId }); await reload() } })
   const affected = new Set([member.id])
   for (let pass = 0; pass < team.members.length; pass++) for (const item of team.members) if (item.dependencies.some(id => affected.has(id))) affected.add(item.id)
   return <aside className="dt-team-details" data-stopped={!commander && (team.state === 'stopped' || member.state === 'stopped') || undefined} tabIndex={-1} aria-label={t('teamDetails')}>
     <header className="dt-team-detail-head"><div className="dt-team-member-heading"><span className="dt-team-avatar"><Icon name={participantIcon(member)} size={18} /></span>
-      <div><h2 title={commander ? member.name : team.name}>{commander ? member.name : team.name}</h2><p className="dt-team-session-caption" title={member.instructions}>{commander ? t('teamCommanderShared') : shortText(participantWork(member, t), 45)}</p></div></div>
+      <div><h2 title={member.name}>{member.name}</h2><p className="dt-team-session-caption" title={member.instructions}>{commander ? t('teamCommanderShared') : shortText(participantWork(member, t), 45)}</p></div></div>
       <div className="dt-actions dt-team-native-controls">
         <Button variant="ghost" size="sm" aria-label={t('teamOpenSession')} title={t('teamOpenSession')} aria-pressed={view === 'conversation'} aria-controls="dt-member-content" onClick={() => setView('conversation')}>{t('workbenchConversation')}</Button>
         <Button variant="ghost" size="sm" disabled={!member.sessionId || !renderContext} aria-pressed={view === 'context'} aria-controls="dt-member-content" onClick={() => setView('context')}>{t('sessionContextTitle')}</Button>

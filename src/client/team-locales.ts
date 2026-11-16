@@ -1,5 +1,11 @@
 /** Team UI words, using the panel's existing bilingual dictionary. */
 export const TEAM_TEXT = {
+  teamReported: ['已汇报', 'Reported'], teamFinishing: ['收尾中', 'Finishing'], teamQuotaWaiting: ['额度等待', 'Budget wait'],
+  teamThinking: ['正在思考或生成回复', 'Thinking or composing a response'],
+  teamAwaitSlot: ['等待执行席位', 'Waiting for a worker slot'],
+  teamAwaitCommander: ['等待总指挥交接', 'Waiting for commander handoff'], teamAwaitPlanner: ['等待策划派发', 'Waiting for the planner'],
+  teamAwaitFinalReview: ['等待审核与策划复核', 'Waiting for review and planner sign-off'], teamWorkStopped: ['执行已停止，文件与记录保留', 'Stopped; files and records retained'],
+  teamFilesDelivered: ['已交付 {count} 个文件', '{count} files delivered'], teamProcessingCount: ['{count} 人处理中', '{count} working'],
   teamIntake: ['理解需求', 'Understanding'], teamPlanning: ['拆分任务', 'Planning'], teamReporting: ['汇报成品', 'Reporting'],
   teamReplanning: ['安排返工', 'Replanning'], teamFinalReview: ['最终复核', 'Final review'], teamReturned: ['已退回', 'Returned'],
   teamRechecking: ['复审中', 'Rechecking'], teamAwaitRecheck: ['等待复审', 'Awaiting recheck'], teamReviewPassed: ['审核通过', 'Approved'],

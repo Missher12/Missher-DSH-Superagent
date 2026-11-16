@@ -4,7 +4,7 @@ import type { TeamMemberView, TeamView } from '../teams/contracts.ts'
 import { Icon } from './controls.tsx'
 import { usePanel } from './provider.tsx'
 import { TeamStatus } from './team-ui.tsx'
-import { COMMANDER, participantIcon, participantWork, participantStatus, teamFeedback, teamParticipants, type TeamParticipant } from './team-participants.ts'
+import { COMMANDER, participantIcon, participantDetail, participantStatus, teamFeedback, teamParticipants, type TeamParticipant } from './team-participants.ts'
 import { effortLabel } from './model-labels.ts'
 
 interface Line { id: string; to: string; path: string; dependency: boolean; feedback: boolean; active: boolean }
@@ -49,8 +49,8 @@ export function TeamGraph({ team, selected, select, addMember }: { team: TeamVie
   }} className="dt-team-node" data-role={member.role} data-state={member.state} data-running={member.running || undefined} data-coordinator={member.role === 'coordinator' || undefined} aria-pressed={selected === member.id}
     aria-label={`${member.name} · ${t('teamDetails')}`} title={member.name + (member.dependencies.length ? ' · ' + t('teamPrerequisite', { names: member.dependencies.map(id => team.members.find(item => item.id === id)?.name ?? id).join('、') }) : '')} onClick={() => select(member.id)}>
     <span className="dt-team-node-head"><span className="dt-team-avatar"><Icon name={participantIcon(member)} size={17} /></span>
-      <strong>{member.name}</strong><TeamStatus state={member.state} member label={participantStatus(team, member, t)} /></span>
-    <span className="dt-team-node-role" title={member.role === 'commander' ? t('teamCommanderShared') : member.instructions}>{participantWork(member, t)}</span>
+      <strong>{member.name}</strong><TeamStatus state={member.running && member.state === 'finished' ? 'working' : member.state} member label={participantStatus(team, member, t)} /></span>
+    <span className="dt-team-node-role" title={participantDetail(team, member, t)}>{participantDetail(team, member, t)}</span>
     <span className="dt-team-node-bottom"><span className="dt-team-node-model" title={member.model ? `${member.model.provider} · ${member.model.model}` : undefined}>
       <span>{member.model?.model ?? t(member.role === 'commander' ? 'localInheritDefault' : 'teamModelInherit')}</span>
       {member.model?.reasoningEffort && <span className="dt-team-node-effort">{effortLabel(member.model.reasoningEffort, member.model.reasoningEffort, t)}</span>}

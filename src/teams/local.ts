@@ -27,6 +27,8 @@ const version = (ticket: Ticket | undefined) => ticket ? key(ticket.id, assignme
 const now = () => new Date().toISOString()
 const COMMANDER = '$commander'
 const workPlan = ({ name: _, ...plan }: TeamMember) => JSON.stringify(plan)
+const reviewData = ({ handled: _, ...review }: TeamReviewRecord) => review
+const PLAN_DISPATCH = '返工尚未派发。revise_plan 只保存分工，不能代替派发；请用当前 token 提交 orchestrator_report state=ready、team_review.decision=revise，targets 指定具体成员并引用实际 evidence。'
 const CONTINUATION_LIMIT = '自动续作连续 2 次仍未完成本回合，请查看会话中的原因，补充要求或点击继续后重试。'
 const EVIDENCE = '\n交付请使用 orchestrator_report 的 delivery：files 只列真实文件；checks.command 必须与本轮实际执行的 bash/pwsh 命令完全一致，未运行的检查放入 unverified，不得虚构通过、费用或进度。'
   + '\n运行 Node.js 项目时，若 node 不在 PATH，先调用宿主 load_workspace_dependencies 获取真实 node 绝对路径；按返回路径运行检查，不要把桌面宿主程序当作 node，也不要因此安装新运行时。用户要求实跑而尚未实跑时，不能把代码阅读报告为测试通过。'
@@ -546,8 +548,9 @@ export class LocalTeams {
         inputVersion: key(workflow.roundId, String(workflow.planVersion), assignment(ticket), ticket.inputs.at(-1)?.id ?? '', dependencies) },
       ownEvidence: { ticketId, assignmentId: assignment(ticket) },
       members: team.members.map(member => ({ ...member.plan, ticketId: member.ticketId })),
-      pendingReview: workflow.pendingReview,
-      reviews: workflow.reviews.filter(review => review.roundId === workflow.roundId),
+      pendingReview: workflow.pendingReview && reviewData(workflow.pendingReview),
+      nextAction: target.member === 'coordinator' && team.phase === 'reviewing' ? PLAN_DISPATCH : undefined,
+      reviews: workflow.reviews.filter(review => review.roundId === workflow.roundId).map(reviewData),
       evidence: [team.coordinatorTicketId, ...team.members.map(member => member.ticketId)].flatMap(id => {
         const record = latestDelivery(this.runtime.store, this.ticket(id))
         return record ? [{ ticketId: record.ticketId, assignmentId: record.assignmentId, files: record.files, checks: record.checks, unverified: record.unverified }] : []
@@ -557,6 +560,7 @@ export class LocalTeams {
   recordReview(ticket: Ticket, input: TeamReview | undefined, state: string): void {
     const context = this.contextFor(ticket.id)
     if (!context) { if (input) throw new LocalTaskError('当前任务不是循环团队'); return }
+    if (state === 'dropped') throw new LocalTaskError('受管团队分工不能丢弃为重复任务。请读取 orchestrator_team 核对当前阶段，继续交付或正式派发返工；确实缺信息或权限时用 blocked 说明原因。')
     const team = this.require(context.teamId), member = team.members.find(member => member.plan.id === context.memberId)
     if (context.memberId === COMMANDER) {
       if (input) throw new LocalTaskError('总指挥只需汇报真实交付，省略 team_review；最终复核由策划完成。')
@@ -903,7 +907,7 @@ ${this.handoffContext(team, team.members)}${this.gitInstructions(team)}${team.gi
       }
       if (team.phase === 'reviewing') {
         const pending = team.workflow!.pendingReview!
-        const instructions = `检验提出返工，请复核依据并向相关成员分派修复。原始检验数据：\n${JSON.stringify(pending)}\n${this.workflowInstructions(team)}`
+        const instructions = `${PLAN_DISPATCH}\n当前审核问题仍待处理，不是重复请求，也不是已经派发。已修改的文件与计划保留，无需重复修改。审核依据：\n${JSON.stringify(reviewData(pending))}\n${this.workflowInstructions(team)}`
         if (done(coordinator) && assignment(coordinator) === team.workflow!.reviewBaseline) {
           await local.followup(coordinator.id, key('team-review', id, pending.ticketId, pending.assignmentId), instructions, true)
         } else await this.continueTurn(team, coordinator, `review:${pending.assignmentId}`, instructions, true)
@@ -1092,7 +1096,7 @@ ${this.handoffContext(team, team.members)}${this.gitInstructions(team)}${team.gi
       state, ticketId: ticket?.id, sessionId, directory: ticket?.execution?.directory ?? (coordinator ? team.git?.integration.directory : team.git?.members[id]?.directory) ?? team.directory,
       branch: coordinator ? team.git?.integration.branch : team.git?.members[id]?.branch,
       model: sessionId && team.phase !== 'draft' ? this.runtime.sessions.model(sessionId) : coordinator ? team.request.model : plan?.plan.model ?? team.request.model,
-      summary: report?.summary ?? '', attention: ticket?.attention?.question ?? (ticket?.ended && !done(ticket) ? ticket.ended.reason ?? '此成员已结束执行，尚未完成分工；已产生的文件仍保留。' : undefined), retry: !!ticket && canRetry(ticket), tools: live?.tools ?? [], events,
+      summary: report?.summary ?? '', attention: ticket?.attention?.question ?? (ticket?.ended && !done(ticket) ? ticket.ended.reason ?? report?.summary ?? '此成员已结束执行，尚未完成分工；已产生的文件仍保留。' : undefined), retry: !!ticket && canRetry(ticket), tools: live?.tools ?? [], events,
       delivery: latestDelivery(this.runtime.store, ticket), running: live?.running ?? false, quotaWait: state === 'working' && !!live?.quotaWait }
   }
   get(id: string): TeamView {

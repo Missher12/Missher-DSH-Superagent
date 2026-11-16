@@ -39,7 +39,7 @@ export function LocalWorkbench({ sessionId, teamId, memberId = 'coordinator' }: 
   const root = useRef<HTMLElement>(null)
   const { t, navigate } = usePanel(), { state } = usePanelData()
   const { data, error, reload, contentWidth, compactTeam, rightHidden, pane, setPane } = useStudio()
-  const right = usePaneWidth('right', contentWidth - 340)
+  const right = usePaneWidth('right', contentWidth - 446)
   const [views, setViews] = useState(openViews), [detail, setDetail] = useState<'activity' | 'conversation' | 'context' | 'delivery'>('conversation')
   const current = teamId ? `team:${teamId}` : sessionId ? `session:${sessionId}` : undefined
   const team = data?.team && data.team.id === teamId ? data.team : undefined
@@ -96,7 +96,7 @@ export function LocalWorkbench({ sessionId, teamId, memberId = 'coordinator' }: 
           <TeamOverview teams={data.teams} select={selectTeam} /></section>
           : sessionId ? <div className="dt-team-single-space"><SingleWorkbench sessionId={sessionId === 'all-single' ? undefined : sessionId} /></div>
             : team && member ? <><TeamDetails key={`${team.id}:${member.id}`} team={team} member={member} reload={reload} view={detail} onView={setDetail} onMember={selectMember} />
-              <PaneDivider pane={right} /><TeamCollaboration team={team} selected={member.id} select={selectMember} openSession={id => { selectMember(id); setDetail('conversation') }} reload={reload} delivery={() => setDetail('delivery')} /></>
+              <PaneDivider pane={right} /><TeamCollaboration team={team} selected={member.id} select={selectMember} openSession={id => { selectMember(id); setDetail('conversation') }} reload={reload} delivery={() => { setDetail('delivery'); setPane('conversation') }} /></>
               : <LoadState loading={!error} error={error} />}
       </div></>}
   </section>

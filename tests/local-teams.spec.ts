@@ -236,6 +236,30 @@ async function review(ticketId: string, decision: 'pass' | 'revise', targets: st
   return team_review
 }
 
+it('keeps revised work pending until the planner dispatches it and refuses dropping the team as a duplicate', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await createTeam({ ...request(), directory: host.directory, workflow: { maxRounds: 3 },
+    members: request().members.map(member => ({ ...member, responsibility: member.id === 'check' ? 'reviewer' : 'implementer' })) })
+  await complete(team.coordinatorTicketId!)
+  const build = host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!.ticketId!
+  await complete(build)
+  const check = host.runtime.teams!.get(team.id).members.find(member => member.id === 'check')!.ticketId!
+  await review(check, 'revise', ['build'])
+  const session = await readySession(team.coordinatorTicketId!)
+  const context = host.runtime.teams!.contextFor(team.coordinatorTicketId!)!
+  const next = await host.runTool(session, 'orchestrator_team', { action: 'revise_plan', planVersion: context.token.planVersion,
+    changes: [{ id: 'build', instructions: '修复已核实的失败用例' }] }) as { pendingReview: unknown; nextAction: string }
+  expect(next.pendingReview).not.toHaveProperty('handled')
+  expect(next.nextAction).toContain('尚未派发')
+  await host.runTool(session, 'orchestrator_report', { state: 'progress', summary: '分工已更新' })
+  await expect(host.runTool(session, 'orchestrator_report', { state: 'dropped', summary: '误认为是重复触发' })).rejects.toThrow(/不能丢弃/)
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.ended).toBeUndefined()
+  expect(host.runtime.teams!.get(team.id).workflow?.round).toBe(1)
+  await review(team.coordinatorTicketId!, 'revise', ['build'])
+  expect(host.runtime.teams!.get(team.id).workflow?.round).toBe(2)
+  expect(host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!.ticketId).toBe(build)
+}, 45_000)
+
 it('refuses a plan whose added project has no path to an independent reviewer', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const team = await createTeam({ ...request(), directory: host.directory, workflow: { maxRounds: 3 },

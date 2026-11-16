@@ -67,7 +67,7 @@ function useStudioState(route: Extract<Route, { page: 'overview' }>): StudioStat
     const observer = new ResizeObserver(measure); observer.observe(element); return () => observer.disconnect()
   }, [])
   const left = usePaneWidth('left', width - 640), compact = width < 800
-  const contentWidth = width - (!compact && !hidden ? left.width + 6 : 0), compactTeam = contentWidth < 680
+  const contentWidth = width - (!compact && !hidden ? left.width + 6 : 0), compactTeam = contentWidth < 800
   return { ...snapshot, route, root, left, compact, contentWidth, compactTeam, hidden, drawer, rightHidden, pane, setPane, setRightHidden,
     closeDrawer: () => setDrawer(false), toggleLeft: () => compact ? setDrawer(value => !value) : setHidden(value => !value),
     toggleRight: () => compactTeam ? setPane(value => value === 'conversation' ? 'team' : 'conversation') : setRightHidden(value => !value) }

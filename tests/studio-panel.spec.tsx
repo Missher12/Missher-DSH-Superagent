@@ -55,7 +55,7 @@ it('resizes the project sidebar with the keyboard and keeps its width across pag
 })
 
 it('returns to the beginning of a task form when clearing a scrolled draft', async () => {
-  await mount(); await click('新建任务')
+  await mount(); await click('新建任务'); await click('单成员')
   await type(field<HTMLTextAreaElement>('任务要求'), '尚未派出的草稿')
   const body = all('.dt-composer-modal .dt-modal-body')[0]!
   body.scrollTop = 160
