@@ -16,7 +16,7 @@ export async function verifyNativeTeam(admin, temporary, modelId) {
   await admin('settings/executor', 'PUT', { revision: executor.revision, value: { ...executor.value, maxWorkers: 3 } })
   const team = await admin('local/teams', 'POST', {
     requestId: `native-${process.platform}-${Date.now()}`, name: '跨平台并行交付', title: '真实宿主并行与总指挥验收',
-    directory, permissionPreset: 'workspace-write', model: { provider: 'platform-test', model: modelId, reasoningEffort: 'high' },
+    directory, permissionPreset: 'workspace-write', model: { provider: 'qwen-token-plan', model: modelId, reasoningEffort: 'high' },
     coordinatorName: '策划', workflow: { maxRounds: 2, workspace: 'worktree' },
     instructions: `策划先核对分工，让文本和数值成员同时开发，各自使用独立 Git 工作区。检验收到两组代码后独立实跑测试；策划最后再次实跑并写 USAGE.md，交给总指挥报告全部5个成品和真实检查结果。原项目 README.md 保持不变。禁止子代理、安装依赖、网络访问、推送或部署。宿主系统 ${process.platform}；Node 可执行文件 ${process.execPath}，命令使用适合当前系统的引号。最终回复使用中文自然语言。`,
     members: [

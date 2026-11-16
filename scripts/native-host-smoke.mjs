@@ -39,7 +39,7 @@ try {
     assert.equal(new URL(modelConfig.baseURL).protocol, 'https:')
     const route = { ...modelConfig, apiKeyEnv: 'DSH_TEST_MODEL_KEY' }
     delete route.apiKey
-    appendFileSync(join(home, 'profiles/web/cordis.patch.yml'), `\n- id: llm-pi-ai\n  config: ${JSON.stringify({ providers: { 'platform-test': route } })}\n`)
+    appendFileSync(join(home, 'profiles/web/cordis.patch.yml'), `\n- id: llm-pi-ai\n  config: ${JSON.stringify({ providers: { 'qwen-token-plan': route } })}\n`)
   }
   host = spawn(process.execPath, [cli, 'web', '--no-open', '--host', '127.0.0.1', '--port', '3080'], {
     env: environment, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
