@@ -36,7 +36,7 @@ async function complete(id: string, files: string[] = [], checked = false) {
 function repository() {
   const path = join(host.directory, '原项目 with spaces'); mkdirSync(path)
   const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false', '-C', path, ...args], { encoding: 'utf8' }).trim()
-  git('init', '-q'); writeFileSync(join(path, 'README.md'), 'base\n'); git('add', '.'); git('commit', '-qm', 'initial')
+  git('init', '-q'); git('config', 'core.autocrlf', 'false'); writeFileSync(join(path, 'README.md'), 'base\n'); git('add', '.'); git('commit', '-qm', 'initial')
   return { path, git }
 }
 
@@ -84,7 +84,7 @@ it('hands the verified result to the task commander and waits for its actual fin
   const handoff = host.runtime.teams!.get(team.id)
   expect(handoff.state).not.toBe('completed')
   expect(handoff.commander!.sessionId).not.toBe(host.runtime.masterId)
-  expect(handoff.finalDelivery!.record.files[0]!.path).toBe(realpathSync(join(host.directory, 'result.md')))
+  expect(handoff.finalDelivery!.record.files[0]!.path).toBe(realpathSync.native(join(host.directory, 'result.md')))
   await complete(handoff.commander!.ticketId!, ['result.md'])
   const finished = host.runtime.teams!.get(team.id)
   expect(finished.state).toBe('completed')
@@ -146,7 +146,7 @@ it('restores a Git source team in place and revokes its isolated workers when or
   host.runtime.engine.decide(trigger.id, { kind: 'accept', title: '源项目', scope: trigger.text, name: 'git-origin', reason: '用户要求' })
   await settle()
   const original = host.runtime.teams!.get(host.runtime.teams!.list()[0]!.id)
-  expect(original.git?.repository).toBe(realpathSync(repo.path))
+  expect(original.git?.repository).toBe(realpathSync.native(repo.path))
   expect(host.runtime.teams!.allowedWorker(original.coordinatorTicketId!)).toBe(true)
   const stateDir = host.directory
   await host.runtime.stop(); host = await startRuntime(undefined, { mode: 'local', stateDir }); source(); await settle()

@@ -15,7 +15,7 @@ export function canonicalWorkspace(binding: WorkspaceBinding): WorkspaceBinding 
   if (!isAbsolute(binding.directory)) throw new WorkspaceError('工作区需要使用绝对路径')
   let directory: string
   try {
-    directory = realpathSync(binding.directory)
+    directory = realpathSync.native(binding.directory)
     if (!statSync(directory).isDirectory()) throw new Error('Not a directory')
   } catch { throw new WorkspaceError('工作区不存在或不是目录') }
   return { directory, permissionPreset: binding.permissionPreset }

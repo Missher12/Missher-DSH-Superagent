@@ -34,7 +34,7 @@ export const localMessages = taskMessages
 export class LocalTaskError extends Error {}
 function projectDirectory(value: string): string {
   if (!isAbsolute(value)) throw new LocalTaskError('工作区需要填写绝对路径')
-  try { const path = realpathSync(value); if (statSync(path).isDirectory()) return path } catch { /* Explain invalid input below. */ }
+  try { const path = realpathSync.native(value); if (statSync(path).isDirectory()) return path } catch { /* Explain invalid input below. */ }
   throw new LocalTaskError('工作区不存在或不是目录')
 }
 

@@ -13,7 +13,7 @@ it('launches configured executables and preserves blocked commands on the curren
   try {
     const deployment = testDeployment({ stateDir: directory, github: { ...testDeployment().github!, cli: process.execPath }, feishu: undefined })
     const run = (name: string, args: string[]) => process.platform === 'win32'
-      ? exec(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${join(workerBin(directory), name)}.cmd" ${args.join(' ')}`])
+      ? exec(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `""${join(workerBin(directory), name)}.cmd" ${args.join(' ')}"`], { windowsVerbatimArguments: true })
       : exec(join(workerBin(directory), name), args)
     await writeEnvironment(deployment, ['blocked-cli'])
     expect((await run('gh', ['--version'])).stdout.trim()).toBe(process.version)

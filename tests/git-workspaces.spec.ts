@@ -14,7 +14,7 @@ function git(directory: string, ...args: string[]) {
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'superagent-git-')); roots.push(root)
   const repository = join(root, '中文项目 with spaces'), work = join(root, '工作区 with spaces')
-  mkdirSync(repository); git(repository, 'init', '-q')
+  mkdirSync(repository); git(repository, 'init', '-q'); git(repository, 'config', 'core.autocrlf', 'false')
   writeFileSync(join(repository, 'shared.txt'), 'base\n'); git(repository, 'add', '.'); git(repository, 'commit', '-qm', 'initial')
   return { repository, manager: new GitWorkspaces(work), original: git(repository, 'rev-parse', 'HEAD') }
 }
