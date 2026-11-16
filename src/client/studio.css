@@ -88,7 +88,8 @@
 .dt-team-focus-layout .dt-team-detail-head { min-height:49px; flex-wrap:nowrap; }
 .dt-team-focus-layout .dt-team-member-heading h2 { font-size:20px; line-height:28px; }
 .dt-team-native-controls { flex:none; gap:3px; flex-wrap:nowrap; }
-.dt-team-native-controls>.dt-btn { min-width:28px; height:28px; padding-inline:6px; font-size:11px; }
+.dt-team-native-controls>.dt-btn { min-width:32px; height:32px; padding-inline:7px; font-size:11px; }
+.dt-team-native-controls>.dt-btn[aria-pressed=true] { background:var(--dsw-alias-interactive-bg-hover); color:var(--dsw-alias-label-primary); }
 .dt-team-session-context { min-height:39px; padding:0 0 9px; justify-content:space-between; gap:8px; }
 .dt-studio-session-members { display:flex; align-items:center; min-width:0; gap:3px; overflow:auto; }
 .dt-studio-session-members>button { display:flex; align-items:center; gap:5px; flex:none; min-height:27px; padding:4px 8px; border:1px solid transparent; border-radius:5px; background:none; color:var(--dsw-alias-label-secondary); font:inherit; font-size:11px; cursor:pointer; }

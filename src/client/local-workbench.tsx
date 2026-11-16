@@ -57,7 +57,7 @@ export function LocalWorkbench({ sessionId, teamId, memberId = 'coordinator' }: 
     if (teamId) { try { sessionStorage.setItem(`dsh-superagent/team-member/${teamId}`, memberId) } catch { /* Optional view memory. */ } }
   }, [current, teamId, sessionId, title, memberId])
   useEffect(() => { try { sessionStorage.setItem(STORAGE, JSON.stringify(views)) } catch { /* Optional view memory. */ } }, [views])
-  const selectView = (view?: WorkspaceView, nextDetail: 'conversation' | 'context' = 'conversation') => {
+  const selectView = (view?: WorkspaceView, nextDetail: typeof detail = 'conversation') => {
     setDetail(nextDetail); setPane('conversation')
     navigate({ page: 'overview', query: view?.kind === 'team' ? { team: view.id, member: view.member ?? lastMember(view.id) }
       : view ? { session: view.id } : undefined }, true)
@@ -65,7 +65,7 @@ export function LocalWorkbench({ sessionId, teamId, memberId = 'coordinator' }: 
   const selectTeam = (id: string) => selectView({ kind: 'team', id, title: data?.teams.find(team => team.id === id)?.name ?? id, member: lastMember(id) })
   const selectMember = (id: string) => {
     if (!team) return
-    selectView({ kind: 'team', id: team.id, title: team.name, member: id }, detail === 'context' ? 'context' : 'conversation')
+    selectView({ kind: 'team', id: team.id, title: team.name, member: id }, detail)
     if ((root.current?.getBoundingClientRect().width ?? 1000) <= 640) requestAnimationFrame(() => {
       const pane = root.current?.querySelector<HTMLElement>('.dt-team-details'); pane?.scrollIntoView({ block: 'start' }); pane?.focus({ preventScroll: true })
     })

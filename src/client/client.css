@@ -846,7 +846,6 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-team-detail-head { display: flex; flex: none; flex-direction: row; gap: 12px; padding-bottom: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .dt-team-member-heading { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
 .dt-team-member-heading h2 { margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dt-team-detail-tabs { display: flex; flex: none; align-items: center; justify-content: space-between; padding-block: 4px; border-bottom: .5px solid var(--dsw-alias-border-l2); font-size: 12px; color: var(--dsw-alias-label-secondary); }
 .dt-team-model-bar { display: flex; justify-content: flex-end; padding: 10px 0; flex: none; }
 .dt-team-model-bar .dt-session-model { flex: 1; }
 .dt-team-detail-content { flex: 1; contain: size; min-height: 0; overflow: auto; min-width: 0; padding: 12px 8px 12px 0; scrollbar-gutter: stable; overscroll-behavior: contain; }
