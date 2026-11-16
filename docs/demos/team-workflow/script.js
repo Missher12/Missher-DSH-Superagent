@@ -39,8 +39,13 @@ function choose(id) { selected = id; selectedEdge = null; render(); }
 function isDescendant(id, ancestor) { const seen = new Set(); while (id && !seen.has(id)) { if (id === ancestor) return true; seen.add(id); id = member(id)?.parent; } return false; }
 function parents(id) { return members.filter(m => ['manager','commander'].includes(m.role) && m.id !== id && !isDescendant(m.id,id)).map(m => [m.id,m.name]); }
 function dependencyCycle(from,to) { const pending=[from],seen=new Set(); while(pending.length){const id=pending.pop();if(id===to)return true;if(seen.has(id))continue;seen.add(id);pending.push(...(member(id)?.deps||[]));} return false; }
+function endLink() {
+  linkFrom=null;document.body.classList.remove('connecting');
+  document.querySelectorAll('.link-target').forEach(el=>el.classList.remove('link-target'));
+  $('.route-preview')?.remove();
+}
 function connect(from,to) {
-  linkFrom = null; document.body.classList.remove('connecting');
+  endLink();
   if (!member(from) || !member(to) || from === to || ['commander','planner'].includes(to) || from === 'commander') return toast('请选择两个执行成员连接交付');
   if (member(to).deps.includes(from)) return toast('这条交付关系已经存在');
   if (dependencyCycle(from,to)) return toast('会形成互相等待，已保留原关系');
@@ -67,7 +72,7 @@ function openMenu(button,options,value,onSelect) {
   root.onkeydown=event=>{const index=rows.indexOf(document.activeElement);if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeMenu(true);}else if(event.key==='Tab')closeMenu(true);else if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?rows.length-1:(index+(event.key==='ArrowUp'?-1:1)+rows.length)%rows.length;rows[next].focus();}};
 }
 document.addEventListener('pointerdown',event=>{if(activeMenu&&!activeMenu.root.contains(event.target)&&!activeMenu.button.contains(event.target))closeMenu();},true);
-document.addEventListener('keydown',event=>{if(event.key==='Escape'){linkFrom=null;document.body.classList.remove('connecting');renderEdges();}});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'){if(pointer?.kind==='link')pointer=null;endLink();renderEdges();}});
 function mountSelect(target,id,label,value,options,fn) { $(target).replaceChildren(selectButton(id,label,value,options,fn)); }
 function field(label,id,content) { return `<div class="field"><label for="${id}">${label}</label>${content}</div>`; }
 function renderInspector() {
@@ -102,14 +107,51 @@ function renderNodes() {
     el.onclick=event=>{event.stopPropagation();if(event.detail!==0)return;if(el.dataset.out){linkFrom=el.dataset.out;document.body.classList.add('connecting');toast('选择接收交付的成员');}else if(linkFrom)connect(linkFrom,el.dataset.in);};
   });
 }
-function path(from,to) { const a=member(from),b=member(to);if(!a||!b)return '';const x=a.x+224,y=a.y+66,ex=b.x,ey=b.y+66,dx=Math.max(55,Math.abs(ex-x)*.5);return `M${x},${y} C${x+dx},${y} ${ex-dx},${ey} ${ex},${ey}`; }
+// Read the rendered ports in SVG coordinates: borders, zoom and panel resizing
+// must affect the preview and the committed connection in exactly the same way.
+function nodeBox(id) {
+  const rect=$(`[data-node="${CSS.escape(id)}"]`).getBoundingClientRect(),matrix=$('#edges').getScreenCTM().inverse();
+  const a=new DOMPoint(rect.left,rect.top).matrixTransform(matrix),b=new DOMPoint(rect.right,rect.bottom).matrixTransform(matrix);
+  return {left:a.x,top:a.y,right:b.x,bottom:b.y};
+}
+function anchor(id,side='out') {
+  const el=$(`[data-node="${CSS.escape(id)}"]`),port=el.querySelector(`.port.${side}`);
+  if(port){const r=port.getBoundingClientRect();return new DOMPoint(r.left+r.width/2,r.top+r.height/2).matrixTransform($('#edges').getScreenCTM().inverse());}
+  const box=nodeBox(id);return {x:side==='bottom'?(box.left+box.right)/2:side==='in'?box.left:box.right,y:side==='bottom'?box.bottom:(box.top+box.bottom)/2};
+}
+function roundedPath(points) {
+  let d=`M${points[0].x},${points[0].y}`;
+  for(let i=1;i<points.length-1;i++){
+    const a=points[i-1],b=points[i],c=points[i+1],before=Math.hypot(b.x-a.x,b.y-a.y),after=Math.hypot(c.x-b.x,c.y-b.y),r=Math.min(12,before/2,after/2);
+    if(!r){d+=` L${b.x},${b.y}`;continue;}
+    d+=` L${b.x+(a.x-b.x)*r/before},${b.y+(a.y-b.y)*r/before} Q${b.x},${b.y} ${b.x+(c.x-b.x)*r/after},${b.y+(c.y-b.y)*r/after}`;
+  }
+  const end=points.at(-1);return d+` L${end.x},${end.y}`;
+}
+function connectionPath(from,end,to) {
+  const start=anchor(from),gap=end.x-start.x;
+  if(gap>=48||!to){const dx=Math.max(24,Math.abs(gap)/2);return `M${start.x},${start.y} C${start.x+dx},${start.y} ${end.x-dx},${end.y} ${end.x},${end.y}`;}
+  const a=nodeBox(from),b=nodeBox(to),between=a.bottom+48<b.top?(a.bottom+b.top)/2:b.bottom+48<a.top?(b.bottom+a.top)/2:Math.max(a.bottom,b.bottom)+36;
+  return roundedPath([start,{x:start.x+32,y:start.y},{x:start.x+32,y:between},{x:end.x-32,y:between},{x:end.x-32,y:end.y},end]);
+}
+function path(from,to) { return member(from)&&member(to)?connectionPath(from,anchor(to,'in'),to):''; }
+function linkTarget(event,from) {
+  const p=point(event),radius=24/camera.scale;
+  return members.find(m=>{
+    if(m.id===from||['commander','planner'].includes(m.id))return false;
+    const box=nodeBox(m.id),port=anchor(m.id,'in');
+    return Math.hypot(p.x-port.x,p.y-port.y)<=radius||(p.x>=box.left&&p.x<=box.right&&p.y>=box.top&&p.y<=box.bottom);
+  })?.id;
+}
 function renderEdges() {
   const edges=view==='hierarchy'?members.filter(m=>m.parent).map(m=>[m.parent,m.id]):members.flatMap(m=>m.deps.map(id=>[id,m.id]));
   let html=`<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M2 1L9 5 2 9" fill="none" stroke="var(--line)" stroke-width="1.5"/></marker></defs>`;
   if(view==='delivery')html+=members.filter(m=>m.id==='planner'||(!['commander','planner'].includes(m.id)&&!m.deps.length)).map(m=>`<path class="route" d="${path(m.id==='planner'?'commander':'planner',m.id)}" opacity=".65"/>`).join('');
   html+=edges.map(([from,to])=>`<g><path class="route ${view==='delivery'?'delivery':''} ${to===selected?'selected':''}" d="${path(from,to)}" marker-end="url(#arrow)"/>${view==='delivery'?`<path class="route-hit" data-from="${escape(from)}" data-to="${escape(to)}" d="${path(from,to)}"/>`:''}</g>`).join('');
-  if(view==='delivery'&&member('reviewer')&&member('planner')){const a=member('reviewer'),b=member('planner'),bottom=Math.max(...members.map(m=>m.y+132))+60;html+=`<path class="route return" d="M${a.x+112},${a.y+132} V${bottom-12} Q${a.x+112},${bottom} ${a.x+100},${bottom} H${b.x+124} Q${b.x+112},${bottom} ${b.x+112},${bottom-12} V${b.y+132}"/><text class="route-label" x="${(a.x+b.x)/2+112}" y="${bottom-10}">检验未通过 · 返回策划</text>`;}
-  if(linkFrom){const a=member(linkFrom),p=pointer?.end;html+=`<path class="route-preview" d="M${a.x+224},${a.y+66} C${a.x+284},${a.y+66} ${(p?.x||a.x+320)-60},${p?.y||a.y+66} ${p?.x||a.x+320},${p?.y||a.y+66}"/>`;}
+  if(view==='delivery'&&member('reviewer')&&member('planner')){const a=anchor('reviewer','bottom'),b=anchor('planner','bottom'),bottom=Math.max(...members.map(m=>nodeBox(m.id).bottom))+60;html+=`<path class="route return" d="${roundedPath([a,{x:a.x,y:bottom},{x:b.x,y:bottom},b])}"/><text class="route-label" x="${(a.x+b.x)/2}" y="${bottom-10}">检验未通过 · 返回策划</text>`;}
+  const target=linkFrom&&pointer?.target,valid=target&&!member(target).deps.includes(linkFrom)&&!dependencyCycle(linkFrom,target);
+  document.querySelectorAll('.node').forEach(el=>el.classList.toggle('link-target',Boolean(valid&&el.dataset.node===target)));
+  if(linkFrom){const a=anchor(linkFrom),p=valid?anchor(target,'in'):pointer?.end||{x:a.x+72,y:a.y};html+=`<path class="route-preview" d="${connectionPath(linkFrom,p,valid?target:undefined)}"/>`;}
   $('#edges').innerHTML=html;document.querySelectorAll('.route-hit').forEach(el=>el.onclick=()=>{selectedEdge=[el.dataset.from,el.dataset.to];$('#edge-label').textContent=`${member(selectedEdge[0]).name} → ${member(selectedEdge[1]).name}`;$('#edge-action').hidden=false;});
 }
 function transform(){world.style.transform=`translate(${camera.x}px,${camera.y}px) scale(${camera.scale})`;$('#zoom-value').textContent=Math.round(camera.scale*100)+'%';}
@@ -120,7 +162,7 @@ stage.onpointerdown=event=>{if(event.button!==0||event.target.closest('.node,but
 stage.onpointermove=event=>{
   if(!pointer)return;const dx=event.clientX-pointer.startX,dy=event.clientY-pointer.startY;
   if(pointer.kind==='pan'){camera.x=pointer.x+dx;camera.y=pointer.y+dy;transform();return;}
-  if(pointer.kind==='link'){pointer.end=point(event);renderEdges();return;}
+  if(pointer.kind==='link'){pointer.end=point(event);pointer.target=linkTarget(event,pointer.id);renderEdges();return;}
   if(!pointer.moved&&Math.hypot(dx,dy)<5)return;pointer.moved=true;const m=member(pointer.id);m.x=Math.max(0,Math.min(1600,pointer.x+dx/camera.scale));m.y=Math.max(0,Math.min(950,pointer.y+dy/camera.scale));
   const el=$(`[data-node="${m.id}"]`);el.classList.add('dragging');el.style.left=m.x+'px';el.style.top=m.y+'px';
   const p=point(event);pointer.target=members.find(n=>n.id!==m.id&&n.role==='manager'&&!isDescendant(n.id,m.id)&&p.x>=n.x&&p.x<=n.x+224&&p.y>=n.y&&p.y<=n.y+132)?.id;
@@ -128,12 +170,12 @@ stage.onpointermove=event=>{
 };
 stage.onpointerup=event=>{
   if(!pointer)return;const operation=pointer;pointer=null;if(stage.hasPointerCapture(event.pointerId))stage.releasePointerCapture(event.pointerId);
-  if(operation.kind==='link'){const p=point(event),target=members.find(n=>n.id!==operation.id&&p.x>=n.x-12&&p.x<=n.x+236&&p.y>=n.y&&p.y<=n.y+132);if(target)connect(operation.id,target.id);else if(Math.hypot(event.clientX-operation.startX,event.clientY-operation.startY)>5){linkFrom=null;document.body.classList.remove('connecting');renderEdges();}return;}
+  if(operation.kind==='link'){const target=linkTarget(event,operation.id);if(target)connect(operation.id,target);else if(Math.hypot(event.clientX-operation.startX,event.clientY-operation.startY)>5){endLink();renderEdges();}return;}
   if(operation.kind!=='node')return;
   if(!operation.moved){choose(operation.id);return;}
   remember(operation.before);const m=member(operation.id);selected=m.id;if(operation.target&&m.id!=='commander'){m.parent=operation.target;m.x=operation.x;m.y=operation.y;toast(`${m.name}已归入${member(operation.target).name}`);}render();
 };
-stage.onpointercancel=()=>{if(pointer?.kind==='node')members=pointer.before;pointer=null;linkFrom=null;document.body.classList.remove('connecting');render();};
+stage.onpointercancel=()=>{if(pointer?.kind==='node')members=pointer.before;pointer=null;endLink();render();};
 function zoom(factor){const r=stage.getBoundingClientRect(),next=Math.min(1.7,Math.max(.3,camera.scale*factor)),ratio=next/camera.scale;camera.x=r.width/2-(r.width/2-camera.x)*ratio;camera.y=r.height/2-(r.height/2-camera.y)*ratio;camera.scale=next;transform();}
 stage.addEventListener('wheel',event=>{event.preventDefault();if(event.ctrlKey||event.metaKey)zoom(event.deltaY<0?1.08:1/1.08);else{camera.x-=event.deltaX;camera.y-=event.deltaY;transform();}},{passive:false});
 function render(){document.body.dataset.view=view;$('#hierarchy').setAttribute('aria-selected',String(view==='hierarchy'));$('#delivery').setAttribute('aria-selected',String(view==='delivery'));$('#legend-text').textContent=view==='hierarchy'?'归属关系':'交付依赖 · 虚线回到策划复核';$('#team-count').textContent=`${members.length} 个角色`;$('#edge-action').hidden=true;$('#undo').disabled=!history.length;renderNodes();renderEdges();renderInspector();}
@@ -147,7 +189,17 @@ $('#member-dialog').addEventListener('cancel',event=>{if(activeMenu){event.preve
 $('#hierarchy').onclick=()=>{view='hierarchy';render();};$('#delivery').onclick=()=>{view='delivery';render();};
 $('#undo').onclick=()=>{if(!history.length)return;members=history.pop();if(!member(selected))selected='planner';dirty=true;render();toast('已撤销');};
 $('#remove-edge').onclick=()=>{if(selectedEdge){const [from,to]=selectedEdge;change(()=>member(to).deps=member(to).deps.filter(id=>id!==from),'已移除交付关系');}};
-$('#arrange').onclick=()=>{change(()=>{const counts=new Map();members.forEach(m=>{let depth=0,id=m.parent,seen=new Set([m.id]);while(id&&!seen.has(id)){seen.add(id);depth++;id=member(id)?.parent;}const index=counts.get(depth)||0;counts.set(depth,index+1);m.x=40+286*depth;m.y=70+index*180;});for(const depth of [0,1]){const list=members.filter(m=>m.x===40+286*depth);if(list.length===1)list[0].y=230;}},'已整理卡片位置');fit();};
+$('#arrange').onclick=()=>{change(()=>{
+  const depths=new Map(),columns=new Map();
+  const depth=(m,seen=new Set())=>{
+    if(depths.has(m.id))return depths.get(m.id);if(seen.has(m.id))return 0;
+    const inputs=view==='hierarchy'?[m.parent]:m.deps.length?m.deps:[m.id==='commander'?null:m.id==='planner'?'commander':'planner'];
+    const value=Math.max(0,...inputs.filter(id=>member(id)).map(id=>depth(member(id),new Set([...seen,m.id]))+1));depths.set(m.id,value);return value;
+  };
+  for(const m of members){const column=depth(m);if(!columns.has(column))columns.set(column,[]);columns.get(column).push(m);}
+  const rows=Math.max(...[...columns.values()].map(list=>list.length));
+  for(const [column,list] of columns)list.forEach((m,index)=>{m.x=40+286*column;m.y=70+((rows-list.length)/2+index)*180;});
+},'已按当前关系整理位置');fit();};
 $('#save').onclick=()=>{try{localStorage.setItem(key,JSON.stringify(members));dirty=false;$('#save-state').textContent='草稿已保存在此浏览器';toast('已保存 Demo 草稿，没有派出真实任务');}catch{toast('浏览器无法保存，请保留当前页面');}};
 $('#reset').onclick=()=>{change(()=>{members=structuredClone(initial);selected='frontend';view='hierarchy';},'已重置示例，可撤销');fit();};
 $('#zoom-out').onclick=()=>zoom(1/1.15);$('#zoom-in').onclick=()=>zoom(1.15);$('#fit').onclick=fit;

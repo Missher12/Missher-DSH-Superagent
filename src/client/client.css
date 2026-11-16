@@ -645,8 +645,8 @@ a.dt-btn, a.dt-btn:hover { text-decoration: none; }
 .dt-local-setting-entry > svg { flex: none; color: var(--dsw-alias-label-secondary); }
 .dt-local-setting-entry > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .dt-local-settings-editor { display: flex; flex: 1; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
-.dt-local-settings-content { flex: 1; min-height: 0; min-width: 0; padding: 3px 12px 28px 3px; box-sizing: border-box; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
-.dt-local-settings-content > :is(.dt-form,.dt-section,.dt-prompts-editor) { width: 100%; max-width: 800px; box-sizing: border-box; }
+.dt-local-settings-content { flex: 1; min-height: 0; min-width: 0; padding: 3px 3px 24px; box-sizing: border-box; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.dt-local-settings-content > :is(.dt-form,.dt-section,.dt-prompts-editor) { width: 100%; box-sizing: border-box; }
 .dt-local-settings-content .dt-fieldset { gap: 0; }
 .dt-local-settings-content .dt-fieldset > .dt-section + .dt-section { margin-top: 28px; }
 .dt-local-settings-content .dt-card-head { margin-bottom: 16px; }
