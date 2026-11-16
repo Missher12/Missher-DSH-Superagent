@@ -31,11 +31,11 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
   return [
     ...host.teams ? [tool({
       name: 'orchestrator_team',
-      description: 'Read this managed team’s plan, current round token and delivery evidence. The planner or group manager may revise existing authorized roles during planning/rework; the planner may also revise at final review, including post-completion requests. Changed roles must be sent through team_review revise before passing. This never spawns native agents or changes models, directories or permissions.',
+      description: 'Read this managed team’s plan, current round token and delivery evidence. The planner may split the authorized goal into managed members, update assignments/dependencies, and remove roles that have not started. Group managers may do this within their own group. New members inherit the team model, workspace and permissions. During rework/final review, send changed members through team_review revise before passing. Keep an independent reviewer after implementation. This never spawns native subagents.',
       schema: z.discriminatedUnion('action', [z.object({ action: z.literal('get') }).strict(),
         TeamPlanPatchSchema.extend({ action: z.literal('revise_plan') })]),
       execute: async args => toolValue(args.action === 'get' ? host.teams!.contextFor(ticketId) ?? { team: null }
-        : host.teams!.revisePlan(ticketId, { planVersion: args.planVersion, changes: args.changes })),
+        : host.teams!.revisePlan(ticketId, { planVersion: args.planVersion, changes: args.changes, add: args.add, remove: args.remove })),
     })] : [],
     readTool('Read one page of a resource of this ticket that the resource parameter lists. Follow next_offset, and next_resource where a page names one.',
       true, (resource, offset, limit, signal) => readResource(host.resources, resource, offset, limit, ticketId, signal)),

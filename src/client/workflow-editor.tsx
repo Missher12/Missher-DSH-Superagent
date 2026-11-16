@@ -241,6 +241,7 @@ export function WorkflowEditor({ members, onChange, model, disabled = false, set
         <ComposerField label={t('teamMemberWork')} required><textarea className="dt-textarea" required rows={4} maxLength={4000} value={member.instructions} onChange={event => onChange(members.map(item => item.id === member.id ? { ...item, instructions: event.target.value } : item))} /></ComposerField>
         <ComposerField label={t('teamResponsibility')}><Select value={member.responsibility ?? 'implementer'} onChange={event => edit({ responsibility: event.target.value as TeamMember['responsibility'] })}>
           {(['manager', 'implementer', 'reviewer'] as const).map(role => <option value={role} key={role}>{t(`teamRole.${role}`)}</option>)}</Select></ComposerField>
+        {member.responsibility === 'reviewer' && <p className="dt-hint">{t('flowReviewHint')}</p>}
         <ComposerField label={t('teamParent')}><Select value={member.parentId ?? planner} onChange={event => edit({ parentId: event.target.value })}><option value={planner}>{t('teamCoordinator')}</option>
           {members.filter(item => item.id !== member.id && item.responsibility === 'manager').map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</Select></ComposerField>
         <ComposerField label={t('localTaskModel')}><ModelSelect inherited={model} value={member.model} defaultLabel={t('teamModelInherit')} onChange={model => edit({ model })} /></ComposerField>

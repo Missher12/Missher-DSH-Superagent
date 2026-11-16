@@ -7,6 +7,27 @@ import { server } from './fixtures/panel-server.ts'
 import { zh } from '../src/client/locales.ts'
 
 usePanel()
+it.each(['reviewing', 'working'] as const)('shows the real return path during %s and opens its existing conversation', async phase => {
+  const view = team(), review = { reviewerId: 'check', ticketId: 'check-task', assignmentId: 'check-one', at: view.updatedAt,
+    planVersion: 1, roundId: 'round-one', inputVersion: 'input-one', decision: 'revise' as const,
+    reason: '空数组未处理', targets: ['build'], evidence: [{ ticketId: 'build-task', assignmentId: 'build-one' }], handled: true }
+  view.phase = phase
+  view.members[2]!.state = 'waiting'; delete view.members[2]!.attention
+  view.workflow = { planVersion: 1, round: phase === 'reviewing' ? 1 : 2, roundId: phase === 'reviewing' ? 'round-one' : 'round-two',
+    reviews: [review, ...phase === 'working' ? [{ ...review, reviewerId: 'coordinator', ticketId: 'planner-task', assignmentId: 'planner-two' }] : []],
+    ...phase === 'reviewing' ? { pendingReview: review } : {} }
+  server.teamViews[view.id] = view
+  at({ page: 'overview', query: { team: view.id } })
+  await mount()
+  vi.spyOn(all('.dt-team-focus-workbench')[0]!, 'getBoundingClientRect').mockReturnValue({ width: 1000 } as DOMRect)
+  const card = all('.dt-team-node').find(node => node.textContent?.includes('验证'))!
+  expect(card.textContent).toContain(phase === 'reviewing' ? '已退回' : '等待复审')
+  expect(all('.dt-team-lines path[data-feedback]')).toHaveLength(1)
+  const feedback = all('.dt-team-feedback')[0]!
+  expect(feedback.textContent).toContain(phase === 'reviewing' ? '验证 → 协调' : '返工中')
+  await click(feedback)
+  expect(all(`[data-test-session="worker-${phase === 'reviewing' ? 'check' : 'build'}-task"]`)).toHaveLength(1)
+})
 it('shows final products and the actual commander report directly in its workspace', async () => {
   const view = team()
   const record = { ticketId: 'planner-task', assignmentId: 'final', sessionId: 'worker-planner-task', at: view.updatedAt,

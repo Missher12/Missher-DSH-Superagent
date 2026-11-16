@@ -42,3 +42,14 @@ it('does not advertise an uninstalled plugin as a callable worker tool', async (
   host = await startRuntime(undefined, { mode: 'local' })
   expect(host.runtime.sessions.capabilities().tools.every(tool => !tool.registered)).toBe(true)
 })
+
+it('lets a managed member discover the host runtime without enabling native delegation', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  host.ctx.tools.register({ name: 'load_workspace_dependencies', description: 'Host runtime paths',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    output: { schema: { type: 'object', additionalProperties: true }, render: () => [] },
+    execute: async () => ({ node: process.execPath }) })
+  const task = await host.runtime.local!.create({ requestId: 'runtime-paths', title: '运行时发现', instructions: '使用宿主 Node 运行测试' })
+  await host.runtime.idle()
+  expect(host.agents.get(task.sessionId)!.ctx.tools.restrict).toHaveBeenCalledWith({ allow: ['load_workspace_dependencies'] })
+})

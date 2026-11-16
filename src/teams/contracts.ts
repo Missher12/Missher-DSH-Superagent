@@ -33,7 +33,10 @@ export type TeamRequest = z.infer<typeof TeamRequestSchema>
 export type TeamMember = z.infer<typeof TeamMemberSchema>
 export const TeamPlanPatchSchema = z.object({
   planVersion: z.number().int().positive(),
-  changes: z.array(TeamMemberSchema.pick({ id: true, instructions: true, dependencies: true, parentId: true }).partial().required({ id: true })).min(1).max(12),
+  changes: z.array(TeamMemberSchema.pick({ id: true, instructions: true, parentId: true }).partial().required({ id: true })
+    .extend({ dependencies: z.array(z.string()).max(11).optional() })).max(12).default([]),
+  add: z.array(TeamMemberSchema.omit({ model: true })).max(12).default([]),
+  remove: z.array(z.string().min(1)).max(12).default([]),
 }).strict()
 export const TeamReviewSchema = z.object({
   planVersion: z.number().int().positive(), roundId: z.string().min(1), inputVersion: z.string().min(1),
@@ -69,6 +72,8 @@ export interface DeliveryRecord extends Omit<DeliveryInput, 'files' | 'checks'> 
 export interface TeamRecord {
   git?: GitTeam
   commanderReporting?: true
+  commanderIntake?: true
+  commanderBrief?: string
   commanderTicketId?: string
   commanderVersion?: string
   commanderAssignment?: string
@@ -76,7 +81,7 @@ export interface TeamRecord {
     artifacts?: (DeliveryRecord['files'][number] & { memberId: string; name: string })[] }
   commanderInputs?: { id: string; text: string; native?: UserMessage }[]
   id: string; request: TeamRequest; encoded: string; createdAt: string; updatedAt: string
-  phase: 'draft' | 'creating' | 'planning' | 'working' | 'reviewing' | 'integrating' | 'reporting' | 'completed'
+  phase: 'draft' | 'briefing' | 'creating' | 'planning' | 'working' | 'reviewing' | 'integrating' | 'reporting' | 'completed'
   setupSessionId?: string
   pendingMessages?: UserMessage[]
   planRevision?: number
@@ -120,6 +125,7 @@ export interface TeamIndex {
   activeMembers?: number; currentAction?: string
 }
 export interface TeamView extends TeamIndex {
+  phase?: TeamRecord['phase']
   git?: { repository: string; branch: string; head?: string }
   finalDelivery?: TeamRecord['finalDelivery']
   planRevision?: number

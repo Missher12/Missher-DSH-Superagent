@@ -12,15 +12,15 @@ import { OpenWorkspaceButton } from './local-workspaces.tsx'
 import { TeamStatus } from './team-ui.tsx'
 import { SessionButton, When } from './widgets.tsx'
 import { shortText, workbenchToolLabel } from './text.ts'
-import { participantIcon, participantWork, teamParticipants, type TeamParticipant } from './team-participants.ts'
+import { participantIcon, participantWork, participantStatus, teamParticipants, type TeamParticipant } from './team-participants.ts'
 
-function MemberActivity({ member }: { member: TeamParticipant }) {
+function MemberActivity({ team, member }: { team: TeamView; member: TeamParticipant }) {
   const { t } = usePanel()
   const records = [...member.tools.map(tool => ({ id: tool.id, at: tool.at, kind: 'tool', title: workbenchToolLabel(t, tool.name), text: tool.detail, state: tool.state })),
     ...member.events.map(event => ({ ...event, kind: 'report', title: event.state === 'started' ? t('teamStarted') : t('workbenchEvent.report'), text: event.summary }))]
     .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5)
   return <div className="dt-team-member-activity">
-    <section className="dt-team-activity-summary"><TeamStatus state={member.state} member />
+    <section className="dt-team-activity-summary"><TeamStatus state={member.state} member label={participantStatus(team, member, t)} />
       <p>{shortText(member.summary || t('teamNoProgress'), 100)}</p></section>
     <section><h3>{t('teamRecords')}</h3>{records.length ? <ol className="dt-team-records">{records.map(record => <li key={record.id}>
       <span className="dt-team-record-icon" data-state={record.state}><Icon name={record.state === 'error' || record.state === 'failed' ? 'alert' : record.kind === 'tool' ? 'session' : 'message'} size={15} /></span>
@@ -58,15 +58,15 @@ export function TeamDetails({ team, member, reload, view: selectedView, onView, 
     </header>
     <div className="dt-team-session-context">{onMember && <nav className="dt-studio-session-members" aria-label={t('teamMembers')}>{teamParticipants(team, t).map(item => <button key={item.id} type="button"
       aria-pressed={item.id === member.id} title={item.instructions} onClick={() => onMember(item.id)}><Icon size={13} name={participantIcon(item)} />{item.name}</button>)}</nav>}
-      <TeamStatus state={member.state} member /></div>
+      <TeamStatus state={member.state} member label={participantStatus(team, member, t)} /></div>
     {!commander && team.workflow?.halted && team.state !== 'stopped' && <ResumeTeam key={team.id} team={team} reload={reload} />}
-    {team.state === 'draft' && member.id === 'coordinator' && <p className="dt-hint dt-flow-ready">{t('flowChatReady')}</p>}
+    {team.state === 'draft' && member.sessionId && <p className="dt-hint dt-flow-ready">{t('flowChatReady')}</p>}
     {(member.attention || member.state === 'failed') && <section className="dt-team-issue" role="status"><h3><Icon name="alert" />{t('teamNeedsHelp')}</h3>
       <p>{member.attention || member.summary}</p>{affected.size > 1 && <p>{t('teamImpact')}：{team.members.filter(item => item.id !== member.id && affected.has(item.id)).map(item => item.name).join('、')}</p>}
       {member.retry && <Button variant="outline" size="sm" disabled={retry.busy} onClick={() => { void retry.run() }}>{t('teamRetryMember')}</Button>}</section>}
     {view === 'conversation' && member.sessionId && !nativeSession && <div className="dt-team-model-bar"><SessionModelPicker key={member.sessionId} sessionId={member.sessionId} running={member.state === 'working'} /></div>}
     <div className={`dt-team-detail-content${view === 'conversation' ? ' dt-team-native-session' : view === 'context' ? ' dt-team-native-context' : ''}`} id="dt-member-content" role="region" aria-label={t(view === 'activity' ? 'teamActivity' : view === 'conversation' ? 'workbenchConversation' : view === 'context' ? 'sessionContextTitle' : 'teamDelivery')}>
-      {view === 'context' && member.sessionId && renderContext ? renderContext(member.sessionId) : view === 'activity' ? <MemberActivity member={member} /> : view === 'delivery' ? <TeamDelivery team={team} />
+      {view === 'context' && member.sessionId && renderContext ? renderContext(member.sessionId) : view === 'activity' ? <MemberActivity team={team} member={member} /> : view === 'delivery' ? <TeamDelivery team={team} />
         : member.sessionId && renderSession ? <SessionFiles scope={{ kind: sharedCommander ? 'session' : 'team', id: sharedCommander ? member.sessionId : team.id, directory, sessionId: member.sessionId,
           files: sharedCommander ? [] : files }}>{renderSession(member.sessionId)}</SessionFiles> : <p className="dt-hint">{t('teamNotStarted')}</p>}
     </div>

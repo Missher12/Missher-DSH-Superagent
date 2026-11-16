@@ -1,5 +1,10 @@
 /** Team UI words, using the panel's existing bilingual dictionary. */
 export const TEAM_TEXT = {
+  teamIntake: ['理解需求', 'Understanding'], teamPlanning: ['拆分任务', 'Planning'], teamReporting: ['汇报成品', 'Reporting'],
+  teamReplanning: ['安排返工', 'Replanning'], teamFinalReview: ['最终复核', 'Final review'], teamReturned: ['已退回', 'Returned'],
+  teamRechecking: ['复审中', 'Rechecking'], teamAwaitRecheck: ['等待复审', 'Awaiting recheck'], teamReviewPassed: ['审核通过', 'Approved'],
+  teamRework: ['返工中', 'Reworking'], teamReviewReturn: ['{from} → {to}', '{from} → {to}'],
+  teamReviewFix: ['{names} · 修改后重新审核', '{names} · Review again after correction'],
   teamParent: ['上级', 'Reports to'], teamResponsibility: ['职责', 'Responsibility'],
   'teamRole.manager': ['管理', 'Manager'], 'teamRole.implementer': ['实施', 'Implementation'], 'teamRole.reviewer': ['检验', 'Review'],
   teamAddAndRun: ['添加并执行', 'Add and run'], teamRound: ['第 {round} 轮 · 计划 {version}', 'Round {round} · Plan {version}'],
@@ -13,7 +18,7 @@ export const TEAM_TEXT = {
   teamWorkspaceGit: ['Git 独立并行', 'Git worktrees · parallel'],
   teamWorkspaceGitHint: ['需要干净的 Git 项目；自动记录本地交付提交，不推送。', 'Requires a clean Git project. Records local delivery commits; never pushes automatically.'],
   teamWorkspaceDefaultHint: ['新团队及外部团队派单的默认方式；并行受同时执行数量限制。', 'Default for new local and external teams. Parallel runs respect the worker limit.'],
-  teamCommanderWork: ['接收成品，向你汇报', 'Receive deliverables and report to you'], teamCommanderIdle: ['待命', 'Standing by'],
+  teamCommanderWork: ['理解需求，交接策划，汇报成品', 'Understand the goal, brief the planner, report deliverables'], teamCommanderIdle: ['待命', 'Standing by'],
   teamConversationCount: ['{count} 个会话', '{count} conversations'], teamCommanderShared: ['成品与最终报告', 'Deliverables and final report'],
   workspaceRename: ['重命名', 'Rename'], workspacePath: ['查看路径', 'Show path'],
   teamCollaboration: ['团队协作', 'Team collaboration'], teamRelations: ['协作关系', 'Connections'],
@@ -75,6 +80,7 @@ export const TEAM_TEXT = {
   flowInsert: ['插入成员', 'Insert member'],
   flowRemoveEdge: ['删除连接', 'Remove connection'],
   flowEdgeHint: ['后续成员等待前置交付。', 'The next member waits for its predecessor’s delivery.'],
+  flowReviewHint: ['通过交回策划；不通过自动安排返工、复审。', 'Pass returns to the planner; rejection starts correction and review.'],
   flowParentHint: ['管理关系不改变执行先后。', 'Reporting lines do not change execution order.'],
   flowManagerOnly: ["上级请选择策划或管理成员", "Choose the planner or a manager as the parent"],
   flowInvalid: ["请检查成员与连线", "Check the members and connections"],

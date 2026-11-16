@@ -69,7 +69,7 @@ declare module '@deepseek-ai/cordis' {
  * messages other Sessions. Project Ops exposes only its four read-only project tools.
  */
 const WORK_TOOLS = ['read', 'write', 'edit', 'read_image', 'glob', 'grep', 'bash', 'pwsh', 'job_output', 'job_list', 'job_kill', 'web_search',
-  'web_fetch', 'skill', 'todo_write', ...PROJECT_OPS_READ_TOOLS]
+  'web_fetch', 'skill', 'todo_write', 'load_workspace_dependencies', ...PROJECT_OPS_READ_TOOLS]
 const NATIVE_DELEGATION = new Set(['subagent', 'spawn_agent', 'fork_agent', 'list_subagent_models', 'send_message', 'list_agents',
   'wait_agent', 'interrupt_agent', 'team_task_create', 'team_task_list', 'team_task_get', 'team_task_update'])
 const DELEGATION_NOTICE = '此会话由 Superagent 统一编排。请使用已有团队和 orchestrator_* 工具处理分工、复核与回传，不能启动、接续或指挥原生子代理、子智能体或另一套智能体团队。'

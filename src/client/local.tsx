@@ -104,7 +104,7 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
       if ('members' in task) transferWorkflowView(`new-team/${draft.requestId}`, task.id)
       const next = { ...blank(), directory: draft.directory, existing: draft.existing }
       rememberDraft(next); setDraft(next)
-      navigate('members' in task ? { page: 'overview', query: { team: task.id, member: 'coordinator' } }
+      navigate('members' in task ? { page: 'overview', query: { team: task.id, member: task.commander?.sessionId ? '$commander' : 'coordinator' } }
         : renderSession ? { page: 'overview', query: { session: task.sessionId } } : { page: 'execution', id: task.ticketId })
     } catch (error) { setFailure(errorText(error)); throw error }
   })

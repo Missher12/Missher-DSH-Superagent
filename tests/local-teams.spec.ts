@@ -20,18 +20,19 @@ it('prepares a team without executing and admits the first native message with i
   const prepared = await host.runtime.teams!.prepare(setup)
   expect(prepared.state).toBe('draft')
   expect(host.runtime.store.tickets.list()).toHaveLength(0)
-  const session = prepared.members[0]!.sessionId!
+  const session = prepared.commander!.sessionId!
   expect(session).toBeTruthy()
   const image = { type: 'image', attachment: { id: 'image-one', mediaType: 'image/png' } }
   const message = { id: 'first-native', role: 'user', content: [{ type: 'text', text: '按图片实现页面' }, image], source: { type: 'user-rpc', kind: 'user', rpcId: 'first-native' } }
   await host.runtime.teams!.acceptPrepared(session, [message as never])
-  await settle()
+  await finishIntake(prepared.id)
+  await readySession(host.runtime.teams!.get(prepared.id).coordinatorTicketId!)
   const team = host.runtime.teams!.get(prepared.id)
   expect(team.instructions).toBe('按图片实现页面')
   expect(team.members[0]!.sessionId).toBe(`worker-${team.coordinatorTicketId}`)
   const count = host.runtime.store.tickets.list().length
   await host.runtime.teams!.acceptPrepared(session, [message as never])
-  await settle()
+  await finishIntake(prepared.id)
   expect(host.runtime.store.tickets.list()).toHaveLength(count)
   const native = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs.flatMap(input => input.kind === 'trigger'
     ? host!.runtime.store.triggers.get(input.triggerId)?.meta.nativeInput ?? [] : []) as { content: unknown[] }[]
@@ -41,11 +42,11 @@ it('prepares a team without executing and admits the first native message with i
   expect(delivered[0]!.text).toContain('ticket_id')
   expect(delivered[0]!.text).toContain('规划回合')
   expect(delivered.filter(item => item.id === 'first-native')).toHaveLength(1)
-})
+}, 20000)
 
 it('removes members from the workflow while preserving their original tickets and repairing links', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const team = await createTeam({ ...request(), directory: host.directory })
   await complete(team.coordinatorTicketId!)
   const before = host.runtime.teams!.get(team.id)
   const build = before.members.find(member => member.id === 'build')!
@@ -57,12 +58,12 @@ it('removes members from the workflow while preserving their original tickets an
   expect(host.runtime.store.tickets.get(build.ticketId!)?.ended?.by).toBe('human')
   expect(host.runtime.teams!.allowedWorker(build.ticketId!)).toBe(false)
   await expect(host.runtime.teams!.updatePlan(team.id, { revision: before.planRevision!, members: [] })).rejects.toThrow(/更新/)
-})
+}, 20000)
 
 it('appends a reviewer after a completed frontend without redispatching its finished work', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const frontend = { id: 'frontend', name: '前端', instructions: '实现页面', responsibility: 'implementer' as const, dependencies: [] }
-  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory, members: [frontend], workflow: { maxRounds: 3 } })
+  const team = await createTeam({ ...request(), directory: host.directory, members: [frontend], workflow: { maxRounds: 3 } })
   await complete(team.coordinatorTicketId!)
   const ticket = host.runtime.teams!.get(team.id).members.find(member => member.id === 'frontend')!.ticketId!
   await complete(ticket); await review(team.coordinatorTicketId!, 'pass')
@@ -85,7 +86,7 @@ it('appends a reviewer after a completed frontend without redispatching its fini
 it('keeps completed work and review intact for a rename, but dispatches a changed responsibility', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const frontend = { id: 'frontend', name: '前端', instructions: '实现页面', responsibility: 'implementer' as const, dependencies: [] }
-  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory, members: [frontend], workflow: { maxRounds: 3 } })
+  const team = await createTeam({ ...request(), directory: host.directory, members: [frontend], workflow: { maxRounds: 3 } })
   await complete(team.coordinatorTicketId!)
   const ticketId = host.runtime.teams!.get(team.id).members.find(member => member.id === 'frontend')!.ticketId!
   await complete(ticketId); await review(team.coordinatorTicketId!, 'pass')
@@ -105,8 +106,16 @@ it('keeps the team commander separate from the shared dispatcher and member coun
   host = await startRuntime(undefined, { mode: 'local' })
   const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
   const view = () => host!.runtime.teams!.get(team.id)
-  expect(view().commander).toMatchObject({ directory: realpathSync(host.directory), running: false, state: 'planned' })
-  expect(view().commander?.sessionId).toBeUndefined()
+  expect(view().phase).toBe('briefing')
+  expect(view().coordinatorTicketId).toBeUndefined()
+  expect(view().members.every(member => !member.ticketId)).toBe(true)
+  const commanderId = view().commander!.ticketId!
+  await finishIntake(team.id)
+  expect(view().commander!.ticketId).toBe(commanderId)
+  expect(view().handoffs).toContainEqual(expect.objectContaining({ from: '$commander', to: 'coordinator' }))
+  expect(host.runtime.store.tickets.get(view().coordinatorTicketId!)!.mandate.scope).toContain('明确目标与验收要求，交给策划拆分')
+  expect(view().commander).toMatchObject({ directory: realpathSync(host.directory), running: false, state: 'waiting' })
+  expect(view().commander?.sessionId).not.toBe(host.runtime.masterId)
   host.agents.get(host.runtime.masterId)!.status = 'running'
   expect(view().commander?.running).toBe(false)
   host.agents.get(host.runtime.masterId)!.status = 'idle'
@@ -128,7 +137,7 @@ it('persists an explicit event wait, wakes only its member with data, and never 
   host.runtime.receive(trigger)
   const root = host.runtime.engine.decide(trigger.id, { kind: 'accept', title: '事件等待', scope: trigger.text, name: 'event-wait', reason: '授权任务' }).ticketId!
   await settle()
-  const team = host.runtime.teams!.list()[0]!
+  const team = await finishIntake(host.runtime.teams!.list()[0]!.id)
   await complete(team.coordinatorTicketId!)
   const build = host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!.ticketId!
   const session = await readySession(build)
@@ -186,7 +195,7 @@ it('validates the organization tree separately from execution dependencies', () 
 
 it('returns a failed review to the planner and repeats only affected members in their original sessions', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create(TeamRequestSchema.parse({ ...request(), directory: host.directory, workflow: { maxRounds: 3 },
+  const team = await createTeam(TeamRequestSchema.parse({ ...request(), directory: host.directory, workflow: { maxRounds: 3 },
     members: [...request().members.map(member => ({ ...member, responsibility: member.id === 'check' ? 'reviewer' : 'implementer' })),
       { id: 'backend', name: '后端', instructions: '独立接口', dependencies: [] }] }))
   await complete(team.coordinatorTicketId!)
@@ -212,7 +221,7 @@ it('returns a failed review to the planner and repeats only affected members in 
   expect(host.runtime.store.tickets.get(build)!.assignments).toHaveLength(2)
   expect(host.runtime.store.tickets.get(check)!.assignments).toHaveLength(2)
   expect(host.runtime.store.tickets.get(backend)!.assignments).toHaveLength(1)
-}, 45_000)
+}, 60000)
 
 async function review(ticketId: string, decision: 'pass' | 'revise', targets: string[] = [], summary?: string) {
   const session = await readySession(ticketId), context = host!.runtime.teams!.contextFor(ticketId)!
@@ -226,9 +235,81 @@ async function review(ticketId: string, decision: 'pass' | 'revise', targets: st
   await finishCommander()
   return team_review
 }
+
+it('refuses a plan whose added project has no path to an independent reviewer', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await createTeam({ ...request(), directory: host.directory, workflow: { maxRounds: 3 },
+    members: request().members.map(member => ({ ...member, responsibility: member.id === 'check' ? 'reviewer' : 'implementer' })) })
+  const session = await readySession(team.coordinatorTicketId!)
+  await host.runTool(session, 'orchestrator_team', { action: 'revise_plan', planVersion: 1,
+    add: [{ id: 'feishu', name: '飞书 MCP', instructions: '补充接入项目', dependencies: [] }] })
+  await expect(complete(team.coordinatorTicketId!)).rejects.toThrow(/feishu.*审核/)
+  expect(host.runtime.teams!.get(team.id).members.filter(member => member.role === 'member').every(member => !member.ticketId)).toBe(true)
+  await host.runTool(session, 'orchestrator_team', { action: 'revise_plan', planVersion: 2,
+    changes: [{ id: 'check', dependencies: ['build', 'feishu'] }] })
+  await complete(team.coordinatorTicketId!)
+  expect(host.runtime.teams!.get(team.id).members.find(member => member.id === 'feishu')!.ticketId).toBeTruthy()
+}, 20_000)
+
+it('lets the planner split work into managed members while retaining the review gate and inherited permissions', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await createTeam({ ...request(), directory: host.directory, workflow: { maxRounds: 3 },
+    members: request().members.map(member => ({ ...member, responsibility: member.id === 'check' ? 'reviewer' : 'implementer' })) })
+  const session = await readySession(team.coordinatorTicketId!)
+  const before = host.runtime.teams!.contextFor(team.coordinatorTicketId!)!
+  const next = await host.runTool(session, 'orchestrator_team', { action: 'revise_plan', planVersion: before.token.planVersion,
+    add: [{ id: 'frontend', name: '前端', instructions: '实现页面', dependencies: [], responsibility: 'implementer' },
+      { id: 'backend', name: '后端', instructions: '实现接口', dependencies: [], responsibility: 'implementer' }],
+    remove: ['build'], changes: [{ id: 'check', dependencies: ['frontend', 'backend'] }] })
+  expect(next).toMatchObject({ members: [{ id: 'check' }, { id: 'frontend' }, { id: 'backend' }] })
+  const edited = await host.runTool(session, 'orchestrator_team', { action: 'revise_plan',
+    planVersion: host.runtime.teams!.contextFor(team.coordinatorTicketId!)!.token.planVersion,
+    changes: [{ id: 'check', instructions: '独立复核前后端交付' }] })
+  expect(edited).toMatchObject({ members: [{ id: 'check', dependencies: ['frontend', 'backend'] }, { id: 'frontend' }, { id: 'backend' }] })
+  await expect(host.runTool(session, 'orchestrator_team', { action: 'revise_plan', planVersion: host.runtime.teams!.contextFor(team.coordinatorTicketId!)!.token.planVersion,
+    add: [{ id: 'escape', name: '外部', instructions: '扩大权限', model: { provider: 'other', model: 'other' } }] })).rejects.toThrow()
+  await complete(team.coordinatorTicketId!)
+  const current = host.runtime.teams!.get(team.id)
+  expect(current.members.find(member => member.id === 'check')!.ticketId).toBeUndefined()
+  for (const id of ['frontend', 'backend']) {
+    const ticket = current.members.find(member => member.id === id)!.ticketId!
+    await complete(ticket)
+    expect(host.ctx.permissionPresets.current(host.ctx.agents.get(`worker-${ticket}` as never)!.session)).toBe('workspace-write')
+  }
+  const checker = host.runtime.teams!.get(team.id).members.find(member => member.id === 'check')!.ticketId!
+  await review(checker, 'pass'); await review(team.coordinatorTicketId!, 'pass')
+  expect(host.runtime.teams!.get(team.id).state).toBe('completed')
+}, 45_000)
+
+it('lets a reviewer return a flawed plan to the planner and requires the new work to be reviewed again', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await createTeam({ ...request(), directory: host.directory, workflow: { maxRounds: 3 },
+    members: request().members.map(member => ({ ...member, responsibility: member.id === 'check' ? 'reviewer' : 'implementer' })) })
+  await complete(team.coordinatorTicketId!)
+  const build = host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!.ticketId!
+  await complete(build)
+  const check = host.runtime.teams!.get(team.id).members.find(member => member.id === 'check')!.ticketId!
+  await review(check, 'revise', ['coordinator'], '缺少飞书 MCP 接入分工，需要策划补齐方案')
+  expect(host.runtime.teams!.get(team.id).workflow?.pendingReview?.targets).toEqual(['coordinator'])
+  const planner = await readySession(team.coordinatorTicketId!)
+  const context = host.runtime.teams!.contextFor(team.coordinatorTicketId!)!
+  await host.runTool(planner, 'orchestrator_team', { action: 'revise_plan', planVersion: context.token.planVersion,
+    add: [{ id: 'feishu', name: '飞书 MCP', instructions: '补齐接入', dependencies: [], responsibility: 'implementer' }],
+    changes: [{ id: 'check', dependencies: ['build', 'feishu'] }] })
+  await expect(review(team.coordinatorTicketId!, 'pass')).rejects.toThrow(/返工|更新/)
+  await review(team.coordinatorTicketId!, 'revise', ['feishu'])
+  const next = host.runtime.teams!.get(team.id)
+  expect(next.workflow?.round).toBe(2)
+  expect(host.runtime.store.tickets.get(build)!.assignments).toHaveLength(1)
+  expect(host.runtime.store.tickets.get(check)!.assignments).toHaveLength(1)
+  await complete(next.members.find(member => member.id === 'feishu')!.ticketId!)
+  await review(check, 'pass'); await review(team.coordinatorTicketId!, 'pass')
+  expect(host.runtime.teams!.get(team.id).state).toBe('completed')
+  expect(host.runtime.store.tickets.get(check)!.assignments).toHaveLength(2)
+}, 45_000)
 it('preserves a pending review across reload and refuses work beyond the authorized round limit', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create(TeamRequestSchema.parse({ ...request(), directory: host.directory, workflow: { maxRounds: 1 },
+  const team = await createTeam(TeamRequestSchema.parse({ ...request(), directory: host.directory, workflow: { maxRounds: 1 },
     members: request().members.map(member => ({ ...member, responsibility: member.id === 'check' ? 'reviewer' : 'implementer' })) }))
   await readySession(team.coordinatorTicketId!)
   const context = host.runtime.teams!.contextFor(team.coordinatorTicketId!)!
@@ -279,7 +360,7 @@ it('keeps an external root open through planning and delivers only the verified 
   host.runtime.receive(trigger)
   const accepted = host.runtime.engine.decide(trigger.id, { kind: 'accept', title: '外部团队', scope: trigger.text, name: 'external-team', reason: '授权用户任务' })
   await settle()
-  const rootId = accepted.ticketId!, team = host.runtime.teams!.list()[0]!
+  const rootId = accepted.ticketId!, team = await finishIntake(host.runtime.teams!.list()[0]!.id)
   expect(team).toBeDefined()
   expect(host.agents.has(`worker-${rootId}`)).toBe(false)
   const environment = Object.fromEntries(host.runtime.ticketEnvironment(host.runtime.store.tickets.get(team.coordinatorTicketId!)!)
@@ -413,7 +494,7 @@ async function finishCommander() {
 }
 it.each(['coordinator', 'build'])('team retry resumes an exhausted %s in its original session', async role => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const team = await createTeam({ ...request(), directory: host.directory })
   if (role === 'build') await complete(team.coordinatorTicketId!)
   const ticketId = host.runtime.teams!.get(team.id).members.find(member => member.id === role)!.ticketId!
   for (let turn = 0; turn < 3; turn++) {
@@ -441,11 +522,11 @@ it('pins the selected permission for both the coordinator and dependent members'
   host = await startRuntime(undefined, { mode: 'local' })
   const result = await host.api('POST', 'local/teams', { ...request(), directory: host.directory, permissionPreset: 'read-only' })
   expect(result.status).toBe(200)
-  const team = result.body as { id: string; coordinatorTicketId: string }
-  const coordinator = await readySession(team.coordinatorTicketId)
+  const team = await finishIntake((result.body as { id: string }).id)
+  const coordinator = await readySession(team.coordinatorTicketId!)
   expect(host.ctx.permissionPresets.current((host.agents.get(coordinator) as unknown as { session: import('@deepseek-ai/dsh-session').Session }).session)).toBe('read-only')
   Object.defineProperty(host.ctx.permissionPresets, 'defaultPreset', { value: 'danger-full-access', configurable: true })
-  await complete(team.coordinatorTicketId)
+  await complete(team.coordinatorTicketId!)
   const member = host.runtime.teams!.get(team.id).members.find(item => item.id === 'build')!
   const session = await readySession(member.ticketId!)
   expect(host.ctx.permissionPresets.current((host.agents.get(session) as unknown as { session: import('@deepseek-ai/dsh-session').Session }).session)).toBe('read-only')
@@ -453,7 +534,7 @@ it('pins the selected permission for both the coordinator and dependent members'
 
 it('adds an idempotent member to an existing team and preserves earlier sessions and dependency handoffs', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const team = await createTeam({ ...request(), directory: host.directory })
   await complete(team.coordinatorTicketId!)
   const before = host.runtime.teams!.get(team.id)
   const plan = { id: 'research', name: '研究', instructions: '核对源文件与边界', dependencies: ['check'] }
@@ -480,7 +561,7 @@ it('adds an idempotent member to an existing team and preserves earlier sessions
 
 it('automatically resumes an incomplete final review in the same session until real delivery evidence is supplied', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const team = await createTeam({ ...request(), directory: host.directory })
   await complete(team.coordinatorTicketId!)
   await complete(host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!.ticketId!)
   await complete(host.runtime.teams!.get(team.id).members.find(member => member.id === 'check')!.ticketId!)
@@ -510,7 +591,7 @@ it('automatically resumes an incomplete final review in the same session until r
 
 it('clears an automatic continuation warning when the same planner finally reports a valid completion', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const team = await createTeam({ ...request(), directory: host.directory })
   const session = await readySession(team.coordinatorTicketId!)
   for (let attempt = 0; attempt < 3; attempt++) {
     await readySession(team.coordinatorTicketId!)
@@ -529,7 +610,7 @@ it('clears an automatic continuation warning when the same planner finally repor
 
 it('continues idle planning and member turns, but preserves genuine questions and bounds repeated incomplete turns', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const team = await createTeam({ ...request(), directory: host.directory })
   const session = await readySession(team.coordinatorTicketId!)
   const idle = async () => {
     const agent = host!.agents.get(session)!; agent.status = 'idle'; host!.ctx.emit('agent/status', { agent, status: 'idle' } as never)
@@ -576,24 +657,24 @@ it('continues idle planning and member turns, but preserves genuine questions an
 
 it('creates an explicit plan once, starts a real coordinator, and does not call a planning round a completed goal', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const team = await createTeam({ ...request(), directory: host.directory })
   expect(team.state).toBe('planning')
   expect(team.members.map(member => member.ticketId).filter(Boolean)).toHaveLength(1)
-  expect((await host.runtime.teams!.create({ ...request(), directory: host.directory })).id).toBe(team.id)
-  await expect(host.runtime.teams!.create({ ...request(), directory: host.directory, instructions: '另一项要求' })).rejects.toThrow('requestId')
+  expect((await createTeam({ ...request(), directory: host.directory })).id).toBe(team.id)
+  await expect(createTeam({ ...request(), directory: host.directory, instructions: '另一项要求' })).rejects.toThrow('requestId')
   await complete(team.coordinatorTicketId!, '分工与依赖已核对，等待成员执行')
   const active = host.runtime.teams!.get(team.id)
   expect(active.state).not.toBe('completed')
   expect(active.members[0]!.state).toBe('waiting')
   expect(active.members.find(member => member.id === 'build')!.ticketId).toBeTruthy()
   expect(active.members.find(member => member.id === 'check')!.ticketId).toBeUndefined()
-  expect(host.runtime.store.tickets.list()).toHaveLength(2)
+  expect(host.runtime.store.tickets.list()).toHaveLength(3)
   expect(host.runtime.store.tickets.get(active.members.find(member => member.id === 'build')!.ticketId!)!.mandate.scope).toContain('分工与依赖已核对，等待成员执行')
 }, 20_000)
 
 it('retries a dispatch failure when a human follows up in the original task', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const team = await createTeam({ ...request(), directory: host.directory })
   const create = vi.spyOn(host.runtime.local!, 'create').mockRejectedValueOnce(new Error('临时派发失败'))
   await complete(team.coordinatorTicketId!)
   expect(host.runtime.teams!.get(team.id).error).toBe('临时派发失败')
@@ -608,7 +689,7 @@ it('retries a dispatch failure when a human follows up in the original task', as
 
 it('keeps the verified runtime command in the inline handoff even when the goal and report are long', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create({ ...request(), instructions: '详细任务要求。'.repeat(300), directory: host.directory })
+  const team = await createTeam({ ...request(), instructions: '详细任务要求。'.repeat(300), directory: host.directory })
   await complete(team.coordinatorTicketId!, '规划说明。'.repeat(300))
   const build = host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!
   const session = await readySession(build.ticketId!), agent = host.ctx.agents.get(session as never)!
@@ -627,7 +708,7 @@ it('keeps the verified runtime command in the inline handoff even when the goal 
 
 it('dispatches actual dependent work, delivers its predecessor report, and finishes only after a new coordinator summary', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const team = await createTeam({ ...request(), directory: host.directory })
   await complete(team.coordinatorTicketId!)
   const build = host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!
   writeFileSync(join(host.directory, 'result.txt'), 'actual-team-output')
@@ -635,7 +716,7 @@ it('dispatches actual dependent work, delivers its predecessor report, and finis
   const handoff = host.runtime.teams!.get(team.id)
   const check = handoff.members.find(member => member.id === 'check')!
   expect(check.ticketId).toBeTruthy()
-  expect(handoff.handoffs).toEqual([expect.objectContaining({ from: 'build', to: 'check', ticketId: check.ticketId })])
+  expect(handoff.handoffs).toContainEqual(expect.objectContaining({ from: 'build', to: 'check', ticketId: check.ticketId }))
   expect(host.runtime.store.tickets.get(check.ticketId!)!.mandate.scope).toContain('已生成真实文件 result.txt')
   const preset = (id: string) => host!.runtime.store.triggers.get(host!.runtime.store.tickets.get(id)!.origin.triggerId)!.meta.permissionPreset
   expect(preset(check.ticketId!)).toBe(preset(build.ticketId!))
@@ -658,18 +739,18 @@ it('dispatches actual dependent work, delivers its predecessor report, and finis
   await complete(build.ticketId!, '第二版已经完成')
   const updated = host.runtime.teams!.get(team.id)
   expect(host.runtime.store.tickets.get(check.ticketId!)!.ended).toBeUndefined()
-  expect(updated.handoffs).toHaveLength(2)
+  expect(updated.handoffs).toHaveLength(3)
   await complete(check.ticketId!, '已复核第二版')
   expect(host.runtime.teams!.get(team.id).state).not.toBe('completed')
   await complete(team.coordinatorTicketId!, '第二版目标复核完成')
   expect(host.runtime.teams!.get(team.id).state).toBe('completed')
   expect(host.runtime.store.tickets.list()).toHaveLength(4)
-}, 40_000)
+}, 50000)
 
 it('preserves finished work and shows the actual member needing a human instead of finishing the team', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const input = request(); input.members[1]!.dependencies = []
-  const team = await host.runtime.teams!.create({ ...input, directory: host.directory })
+  const team = await createTeam({ ...input, directory: host.directory })
   await complete(team.coordinatorTicketId!)
   let view = host.runtime.teams!.get(team.id)
   const first = view.members.find(member => member.id === 'build')!, second = view.members.find(member => member.id === 'check')!
@@ -685,15 +766,15 @@ it('preserves finished work and shows the actual member needing a human instead 
 
 it('stops remaining team dispatch and never resumes manually stopped work through follow-ups', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const team = await createTeam({ ...request(), directory: host.directory })
   await complete(team.coordinatorTicketId!)
   const stopped = host.runtime.teams!.stopTeam(team.id)
   await settle()
   expect(stopped.state).toBe('stopped')
-  expect(host.runtime.store.tickets.list()).toHaveLength(2)
+  expect(host.runtime.store.tickets.list()).toHaveLength(3)
   expect(host.runtime.teams!.get(team.id).members.find(member => member.id === 'check')!.sessionId).toBeUndefined()
   await expect(host.runtime.teams!.followup(team.id, 'build', 'late', '继续')).rejects.toThrow('停止')
-})
+}, 20000)
 
 it('does not accept invented files or commands as successful delivery evidence', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
@@ -871,13 +952,13 @@ it.each([0, 7])('waits for the actual background process settlement with exit %i
 it('rejects unknown members and cyclic delivery dependencies before creating any task', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const input = request(); input.members[0]!.dependencies = ['check']
-  await expect(host.runtime.teams!.create({ ...input, directory: host.directory })).rejects.toThrow('循环')
+  await expect(createTeam({ ...input, directory: host.directory })).rejects.toThrow('循环')
   expect(host.runtime.store.tickets.list()).toHaveLength(0)
 })
 
 it('restores a persisted team without redispatching its completed planning round or duplicating members', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const team = await createTeam({ ...request(), directory: host.directory })
   await complete(team.coordinatorTicketId!)
   const before = host.runtime.teams!.get(team.id), directory = host.directory
   await host.runtime.stop()
@@ -886,5 +967,15 @@ it('restores a persisted team without redispatching its completed planning round
   const restored = host.runtime.teams!.get(team.id)
   expect(restored.members.map(member => member.ticketId)).toEqual(before.members.map(member => member.ticketId))
   expect(restored.state).not.toBe('completed')
-  expect(host.runtime.store.tickets.list()).toHaveLength(2)
+  expect(host.runtime.store.tickets.list()).toHaveLength(3)
 }, 20_000)
+
+async function finishIntake(id: string) {
+  const team = host!.runtime.teams!.get(id)
+  if (team.phase === 'briefing') await complete(team.commander!.ticketId!, '明确目标与验收要求，交给策划拆分')
+  return host!.runtime.teams!.get(id)
+}
+async function createTeam(input: Parameters<NonNullable<Host['runtime']['teams']>['create']>[0]) {
+  const team = await host!.runtime.teams!.create(input)
+  return finishIntake(team.id)
+}

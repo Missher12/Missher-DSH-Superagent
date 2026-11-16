@@ -114,7 +114,14 @@
 .dt-team-collaboration>header>.dt-tabs>.dt-tab::after { display:none; }
 .dt-team-collaboration-body { flex:1; min-width:0; min-height:0; padding:16px 18px; overflow:auto; overscroll-behavior:contain; }
 .dt-team-count-line { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:11px; line-height:18px; color:var(--dsw-alias-label-secondary); }
-.dt-team-collaboration .dt-team-graph { display:flex; flex-direction:column; gap:14px; margin-top:16px; padding:0 12px 4px 20px; }
+.dt-team-collaboration .dt-team-graph { display:flex; flex-direction:column; gap:14px; margin-top:16px; padding:0 26px 4px 20px; }
+.dt-team-feedback { display:flex; align-items:center; gap:8px; width:100%; margin-top:12px; padding:8px 0 10px; border:0; border-bottom:1px solid var(--dsw-alias-border-l2); background:none; color:var(--dsw-alias-label-primary); text-align:left; cursor:pointer; }
+.dt-team-feedback>svg { flex:none; color:var(--dsw-alias-state-warn-primary); }
+.dt-team-feedback>span { flex:1; min-width:0; }
+.dt-team-feedback strong,.dt-team-feedback small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; line-height:19px; }
+.dt-team-feedback strong { font-weight:500; }
+.dt-team-feedback small { color:var(--dsw-alias-label-secondary); }
+.dt-team-feedback:focus-visible { outline:2px solid var(--dsw-alias-brand-primary); outline-offset:3px; }
 .dt-team-branch { position:relative; min-width:0; width:100%; }
 .dt-team-branch>.dt-team-node { width:100%; }
 .dt-team-branch-action { position:absolute; bottom:7px; right:7px; z-index:1; }
@@ -140,6 +147,8 @@
 .dt-team-lines path { stroke:var(--dsw-alias-border-l3); opacity:1; }
 .dt-team-lines path[data-selected] { stroke:var(--dsw-alias-label-secondary); }
 .dt-team-lines path[data-active] { stroke:var(--dsw-alias-brand-primary); stroke-width:1.4; }
+.dt-team-lines path[data-feedback] { stroke:var(--dsw-alias-state-warn-primary); stroke-width:1.4; stroke-dasharray:4 3; }
+.dt-team-lines .dt-team-return-arrow { fill:var(--dsw-alias-state-warn-primary); stroke:none; }
 .dt-team-flow-packet { fill:var(--dsw-alias-brand-primary); }
 .dt-team-selected-plan { margin-top:18px; padding:14px 0; border-top:1px solid var(--dsw-alias-border-l2); }
 .dt-team-selected-plan>summary { display:flex; align-items:center; gap:8px; font-size:12px; line-height:20px; cursor:pointer; list-style:none; }

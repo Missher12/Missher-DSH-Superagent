@@ -43,7 +43,7 @@ function repository() {
 it('runs independent team members concurrently and gives downstream sessions the assembled code', async () => {
   host = await startRuntime(undefined, { mode: 'local' }); const repo = repository(), initial = repo.git('rev-parse', 'HEAD')
   const settings = host.runtime.store.settings(); host.runtime.store.saveSettings({ ...settings, executor: { ...settings.executor, maxWorkers: 3 } })
-  const team = await host.runtime.teams!.create(TeamRequestSchema.parse({ requestId: 'git-parallel', title: 'Git 并行', instructions: '前后端并行开发，汇总后检验',
+  const team = await createTeam(TeamRequestSchema.parse({ requestId: 'git-parallel', title: 'Git 并行', instructions: '前后端并行开发，汇总后检验',
     directory: repo.path, workflow: { maxRounds: 3, workspace: 'worktree' }, members: [
       { id: 'front', name: '前端', instructions: '前端', dependencies: [] }, { id: 'back', name: '后端', instructions: '后端', dependencies: [] },
       { id: 'check', name: '检验', instructions: '检查前后端', dependencies: ['front', 'back'] },
@@ -76,7 +76,7 @@ it('runs independent team members concurrently and gives downstream sessions the
 
 it('hands the verified result to the task commander and waits for its actual final report', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
-  const team = await host.runtime.teams!.create(TeamRequestSchema.parse({ requestId: 'commander-result', title: '交付回传', instructions: '交付说明文档',
+  const team = await createTeam(TeamRequestSchema.parse({ requestId: 'commander-result', title: '交付回传', instructions: '交付说明文档',
     directory: host.directory, workflow: { maxRounds: 3 }, members: [] }))
   await complete(team.coordinatorTicketId!)
   writeFileSync(join(host.directory, 'result.md'), '# Finished\n')
@@ -147,7 +147,7 @@ it('restores a Git source team in place and revokes its isolated workers when or
   await settle()
   const original = host.runtime.teams!.get(host.runtime.teams!.list()[0]!.id)
   expect(original.git?.repository).toBe(realpathSync.native(repo.path))
-  expect(host.runtime.teams!.allowedWorker(original.coordinatorTicketId!)).toBe(true)
+  expect(host.runtime.teams!.allowedWorker(original.commander!.ticketId!)).toBe(true)
   const stateDir = host.directory
   await host.runtime.stop(); host = await startRuntime(undefined, { mode: 'local', stateDir }); source(); await settle()
   const restored = host.runtime.teams!.get(original.id)
@@ -157,6 +157,12 @@ it('restores a Git source team in place and revokes its isolated workers when or
   host.runtime.store.saveSettings({ ...current, sources: { ...current.sources, 'git-origin': { ...current.sources['git-origin']!, enabled: false } } })
   await settle()
   expect(host.runtime.teams!.get(original.id)).toMatchObject({ state: 'stopped', error: expect.stringContaining('授权已撤销') })
-  expect(host.runtime.teams!.allowedWorker(original.coordinatorTicketId!)).toBe(false)
+  expect(host.runtime.teams!.allowedWorker(original.commander!.ticketId!)).toBe(false)
   expect(repo.git('status', '--porcelain')).toBe('')
 }, 30_000)
+
+async function createTeam(input: Parameters<NonNullable<Host['runtime']['teams']>['create']>[0]) {
+  const team = await host.runtime.teams!.create(input)
+  if (team.phase === 'briefing') await complete(team.commander!.ticketId!)
+  return host.runtime.teams!.get(team.id)
+}
