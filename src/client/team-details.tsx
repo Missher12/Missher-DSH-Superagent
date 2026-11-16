@@ -57,6 +57,7 @@ export function TeamDetails({ team, member, reload, view: selectedView, onView, 
       aria-pressed={item.id === member.id} title={item.instructions} onClick={() => onMember(item.id)}><Icon size={13} name={participantIcon(item)} />{item.name}</button>)}</nav>}
       <TeamStatus state={member.state} member /></div>
     {!commander && team.workflow?.halted && team.state !== 'stopped' && <ResumeTeam key={team.id} team={team} reload={reload} />}
+    {team.state === 'draft' && member.id === 'coordinator' && <p className="dt-hint dt-flow-ready">{t('flowChatReady')}</p>}
     {(member.attention || member.state === 'failed') && <section className="dt-team-issue" role="status"><h3><Icon name="alert" />{t('teamNeedsHelp')}</h3>
       <p>{member.attention || member.summary}</p>{affected.size > 1 && <p>{t('teamImpact')}：{team.members.filter(item => item.id !== member.id && affected.has(item.id)).map(item => item.name).join('、')}</p>}
       {member.retry && <Button variant="outline" size="sm" disabled={retry.busy} onClick={() => { void retry.run() }}>{t('teamRetryMember')}</Button>}</section>}

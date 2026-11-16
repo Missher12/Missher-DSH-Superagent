@@ -70,6 +70,11 @@ it('opens the real commander in the same team workspace and keeps member chat an
   expect(all('[data-test-context="master"]')).toHaveLength(0)
   expect(view.members).toHaveLength(3)
   expect(server.requests.some(item => item.method === 'POST' && /\/followup$|\/teams$/.test(item.path))).toBe(false)
+  await click('编排')
+  await click(all('.dt-flow-node-body').find(node => node.textContent?.includes('总指挥'))!)
+  await click(all('[role="dialog"] button').find(button => button.textContent === '打开执行会话')!)
+  expect(all('[data-test-session="master"]')).toHaveLength(1)
+  expect(all('[data-test-session="worker-planner-task"]')).toHaveLength(0)
 })
 it('shows only explicit teams and keeps legacy tasks separate from team collaborators', async () => {
   await mount()
@@ -109,31 +114,35 @@ it('keeps the context plugin bound to the newly selected member', async () => {
   expect(all('[data-test-context="worker-build-task"]')).toHaveLength(1)
   expect(all('[data-test-context="worker-planner-task"]')).toHaveLength(0)
 })
-it('creates a real editable team plan including member models and explicit delivery dependencies', async () => {
+it('prepares an editable workflow without dispatching a goal before entering chat', async () => {
   await mount(); await click('新建任务')
-  expect(all('[role=tablist][aria-label=协作方式] [aria-selected=true]')[0]?.textContent).toBe('团队协作')
-  await type(field<HTMLTextAreaElement>('任务要求'), '修复格式化函数并验证边界')
+  expect(all('.dt-flow-node')).toHaveLength(4)
   await type(field<HTMLSelectElement>('执行权限'), 'workspace-write')
   await type(field<HTMLInputElement>('团队名称'), '格式化小队')
-  const firstRole = all('.dt-team-plan-member')[0]!
-  await type(firstRole.querySelector('textarea')!, '实现 formatLabel')
-  await type(firstRole.querySelector('select')!, JSON.stringify(['worker-provider', 'worker-model']))
-  await click('派出任务')
-  expect(server.requests.find(item => item.path === 'local/teams' && item.method === 'POST')?.body).toMatchObject({ name: '格式化小队', permissionPreset: 'workspace-write',
+  await click(all('[data-node="build"] .dt-flow-node-body')[0]!)
+  await type(field<HTMLTextAreaElement>('分工'), '实现 formatLabel')
+  await type(field<HTMLSelectElement>(zh.localTaskModel), JSON.stringify(['worker-provider', 'worker-model']))
+  await click('进入会话')
+  const sent = server.requests.find(item => item.path === 'local/teams/prepare' && item.method === 'POST')?.body
+  expect(sent).toMatchObject({ title: '格式化小队', permissionPreset: 'workspace-write',
     members: [{ id: 'build', instructions: '实现 formatLabel', model: { provider: 'worker-provider', model: 'worker-model' } }, { id: 'check', dependencies: ['build'] }] })
+  expect(sent).not.toHaveProperty('instructions')
+  expect(server.requests.some(item => item.path === 'local/teams' && item.method === 'POST')).toBe(false)
   expect(all('[role="dialog"]')).toHaveLength(0)
-  expect(all('.dt-team-node')).toHaveLength(3)
 })
-it('opens new member fields immediately instead of hiding the required empty assignment', async () => {
+it('opens member properties immediately and repairs dependencies when deleting a node', async () => {
   await mount(); await click('新建任务'); await click('添加成员')
-  const member = all('.dt-team-plan-member').at(-1)!
-  expect(member.hasAttribute('open')).toBe(true)
-  expect(member.querySelector('textarea')?.value).toBe('')
+  expect(field<HTMLInputElement>(zh.teamMemberName).value).toContain('成员')
+  await click(all('[data-node="build"] .dt-flow-node-body')[0]!)
+  await click('移除此成员')
+  const draft = JSON.parse(sessionStorage.getItem('dsh-superagent/local-draft')!)
+  expect(draft.members.some((member: { id: string }) => member.id === 'build')).toBe(false)
+  expect(draft.members.find((member: { id: string }) => member.id === 'check').dependencies).toEqual([])
 })
 it('offers a real member name, an explicit parent and add-and-execute action', async () => {
   server.teamViews['explicit-team']!.model = { provider: 'worker-provider', model: 'worker-model' }
   at({ page: 'overview', query: { team: 'explicit-team', member: 'coordinator' } })
-  await mount(); await click(all('.dt-team-collaboration-title button')[0]!)
+  await mount(); await click(all('button[aria-label^="添加成员 ·"]')[0]!)
   expect(field<HTMLInputElement>(zh.teamMemberName).value).toMatch(/成员/)
   expect(field<HTMLSelectElement>('上级').value).toBe('coordinator')
   expect(all('[role="dialog"] button').some(button => button.textContent === '添加并执行')).toBe(true)
@@ -141,12 +150,10 @@ it('offers a real member name, an explicit parent and add-and-execute action', a
 })
 it('keeps a new member expanded and focused while entering, clearing, and rewriting the assignment', async () => {
   await mount(); await click('新建任务'); await click('添加成员')
-  const member = all('.dt-team-plan-member').at(-1)! as HTMLDetailsElement
-  const assignment = member.querySelector('textarea')!
+  const assignment = field<HTMLTextAreaElement>('分工')
   assignment.focus()
   for (const value of ['z', '整理接口文档并验证示例', '', '重新填写完整分工']) {
     await type(assignment, value)
-    expect(member.open).toBe(true)
     expect(document.activeElement).toBe(assignment)
     expect(document.querySelector('[role="dialog"]')).not.toBeNull()
   }

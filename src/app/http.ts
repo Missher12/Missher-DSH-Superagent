@@ -30,7 +30,7 @@ import { LocalRequestSchema, LocalTaskError, localMessages, type LocalTasks } fr
 import { WorkspaceError, workspaceOf } from '../executor/workspace.ts'
 import { McpClientRequest, McpTaskError, type McpTasks } from '../sources/mcp.ts'
 import type { WorkbenchView } from './views/workbench.ts'
-import { TeamMemberSchema, TeamRequestSchema } from '../teams/contracts.ts'
+import { TeamMemberSchema, TeamRequestSchema, TeamPreparationSchema, TeamEditSchema } from '../teams/contracts.ts'
 import type { LocalTeams } from '../teams/local.ts'
 import { latestDelivery } from '../teams/delivery.ts'
 import { FeishuConnectError, FeishuConnectSchema } from './feishu-connect.ts'
@@ -185,6 +185,8 @@ function routes(runtime: HttpHost): Routes {
   return {
     'GET local/workbench': ({ query }) => { if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled'); return runtime.workbench(query.session, query.team) },
     'POST local/teams': async ({ body }) => teams().create(TeamRequestSchema.parse(await body(256 * 1024))),
+    'POST local/teams/prepare': async ({ body }) => teams().prepare(TeamPreparationSchema.parse(await body(256 * 1024))),
+    'PUT local/teams/:id/plan': async ({ params, body }) => teams().updatePlan(params.id, TeamEditSchema.parse(await body(256 * 1024))),
     'POST local/teams/:id/members': async ({ params, body }) => teams().addMember(params.id, TeamMemberSchema.parse(await body(64 * 1024))),
     'GET local/tasks/:id/workbench': ({ params }) => {
       if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled')

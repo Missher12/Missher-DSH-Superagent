@@ -14,6 +14,47 @@ const request = () => TeamRequestSchema.parse({ requestId: 'team-one', title: '�
   members: [{ id: 'build', name: '实施', instructions: '实现函数', dependencies: [] },
     { id: 'check', name: '验证', instructions: '检查实现并运行测试', dependencies: ['build'] }] })
 
+it('prepares a team without executing and admits the first native message with its image exactly once', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const { instructions: _, ...setup } = request()
+  const prepared = await host.runtime.teams!.prepare(setup)
+  expect(prepared.state).toBe('draft')
+  expect(host.runtime.store.tickets.list()).toHaveLength(0)
+  const session = prepared.members[0]!.sessionId!
+  expect(session).toBeTruthy()
+  const image = { type: 'image', attachment: { id: 'image-one', mediaType: 'image/png' } }
+  const message = { id: 'first-native', role: 'user', content: [{ type: 'text', text: '按图片实现页面' }, image], source: { type: 'user-rpc', kind: 'user', rpcId: 'first-native' } }
+  await host.runtime.teams!.acceptPrepared(session, [message as never])
+  await settle()
+  const team = host.runtime.teams!.get(prepared.id)
+  expect(team.instructions).toBe('按图片实现页面')
+  expect(team.members[0]!.sessionId).toBe(`worker-${team.coordinatorTicketId}`)
+  const count = host.runtime.store.tickets.list().length
+  await host.runtime.teams!.acceptPrepared(session, [message as never])
+  await settle()
+  expect(host.runtime.store.tickets.list()).toHaveLength(count)
+  const native = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.inputs.flatMap(input => input.kind === 'trigger'
+    ? host!.runtime.store.triggers.get(input.triggerId)?.meta.nativeInput ?? [] : []) as { content: unknown[] }[]
+  expect(native).toHaveLength(1)
+  expect(native[0]!.content).toContainEqual(image)
+})
+
+it('removes members from the workflow while preserving their original tickets and repairing links', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  await complete(team.coordinatorTicketId!)
+  const before = host.runtime.teams!.get(team.id)
+  const build = before.members.find(member => member.id === 'build')!
+  const result = await host.runtime.teams!.updatePlan(team.id, { revision: before.planRevision!, members: [
+    { ...request().members[1]!, dependencies: [] },
+  ] })
+  expect(result.members.map(member => member.id)).toEqual(['coordinator', 'check'])
+  expect(result.retiredMembers?.[0]).toMatchObject({ id: 'build', ticketId: build.ticketId })
+  expect(host.runtime.store.tickets.get(build.ticketId!)?.ended?.by).toBe('human')
+  expect(host.runtime.teams!.allowedWorker(build.ticketId!)).toBe(false)
+  await expect(host.runtime.teams!.updatePlan(team.id, { revision: before.planRevision!, members: [] })).rejects.toThrow(/更新/)
+})
+
 it('exposes the real shared commander without counting it as an executing member', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
@@ -484,6 +525,25 @@ it('retries a dispatch failure when a human follows up in the original task', as
   expect(view.error).toBeUndefined()
   expect(view.members.find(member => member.id === 'build')!.ticketId).toBeTruthy()
   expect(view.coordinatorTicketId).toBe(team.coordinatorTicketId)
+}, 20_000)
+
+it('keeps the verified runtime command in the inline handoff even when the goal and report are long', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await host.runtime.teams!.create({ ...request(), instructions: '详细任务要求。'.repeat(300), directory: host.directory })
+  await complete(team.coordinatorTicketId!, '规划说明。'.repeat(300))
+  const build = host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!
+  const session = await readySession(build.ticketId!), agent = host.ctx.agents.get(session as never)!
+  const command = '"/Applications/DeepSeek Harness.app/node" --test image-check.test.mjs'
+  host.ctx.emit('session/event', agent.session, { type: 'tool/call', time: Date.now(), data: {
+    callId: 'handoff-check', name: 'pwsh', arguments: JSON.stringify({ command }),
+  } } as never)
+  await nativeShellResult(session, 'handoff-check', { exitCode: 0 })
+  await complete(build.ticketId!, '实施交付说明。'.repeat(300), { checks: [{ command, outcome: 'passed' }] })
+  const check = host.runtime.teams!.get(team.id).members.find(member => member.id === 'check')!
+  const ticket = host.runtime.store.tickets.get(check.ticketId!)!
+  const text = host.runtime.store.triggers.get(ticket.origin.triggerId)!.text
+  expect(text.slice(0, 600)).toContain(JSON.stringify(command))
+  expect(text).toContain('详细任务要求。'.repeat(300))
 }, 20_000)
 
 it('dispatches actual dependent work, delivers its predecessor report, and finishes only after a new coordinator summary', async () => {

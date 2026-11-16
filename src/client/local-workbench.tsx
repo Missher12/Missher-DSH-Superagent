@@ -96,7 +96,7 @@ export function LocalWorkbench({ sessionId, teamId, memberId = 'coordinator' }: 
           <TeamOverview teams={data.teams} select={selectTeam} /></section>
           : sessionId ? <div className="dt-team-single-space"><SingleWorkbench sessionId={sessionId === 'all-single' ? undefined : sessionId} /></div>
             : team && member ? <><TeamDetails key={`${team.id}:${member.id}`} team={team} member={member} reload={reload} view={detail} onView={setDetail} onMember={selectMember} />
-              <PaneDivider pane={right} /><TeamCollaboration team={team} selected={member.id} select={selectMember} reload={reload} delivery={() => setDetail('delivery')} /></>
+              <PaneDivider pane={right} /><TeamCollaboration team={team} selected={member.id} select={selectMember} openSession={id => { selectMember(id); setDetail('conversation') }} reload={reload} delivery={() => setDetail('delivery')} /></>
               : <LoadState loading={!error} error={error} />}
       </div></>}
   </section>

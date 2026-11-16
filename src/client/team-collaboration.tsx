@@ -11,6 +11,7 @@ import { useAction, usePanel } from './provider.tsx'
 import { errorText, shortText } from './text.ts'
 import { When } from './widgets.tsx'
 import { Select } from './select.tsx'
+import { EditTeamWorkflow } from './workflow-editor.tsx'
 
 function AddTeamMember({ team, reload, select, parentId = 'coordinator', compact = false }: { team: TeamView; reload: () => Promise<void>; select: (id: string) => void; parentId?: string; compact?: boolean }) {
   const { t, call } = usePanel(), form = useId()
@@ -102,8 +103,8 @@ export function ResumeTeam({ team, reload }: { team: TeamView; reload: () => Pro
   </section>
 }
 
-export function TeamCollaboration({ team, selected, select, reload, delivery }: {
-  team: TeamView; selected: string; select: (id: string) => void; reload: () => Promise<void>; delivery: () => void
+export function TeamCollaboration({ team, selected, select, openSession, reload, delivery }: {
+  team: TeamView; selected: string; select: (id: string) => void; openSession: (id: string) => void; reload: () => Promise<void>; delivery: () => void
 }) {
   const { t, call } = usePanel(), [tab, setTab] = useState<'graph' | 'members' | 'completion'>('graph')
   const retry = useAction(async () => { await call('POST local/teams/:id/retry', { id: team.id }); await reload() })
@@ -114,7 +115,7 @@ export function TeamCollaboration({ team, selected, select, reload, delivery }: 
   const recent = team.members.flatMap(member => member.events.filter(event => event.summary?.trim()).map(event => ({ ...event, member: member.name })))
     .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 2)
   return <aside className="dt-team-collaboration" aria-label={t('teamCollaboration')}>
-    <header><div className="dt-team-collaboration-title"><div><h2>{t('teamCollaboration')}</h2><small>{t('teamConversationCount', { count: participants.filter(member => member.sessionId).length })}</small></div><AddTeamMember key={team.id} team={team} reload={reload} select={select} /></div>
+    <header><div className="dt-team-collaboration-title"><div><h2>{t('teamCollaboration')}</h2><small>{t('teamConversationCount', { count: participants.filter(member => member.sessionId).length })}</small></div><EditTeamWorkflow key={team.id} team={team} reload={reload} select={openSession} /></div>
       <SegmentedTabs value={tab} onChange={setTab} label={t('teamCollaboration')} items={[
         { value: 'graph', label: t('teamRelations'), id: 'dt-team-relations', panelId: 'dt-team-collaboration-content' },
         { value: 'members', label: t('teamMembers'), id: 'dt-team-assignments', panelId: 'dt-team-collaboration-content' },

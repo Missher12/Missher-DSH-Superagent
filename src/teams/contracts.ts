@@ -1,5 +1,7 @@
 /** Explicit, persisted team plans and worker-owned delivery evidence. */
 import { z } from 'zod'
+import { planIssues } from './plan.ts'
+import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import { RoleModelSchema, type RoleModel } from '../policy.ts'
 
 export const TeamMemberSchema = z.object({
@@ -9,37 +11,23 @@ export const TeamMemberSchema = z.object({
   parentId: z.string().min(1).max(60).optional(),
   responsibility: z.enum(['manager', 'implementer', 'reviewer']).optional(),
 }).strict()
-export const TeamRequestSchema = z.object({
+const TeamRequestFields = z.object({
   requestId: z.string().trim().min(1).max(200), title: z.string().trim().min(1).max(160),
   name: z.string().trim().min(1).max(80).optional(), instructions: z.string().trim().min(1).max(24000),
   directory: z.string().min(1).optional(), model: RoleModelSchema.optional(),
   permissionPreset: z.string().trim().min(1).max(200).optional(),
   coordinatorName: z.string().trim().min(1).max(60).default('协调'),
-  members: z.array(TeamMemberSchema).min(2).max(12),
+  members: z.array(TeamMemberSchema).max(12),
   workflow: z.object({ maxRounds: z.number().int().min(1).max(8).default(3) }).strict().optional(),
-}).strict().superRefine((request, context) => {
-  const ids = new Set(request.members.map(member => member.id))
-  if (ids.size !== request.members.length) context.addIssue({ code: 'custom', path: ['members'], message: '成员标识不能重复' })
-  const done = new Set<string>()
-  for (let pass = 0; pass < request.members.length; pass++) for (const member of request.members) {
-    if (member.dependencies.every(id => done.has(id))) done.add(member.id)
-  }
-  request.members.forEach((member, index) => {
-    if (new Set(member.dependencies).size !== member.dependencies.length || member.dependencies.some(id => !ids.has(id) || id === member.id)) {
-      context.addIssue({ code: 'custom', path: ['members', index, 'dependencies'], message: '请选择其他已存在的成员，且不要重复' })
-    }
-    const seen = new Set([member.id])
-    let parent = member.parentId ?? 'coordinator'
-    while (parent !== 'coordinator') {
-      const owner = request.members.find(member => member.id === parent)
-      if (!owner || seen.has(parent) || owner.responsibility !== 'manager') {
-        context.addIssue({ code: 'custom', path: ['members', index, 'parentId'], message: '上级必须是已有管理成员，上下级不能形成循环' }); break
-      }
-      seen.add(parent); parent = owner.parentId ?? 'coordinator'
-    }
-  })
-  if (done.size !== ids.size) context.addIssue({ code: 'custom', path: ['members'], message: '成员交付依赖不能形成循环' })
-})
+}).strict()
+function validatePlan(request: { members: TeamMember[] }, context: z.RefinementCtx) {
+  for (const issue of planIssues(request.members)) context.addIssue({ code: 'custom', ...issue })
+}
+export const TeamRequestSchema = TeamRequestFields.superRefine(validatePlan)
+export const TeamPreparationSchema = TeamRequestFields.omit({ instructions: true }).superRefine(validatePlan)
+export const TeamEditSchema = z.object({ revision: z.number().int().nonnegative(), members: z.array(TeamMemberSchema).max(12) }).strict().superRefine(validatePlan)
+export type TeamPreparation = z.infer<typeof TeamPreparationSchema>
+export type TeamEdit = z.infer<typeof TeamEditSchema>
 export type TeamRequest = z.infer<typeof TeamRequestSchema>
 export type TeamMember = z.infer<typeof TeamMemberSchema>
 export const TeamPlanPatchSchema = z.object({
@@ -62,7 +50,7 @@ export interface TeamWorkflow {
   roundLimit?: number
   changedMembers?: string[]
 }
-export type TeamState = 'planning' | 'working' | 'waiting' | 'attention' | 'failed' | 'completed' | 'stopped'
+export type TeamState = 'draft' | 'planning' | 'working' | 'waiting' | 'attention' | 'failed' | 'completed' | 'stopped'
 export type MemberState = 'planned' | 'queued' | 'working' | 'waiting' | 'attention' | 'failed' | 'finished' | 'stopped'
 
 export const DeliverySchema = z.object({
@@ -79,7 +67,11 @@ export interface DeliveryRecord extends Omit<DeliveryInput, 'files' | 'checks'> 
 }
 export interface TeamRecord {
   id: string; request: TeamRequest; encoded: string; createdAt: string; updatedAt: string
-  phase: 'creating' | 'planning' | 'working' | 'reviewing' | 'integrating' | 'completed'
+  phase: 'draft' | 'creating' | 'planning' | 'working' | 'reviewing' | 'integrating' | 'completed'
+  setupSessionId?: string
+  pendingMessages?: UserMessage[]
+  planRevision?: number
+  retiredMembers?: { plan: TeamMember; ticketId?: string; removedAt: string }[]
   coordinatorTicketId?: string; directory?: string; permissionPreset?: string
   members: { plan: TeamMember; ticketId?: string; dependencyVersion?: string; pendingRound?: string }[]
   handoffs: { id: string; from: string; to: string; ticketId: string; at: string; version: string }[]
@@ -95,6 +87,7 @@ export interface TeamRecord {
 
 /** Public views intentionally distinguish planned roles, ended member runs, and completed team goals. */
 export interface TeamMemberView {
+  plan?: TeamMember
   id: string; name: string; instructions: string; dependencies: string[]; role: 'coordinator' | 'member'
   parentId?: string; responsibility?: TeamMember['responsibility']
   state: MemberState; ticketId?: string; sessionId?: string; directory?: string; model?: RoleModel | null
@@ -115,6 +108,8 @@ export interface TeamIndex {
   activeMembers?: number; currentAction?: string
 }
 export interface TeamView extends TeamIndex {
+  planRevision?: number
+  retiredMembers?: { id: string; name: string; ticketId?: string; sessionId?: string; removedAt: string }[]
   members: TeamMemberView[]; handoffs: TeamRecord['handoffs']; error?: string
   deliveries: { memberId: string; name: string; record: DeliveryRecord }[]
   completion?: TeamCompletion

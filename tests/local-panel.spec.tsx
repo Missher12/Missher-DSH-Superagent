@@ -5,7 +5,7 @@ import { usePanel, mount, remount, all, find, click, type, field, text, at } fro
 import { server, ticketSummary } from './fixtures/panel-server.ts'
 
 usePanel()
-beforeEach(() => at({ page: 'execution' }))
+beforeEach(() => { at({ page: 'execution' }); sessionStorage.setItem('dsh-superagent/local-draft', JSON.stringify({ mode: 'single' })) })
 it('renames a workspace in place and keeps its directory visible', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   at({ page: 'source' }); await mount()

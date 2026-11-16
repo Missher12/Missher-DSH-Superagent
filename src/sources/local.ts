@@ -60,9 +60,8 @@ export class LocalTasks {
     this.disposers.push(ctx.on('agent/inbox/inserted', ({ agent, message }) => {
       const id = ticketOfSession(agent.id)
       if (!id || message.source.kind !== 'user' || !runtime.store.tickets.get(id) || !workspaceOf(runtime.store, runtime.store.tickets.get(id)!)) return
-      const text = message.content.filter(part => part.type === 'text').map(part => part.text).join('\n').trim() || '补充附件'
       // Admission is synchronous: a concurrent final report must already see this unread requirement.
-      this.receiveFollowup(id, `native:${message.id}`, text.slice(0, 64000), message)
+      this.receiveNative(id, message)
     }))
   }
   workspaces(): { id: string; title: string; directory: string; activeTasks: number; protected: boolean }[] {
@@ -172,10 +171,16 @@ export class LocalTasks {
       return this.get(decision.ticketId)
     })
   }
+  /** Keep native text, image and file parts intact, including a team's first message. */
+  receiveNative(id: string, message: UserMessage) {
+    const text = message.content.filter(part => part.type === 'text').map(part => part.text).join('\n').trim() || '补充附件'
+    return this.receiveFollowup(id, `native:${message.id}`, text.slice(0, 64000), message)
+  }
   async followup(id: string, requestId: string, text: string, automatic = false) {
     return this.receiveFollowup(id, requestId, text, undefined, automatic)
   }
   private receiveFollowup(id: string, requestId: string, text: string, nativeInput?: UserMessage, automatic = false) {
+    if (this.runtime.teams?.retired(id)) throw new LocalTaskError('该成员已从工作流移除；原会话和交付仍保留，请在编排中添加新成员继续工作')
     const ticket = this.ticket(id)
     if (ticket.ended?.by === 'human') throw new LocalTaskError('任务已被你停止；需要继续时请新建任务')
     const input = z.object({ requestId: z.string().min(1).max(200), text: z.string().trim().min(1).max(64000) }).parse({ requestId, text })
