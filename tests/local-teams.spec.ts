@@ -55,6 +55,29 @@ it('removes members from the workflow while preserving their original tickets an
   await expect(host.runtime.teams!.updatePlan(team.id, { revision: before.planRevision!, members: [] })).rejects.toThrow(/更新/)
 })
 
+it('appends a reviewer after a completed frontend without redispatching its finished work', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const frontend = { id: 'frontend', name: '前端', instructions: '实现页面', responsibility: 'implementer' as const, dependencies: [] }
+  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory, members: [frontend], workflow: { maxRounds: 3 } })
+  await complete(team.coordinatorTicketId!)
+  const ticket = host.runtime.teams!.get(team.id).members.find(member => member.id === 'frontend')!.ticketId!
+  await complete(ticket); await review(team.coordinatorTicketId!, 'pass')
+  expect(host.runtime.teams!.get(team.id).state).toBe('completed')
+  await host.runtime.teams!.updatePlan(team.id, { revision: 0, members: [frontend,
+    { id: 'review', name: '检验', instructions: '独立复核前端交付', responsibility: 'reviewer', dependencies: ['frontend'] },
+  ] })
+  expect(host.runtime.teams!.get(team.id).members.find(member => member.id === 'review')!.ticketId).toBeUndefined()
+  await complete(team.coordinatorTicketId!)
+  const next = host.runtime.teams!.get(team.id).members.find(member => member.id === 'review')!
+  expect(next.ticketId).toBeTruthy()
+  expect(host.runtime.store.tickets.get(ticket)!.assignments).toHaveLength(1)
+  await review(next.ticketId!, 'pass'); await review(team.coordinatorTicketId!, 'pass')
+  const done = host.runtime.teams!.get(team.id)
+  expect(done.state).toBe('completed')
+  expect(done.members.find(member => member.id === 'frontend')!.sessionId).toBe(`worker-${ticket}`)
+  expect(host.runtime.store.tickets.get(ticket)!.assignments).toHaveLength(1)
+}, 40_000)
+
 it('exposes the real shared commander without counting it as an executing member', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })

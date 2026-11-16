@@ -1,7 +1,33 @@
 /** Native form values with the host's themed, portalled Menu presentation. */
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type SelectHTMLAttributes } from 'react'
 import { Menu, type MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
-import { Icon } from './controls.tsx'
+import { Button, Icon } from './controls.tsx'
+
+/** Small action lists use the same host menu and portal as settings choices. */
+export function ActionMenu({ label, items, onSelect, disabled, compact = false }: {
+  label: string; items: { id: string; label: string }[]; onSelect: (id: string) => void; disabled?: boolean; compact?: boolean
+}) {
+  const [open, setOpen] = useState(false), anchor = useRef<HTMLSpanElement>(null), owner = useId()
+  const close = () => { setOpen(false); anchor.current?.querySelector('button')?.focus({ preventScroll: true }) }
+  useLayoutEffect(() => {
+    if (!open) return
+    const escape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.isComposing || event.keyCode === 229) return
+      const menu = document.querySelector(`[data-action-owner=${JSON.stringify(owner)}]`)?.closest('[role="menu"]')
+      if (!anchor.current?.contains(document.activeElement) && !menu?.contains(document.activeElement)) return
+      event.preventDefault(); event.stopImmediatePropagation(); close()
+    }
+    document.addEventListener('keydown', escape, true)
+    return () => document.removeEventListener('keydown', escape, true)
+  }, [open])
+  return <span ref={anchor} className="dt-action-menu" onPointerDown={event => event.stopPropagation()}>
+    <Menu open={open} items={items.map(item => ({ ...item, label: <span className="dt-action-menu-label" data-action-owner={owner}>{item.label}</span> }))}
+      onSelect={id => { setOpen(false); onSelect(id) }} onClose={close}
+      portal align="end" side="bottom" getAnchorRect={() => anchor.current?.getBoundingClientRect() ?? null}
+      anchor={<Button size="sm" disabled={disabled} aria-label={label} title={compact ? label : undefined} aria-haspopup="menu" aria-expanded={open}
+        icon={<Icon name="plus" size={14} />} onClick={() => setOpen(value => !value)}>{!compact && label}</Button>} />
+  </span>
+}
 
 export function Select({ id, className = '', value, children, disabled, title, onChange, ...props }:
   Omit<SelectHTMLAttributes<HTMLSelectElement>, 'multiple' | 'size'>) {

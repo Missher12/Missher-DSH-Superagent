@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it, vi } from 'vitest'
+import { act } from 'react'
 import type { TeamView } from '../src/teams/contracts.ts'
 import { usePanel, mount, all, click, type, field, text, at } from './fixtures/panel.tsx'
 import { server } from './fixtures/panel-server.ts'
@@ -138,6 +139,62 @@ it('opens member properties immediately and repairs dependencies when deleting a
   const draft = JSON.parse(sessionStorage.getItem('dsh-superagent/local-draft')!)
   expect(draft.members.some((member: { id: string }) => member.id === 'build')).toBe(false)
   expect(draft.members.find((member: { id: string }) => member.id === 'check').dependencies).toEqual([])
+})
+it('closes the member action menu on Escape without closing the workflow or losing its draft', async () => {
+  await mount(); await click('新建任务')
+  await type(field<HTMLInputElement>('团队名称'), '保留编排')
+  const trigger = all('button[aria-label="在实施后添加"]')[0]!
+  trigger.focus(); await click(trigger)
+  expect(all('[role="menu"]')).toHaveLength(1)
+  await act(async () => { trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
+  expect(all('[role="menu"]')).toHaveLength(0)
+  expect(all('[role="dialog"]')).toHaveLength(1)
+  expect(field<HTMLInputElement>('团队名称').value).toBe('保留编排')
+  expect(document.activeElement).toBe(trigger)
+})
+it('adds a reviewer after an implementer and can branch, join, and reject a dependency cycle', async () => {
+  sessionStorage.setItem('dsh-superagent/local-draft', JSON.stringify({ mode: 'team', members: [
+    { id: 'frontend', name: '前端', instructions: '实现页面', responsibility: 'implementer', dependencies: [] },
+  ] }))
+  await mount(); await click('新建任务')
+  await click('在前端后添加'); await click('检验成员')
+  const draft = () => JSON.parse(sessionStorage.getItem('dsh-superagent/local-draft')!)
+  const reviewer = draft().members[1]
+  expect(reviewer).toMatchObject({ responsibility: 'reviewer', dependencies: ['frontend'], parentId: 'coordinator' })
+  await type(field<HTMLInputElement>('名称'), '检验')
+  await click('添加同级成员'); await click('实施成员')
+  const peer = draft().members[2]
+  expect(peer.dependencies).toEqual(['frontend'])
+  await type(field<HTMLInputElement>('名称'), '后端')
+  await click('从 后端 连线'); await click('连接到 检验')
+  expect(draft().members[1].dependencies).toEqual(['frontend', peer.id])
+  await click('从 检验 连线'); await click('连接到 前端')
+  expect(draft().members[0].dependencies).toEqual([])
+  expect(text()).toContain('不能形成循环')
+})
+it('inserts a member on an existing edge and removes only the selected connection', async () => {
+  await mount(); await click('新建任务')
+  await click('连接：实施 → 验证'); await click('插入成员'); await click('实施成员')
+  const draft = () => JSON.parse(sessionStorage.getItem('dsh-superagent/local-draft')!)
+  const inserted = draft().members[2]
+  expect(inserted.dependencies).toEqual(['build'])
+  expect(draft().members[1].dependencies).toEqual([inserted.id])
+  await type(field<HTMLInputElement>('名称'), '联调')
+  await click('连接：联调 → 验证'); await click('删除连接')
+  expect(draft().members[1].dependencies).toEqual([])
+  expect(draft().members[2].dependencies).toEqual(['build'])
+  expect(all('.dt-flow-node')).toHaveLength(5)
+})
+it('joins the remaining steps when a middle member is removed', async () => {
+  sessionStorage.setItem('dsh-superagent/local-draft', JSON.stringify({ mode: 'team', members: [
+    { id: 'front', name: '前端', instructions: '实现', dependencies: [] },
+    { id: 'integration', name: '联调', instructions: '联调', dependencies: ['front'] },
+    { id: 'review', name: '检验', instructions: '检验', dependencies: ['integration'] },
+  ] }))
+  await mount(); await click('新建任务'); await click('移除联调')
+  const draft = JSON.parse(sessionStorage.getItem('dsh-superagent/local-draft')!)
+  expect(draft.members.map((member: { id: string }) => member.id)).toEqual(['front', 'review'])
+  expect(draft.members[1].dependencies).toEqual(['front'])
 })
 it('offers a real member name, an explicit parent and add-and-execute action', async () => {
   server.teamViews['explicit-team']!.model = { provider: 'worker-provider', model: 'worker-model' }

@@ -6,7 +6,7 @@ import type { RoleModel } from '../policy.ts'
 import { Button, Icon, Input, Modal, SegmentedControl } from './controls.tsx'
 import { ComposerField, ComposerForm } from './composer.tsx'
 import { ModelSelect, ReasoningSelect } from './model-picker.tsx'
-import { Select } from './select.tsx'
+import { ActionMenu, Select } from './select.tsx'
 import { useAction, usePanel } from './provider.tsx'
 import { errorText } from './text.ts'
 import { SessionButton } from './widgets.tsx'
@@ -15,6 +15,8 @@ import { COMMANDER } from './team-participants.ts'
 type Point = { x: number; y: number }
 type Layout = Record<string, Point>
 type Relation = 'parent' | 'delivery'
+type Edge = { id: string; from: string; to: string; path: string; midpoint: Point }
+type Role = NonNullable<TeamMember['responsibility']>
 const commander = COMMANDER, planner = 'coordinator'
 const width = 216, height = 126, gap = 64
 function arrange(members: TeamMember[], relation: Relation): Layout {
@@ -38,14 +40,15 @@ function path(a: Point, b: Point): string {
 export function WorkflowEditor({ members, onChange, model, disabled = false, settings, onOpen }: {
   members: TeamMember[]; onChange: (members: TeamMember[]) => void; model?: RoleModel; disabled?: boolean; settings?: ReactNode; onOpen?: (id: string) => void
 }) {
-  const { t, notify } = usePanel(), [relation, setRelation] = useState<Relation>('parent')
-  const [selected, setSelected] = useState(planner), [positions, setPositions] = useState(() => arrange(members, 'parent'))
+  const { t, notify } = usePanel(), [relation, setRelation] = useState<Relation>('delivery')
+  const [selected, setSelected] = useState(planner), [positions, setPositions] = useState(() => arrange(members, 'delivery'))
   const [zoom, setZoom] = useState(.85), [panelWidth, setPanelWidth] = useState(340), [details, setDetails] = useState(true)
   const [link, setLink] = useState<{ from: string; point?: Point; target?: string }>()
-  const [lines, setLines] = useState<{ id: string; path: string }[]>([])
-  const canvas = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), nodes = useRef(new Map<string, HTMLElement>())
+  const [lines, setLines] = useState<Edge[]>([]), [edgeId, setEdgeId] = useState<string>(), [reveal, setReveal] = useState<string>()
+  const canvas = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), nodes = useRef(new Map<string, HTMLElement>()), fitted = useRef(false)
   const drag = useRef<{ kind: 'node' | 'pan' | 'link' | 'resize'; id?: string; x: number; y: number; origin: Point }>()
   const member = members.find(member => member.id === selected)
+  const edge = lines.find(line => line.id === edgeId)
   const defaults = arrange(members, relation), at = (id: string) => positions[id] ?? defaults[id]!
   const ids = [commander, planner, ...members.map(member => member.id)]
   const size = { x: Math.max(800, ...ids.map(id => at(id).x + width + 70)), y: Math.max(460, ...ids.map(id => at(id).y + height + 70)) }
@@ -66,12 +69,45 @@ export function WorkflowEditor({ members, onChange, model, disabled = false, set
     onChange(next); return true
   }
   const edit = (patch: Partial<TeamMember>) => member && update(members.map(item => item.id === member.id ? { ...item, ...patch } : item))
+  const remove = (id: string) => {
+    const removed = members.find(item => item.id === id); if (!removed || disabled) return
+    onChange(members.filter(item => item.id !== id).map(item => ({ ...item, dependencies: [...new Set(item.dependencies.flatMap(from => from === id ? removed.dependencies : [from]))],
+      ...item.parentId === id ? { parentId: removed.parentId ?? planner } : {} })))
+    setSelected(planner); setEdgeId(undefined)
+  }
+  const add = (role: Role, from = planner, mode: 'after' | 'parallel' | 'insert' = 'after', connection?: Edge) => {
+    if (disabled || members.length >= 12) return
+    const source = members.find(item => item.id === from), id = `member-${crypto.randomUUID().slice(0, 12)}`
+    const dependencies = mode === 'parallel' ? [...source?.dependencies ?? []] : from === planner ? [] : [from]
+    const next: TeamMember = { id, name: role === 'implementer' ? t('teamMemberNumber', { count: members.length + 1 }) : `${t(`teamRole.${role}`)} ${members.length + 1}`,
+      instructions: t(role === 'reviewer' ? 'teamDefaultCheckWork' : role === 'manager' ? 'flowPlannerWork' : 'flowDefaultWork'),
+      responsibility: role, dependencies, parentId: mode !== 'parallel' && source?.responsibility === 'manager' ? from : source?.parentId ?? planner }
+    const plans = members.map(item => mode === 'insert' && connection?.to === item.id
+      ? { ...item, dependencies: [...item.dependencies.filter(id => id !== from), next.id] } : item)
+    if (!update([...plans, next])) return
+    const origin = at(from), point = mode === 'insert' && connection ? { ...at(connection.to) }
+      : { x: origin.x + (mode === 'parallel' ? 0 : width + gap), y: origin.y + (mode === 'parallel' ? height + 36 : 0) }
+    const shifted = new Set(mode === 'insert' && connection ? [connection.to] : [])
+    for (let pass = 0; pass < members.length; pass++) for (const item of members) if (item.dependencies.some(id => shifted.has(id))) shifted.add(item.id)
+    while (ids.some(id => !shifted.has(id) && Math.abs(at(id).x - point.x) < width + 20 && Math.abs(at(id).y - point.y) < height + 20)) point.y += height + 36
+    setPositions(current => ({ ...current, ...Object.fromEntries([...shifted].map(id => [id, { x: at(id).x + width + gap, y: at(id).y }])), [id]: point }))
+    setSelected(id); setEdgeId(undefined); setDetails(true); setReveal(id)
+  }
+  const addMenu = (label: string, from: string, mode: 'after' | 'parallel' | 'insert' = 'after', compact = false, connection?: Edge) =>
+    <ActionMenu label={label} compact={compact} disabled={disabled || members.length >= 12}
+      items={(['implementer', 'reviewer', 'manager'] as const).map(role => ({ id: role, label: t(`flowAddRole.${role}`) }))}
+      onSelect={role => add(role as Role, from, mode, connection)} />
+  const chooseEdge = (line: Edge) => { setEdgeId(line.id); setLink(undefined); setDetails(true) }
+  const removeEdge = () => {
+    if (!edge || edge.from === commander || edge.from === planner || disabled) return
+    update(members.map(item => item.id !== edge.to ? item : relation === 'parent' ? { ...item, parentId: planner }
+      : { ...item, dependencies: item.dependencies.filter(id => id !== edge.from) })); setEdgeId(undefined)
+  }
   const connect = (from: string, to: string) => {
     if (from === to || [commander, planner].includes(to) || from === commander) return false
     if (relation === 'parent' && from !== planner && members.find(item => item.id === from)?.responsibility !== 'manager') { notify(t('flowManagerOnly')); return false }
-    if (relation === 'delivery' && from === planner) return false
     return update(members.map(item => item.id !== to ? item : relation === 'parent' ? { ...item, parentId: from }
-      : { ...item, dependencies: [...new Set([...item.dependencies, from])] }))
+      : { ...item, dependencies: from === planner ? [] : [...new Set([...item.dependencies, from])] }))
   }
   const near = (x: number, y: number, from: string) => members.find(item => {
     if (item.id === from) return false
@@ -80,22 +116,31 @@ export function WorkflowEditor({ members, onChange, model, disabled = false, set
   })?.id
   useLayoutEffect(() => {
     const measure = () => {
-      const edges = relation === 'parent' ? [[commander, planner], ...members.map(member => [member.parentId ?? planner, member.id])]
-        : members.flatMap(member => member.dependencies.map(id => [id, member.id]))
-      setLines(edges.map(([from, to]) => ({ id: `${from}:${to}`, path: path(anchor(from!, 'out'), anchor(to!, 'in')) })))
+      const edges = [[commander, planner], ...members.flatMap(member => (relation === 'parent' ? [member.parentId ?? planner]
+        : member.dependencies.length ? member.dependencies : [planner]).map(from => [from, member.id]))]
+      setLines(edges.map(([from, to]) => {
+        const a = anchor(from!, 'out'), b = anchor(to!, 'in')
+        return { id: `${from}:${to}`, from: from!, to: to!, path: path(a, b), midpoint: b.x > a.x + 40
+          ? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } : { x: (a.x + b.x - 12) / 2, y: Math.max(a.y, b.y) + height / 2 + 32 } }
+      }))
     }
     measure()
     if (typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(measure); if (canvas.current) observer.observe(canvas.current)
     return () => observer.disconnect()
   }, [members, positions, relation, zoom, panelWidth])
+  useLayoutEffect(() => {
+    if (fitted.current || !canvas.current?.clientWidth) return
+    fitted.current = true; setZoom(Math.max(.75, Math.min(.85, (canvas.current.clientWidth - 24) / size.x)))
+  }, [size.x])
+  useLayoutEffect(() => { if (reveal) { nodes.current.get(reveal)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); setReveal(undefined) } }, [reveal])
   const down = (event: PointerEvent<HTMLElement>, kind: NonNullable<typeof drag.current>['kind'], id?: string) => {
     if (event.button || disabled) return
     event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId)
     drag.current = { kind, id, x: event.clientX, y: event.clientY, origin: kind === 'node' ? at(id!) : kind === 'resize' ? { x: panelWidth, y: 0 }
       : { x: canvas.current?.scrollLeft ?? 0, y: canvas.current?.scrollTop ?? 0 } }
-    if (kind === 'node') setSelected(id!)
-    if (kind === 'link') setLink({ from: id!, point: coordinate(event.clientX, event.clientY) })
+    if (kind === 'node') { setSelected(id!); setEdgeId(undefined) }
+    if (kind === 'link') { setEdgeId(undefined); setLink({ from: id!, point: coordinate(event.clientX, event.clientY) }) }
   }
   const move = (event: PointerEvent) => {
     const action = drag.current; if (!action) return
@@ -109,35 +154,40 @@ export function WorkflowEditor({ members, onChange, model, disabled = false, set
     const action = drag.current; drag.current = undefined
     if (action?.kind === 'link') { const target = near(event.clientX, event.clientY, action.id!); if (target) connect(action.id!, target); setLink(undefined) }
   }
-  const choose = (id: string) => { if (link) { connect(link.from, id); setLink(undefined) } else { setSelected(id); setDetails(true) } }
+  const choose = (id: string) => { setEdgeId(undefined); if (link) { connect(link.from, id); setLink(undefined) } else { setSelected(id); setDetails(true) } }
   return <div className="dt-flow-editor" style={{ '--flow-inspector': `${panelWidth}px` } as CSSProperties} data-details={details || undefined}
     onPointerMove={move} onPointerUp={up} onPointerCancel={() => { drag.current = undefined; setLink(undefined) }}
     onKeyDown={event => { if (event.key === 'Escape' && link) { event.stopPropagation(); setLink(undefined); drag.current = undefined } }}>
     <div className="dt-flow-main"><div className="dt-flow-toolbar">
-      <SegmentedControl label={t('flowRelations')} value={relation} onChange={value => { setRelation(value); setLink(undefined) }} options={[
-        { value: 'parent', label: t('flowHierarchy') }, { value: 'delivery', label: t('flowDelivery') }]} />
-      <Button size="sm" disabled={disabled || members.length >= 12} icon={<Icon name="plus" />} onClick={() => {
-        const id = `member-${crypto.randomUUID().slice(0, 12)}`
-        onChange([...members, { id, name: t('teamMemberNumber', { count: members.length + 1 }), instructions: t('flowDefaultWork'), dependencies: [],
-          parentId: member?.responsibility === 'manager' ? member.id : planner, responsibility: 'implementer' }]); setSelected(id); setDetails(true)
-      }}>{t('teamAddMember')}</Button>
+      <SegmentedControl label={t('flowRelations')} value={relation} onChange={value => { setRelation(value); setLink(undefined); setEdgeId(undefined); setPositions(arrange(members, value)) }} options={[
+        { value: 'delivery', label: t('flowDelivery') }, { value: 'parent', label: t('flowHierarchy') }]} />
+      <Button size="sm" disabled={disabled || members.length >= 12} icon={<Icon name="plus" />} onClick={() => add('implementer')}>{t('teamAddMember')}</Button>
     </div><div className="dt-flow-viewport" ref={canvas} onPointerDown={event => down(event, 'pan')}>
       <div className="dt-flow-space" style={{ width: size.x * zoom, height: size.y * zoom }}><div className="dt-flow-world" style={{ width: size.x, height: size.y, transform: `scale(${zoom})` }}>
-        <svg ref={svg} className="dt-flow-edges" width={size.x} height={size.y} aria-hidden="true">{lines.map(line => <path key={line.id} d={line.path} data-delivery={relation === 'delivery' || undefined} />)}
+        <svg ref={svg} className="dt-flow-edges" width={size.x} height={size.y} aria-hidden="true">{lines.map(line => <g key={line.id} data-selected={edgeId === line.id || undefined}>
+          <path d={line.path} data-delivery={relation === 'delivery' || undefined} />
+          {line.from !== commander && <path className="dt-flow-edge-hit" d={line.path} onPointerDown={event => event.stopPropagation()} onClick={() => chooseEdge(line)} />}</g>)}
           {link?.point && <path className="dt-flow-preview" d={path(anchor(link.from, 'out'), link.target ? anchor(link.target, 'in') : link.point)} />}</svg>
+        {lines.filter(line => line.from !== commander).map(line => <button key={line.id} type="button" className="dt-flow-edge-action" disabled={disabled}
+          style={{ left: line.midpoint.x, top: line.midpoint.y }} aria-label={t('flowEdge', { from: label(line.from), to: label(line.to) })} aria-pressed={edgeId === line.id}
+          onPointerDown={event => event.stopPropagation()} onClick={() => chooseEdge(line)}><Icon name="settings" size={12} /></button>)}
         {ids.map(id => { const item = members.find(item => item.id === id), root = id === planner || id === commander
           return <article key={id} ref={element => { if (element) nodes.current.set(id, element); else nodes.current.delete(id) }} className="dt-flow-node" data-node={id}
             data-selected={selected === id || undefined} data-target={link?.target === id || undefined} style={{ left: at(id).x, top: at(id).y }}>
             <button type="button" className="dt-flow-node-body" onPointerDown={event => down(event, 'node', id)} onClick={() => choose(id)} aria-pressed={selected === id}
-              onKeyDown={event => { const shift = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] }[event.key]; if (!shift) return
+              onKeyDown={event => { if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); remove(id); return }
+                const shift = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] }[event.key]; if (!shift) return
                 event.preventDefault(); setPositions(current => ({ ...current, [id]: { x: Math.max(24, at(id).x + shift[0]!), y: Math.max(24, at(id).y + shift[1]!) } })) }}>
               <span className="dt-flow-node-heading"><Icon name={root || item?.responsibility === 'manager' ? 'agent' : item?.responsibility === 'reviewer' ? 'shield' : 'code'} /><strong>{label(id)}</strong></span>
               <span className="dt-flow-node-work">{root ? t(id === commander ? 'teamCommanderShared' : 'flowPlannerWork') : item?.instructions}</span>
               <span className="dt-flow-node-meta">{root ? t(id === commander ? 'teamCommander' : 'teamCoordinator') : t(`teamRole.${item?.responsibility ?? 'implementer'}`)}<span>{item?.model?.model ?? model?.model ?? t('teamModelInherit')}</span></span>
             </button>
             <button type="button" className="dt-flow-port" data-port="in" disabled={root || disabled} aria-label={t('flowConnectTo', { name: label(id) })} onPointerDown={event => event.stopPropagation()} onClick={() => { if (link) { connect(link.from, id); setLink(undefined) } }} />
-            <button type="button" className="dt-flow-port" data-port="out" disabled={disabled || id === commander || relation === 'delivery' && id === planner}
+            <button type="button" className="dt-flow-port" data-port="out" disabled={disabled || id === commander}
               aria-label={t('flowConnectFrom', { name: label(id) })} onPointerDown={event => down(event, 'link', id)} onClick={event => { if (!event.detail) setLink({ from: id }) }} />
+            <div className="dt-flow-node-actions">{id !== commander && relation === 'delivery' && addMenu(t('flowAddAfter', { name: label(id) }), id, 'after', true)}
+              {!root && <Button size="sm" disabled={disabled} aria-label={t('flowRemoveNode', { name: label(id) })} title={t('teamRemoveMember')}
+                icon={<Icon name="close" size={13} />} onPointerDown={event => event.stopPropagation()} onClick={() => remove(id)} />}</div>
           </article> })}
       </div></div></div><div className="dt-flow-bottom"><span>{t(link ? 'flowSelectTarget' : 'flowDragHint')}</span><div>
         <Button size="sm" aria-label={t('flowZoomOut')} onClick={() => setZoom(Math.max(.6, zoom - .1))}>−</Button><span>{Math.round(zoom * 100)}%</span>
@@ -148,8 +198,12 @@ export function WorkflowEditor({ members, onChange, model, disabled = false, set
     </div>
     <div className="dt-flow-resizer" role="separator" aria-label={t('flowResize')} aria-orientation="vertical" tabIndex={0} aria-valuenow={panelWidth} aria-valuemin={280} aria-valuemax={480}
       onPointerDown={event => down(event, 'resize')} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); setPanelWidth(Math.max(280, Math.min(480, panelWidth + (event.key === 'ArrowLeft' ? 20 : -20)))) } }} />
-    {details && <aside className="dt-flow-inspector"><header><h3>{member ? t('teamMembers') : t('flowTeamSettings')}</h3><Button size="sm" aria-label={t('close')} icon={<Icon name="close" />} onClick={() => setDetails(false)} /></header>
-      {member ? <><ComposerField label={t('teamMemberName')} required><Input required value={member.name} maxLength={60} onChange={event => onChange(members.map(item => item.id === member.id ? { ...item, name: event.target.value } : item))} /></ComposerField>
+    {details && <aside className="dt-flow-inspector"><header><h3>{edge ? t('flowConnection') : member ? t('teamMembers') : t('flowTeamSettings')}</h3><Button size="sm" aria-label={t('close')} icon={<Icon name="close" />} onClick={() => setDetails(false)} /></header>
+      {edge ? <><p className="dt-flow-edge-caption">{label(edge.from)} <span>→</span> {label(edge.to)}</p>
+        {relation === 'delivery' && addMenu(t('flowInsert'), edge.from, 'insert', false, edge)}
+        <p className="dt-hint">{t(relation === 'delivery' ? 'flowEdgeHint' : 'flowParentHint')}</p>
+        {edge.from !== planner && <div className="dt-danger-zone"><Button icon={<Icon name="trash" />} disabled={disabled} onClick={removeEdge}>{t('flowRemoveEdge')}</Button></div>}</>
+      : member ? <><ComposerField label={t('teamMemberName')} required><Input required value={member.name} maxLength={60} onChange={event => onChange(members.map(item => item.id === member.id ? { ...item, name: event.target.value } : item))} /></ComposerField>
         <ComposerField label={t('teamMemberWork')} required><textarea className="dt-textarea" required rows={4} maxLength={4000} value={member.instructions} onChange={event => onChange(members.map(item => item.id === member.id ? { ...item, instructions: event.target.value } : item))} /></ComposerField>
         <ComposerField label={t('teamResponsibility')}><Select value={member.responsibility ?? 'implementer'} onChange={event => edit({ responsibility: event.target.value as TeamMember['responsibility'] })}>
           {(['manager', 'implementer', 'reviewer'] as const).map(role => <option value={role} key={role}>{t(`teamRole.${role}`)}</option>)}</Select></ComposerField>
@@ -159,11 +213,11 @@ export function WorkflowEditor({ members, onChange, model, disabled = false, set
         <ComposerField label={t('modelEffort')}><ReasoningSelect inherited={model} value={member.model} onChange={model => edit({ model })} /></ComposerField>
         <section className="dt-flow-dependencies"><h4>{t('teamDependencies')}</h4>{members.filter(item => item.id !== member.id).map(item => <label key={item.id}><input type="checkbox" checked={member.dependencies.includes(item.id)}
           onChange={event => edit({ dependencies: event.target.checked ? [...member.dependencies, item.id] : member.dependencies.filter(id => id !== item.id) })} />{item.name}</label>)}</section>
+        <div className="dt-flow-member-actions">{addMenu(t('flowAddNext'), member.id)}{addMenu(t('flowAddParallel'), member.id, 'parallel')}</div>
         {onOpen && <Button onClick={() => onOpen(member.id)} icon={<Icon name="message" />}>{t('teamOpenSession')}</Button>}
-        <div className="dt-danger-zone"><Button disabled={disabled} icon={<Icon name="trash" />} onClick={() => {
-          onChange(members.filter(item => item.id !== member.id).map(item => ({ ...item, dependencies: item.dependencies.filter(id => id !== member.id),
-            ...item.parentId === member.id ? { parentId: member.parentId ?? planner } : {} }))); setSelected(planner)
-        }}>{t('teamRemoveMember')}</Button></div></> : <>{settings ?? <p className="dt-hint">{t('flowPlannerWork')}</p>}{onOpen && <Button icon={<Icon name="message" />} onClick={() => onOpen(selected)}>{t('teamOpenSession')}</Button>}</>}
+        <div className="dt-danger-zone"><Button disabled={disabled} icon={<Icon name="trash" />} onClick={() => remove(member.id)}>{t('teamRemoveMember')}</Button></div></>
+      : <>{settings ?? <p className="dt-hint">{t('flowPlannerWork')}</p>}{selected === planner && addMenu(t('flowAddNext'), planner)}
+        {onOpen && <Button icon={<Icon name="message" />} onClick={() => onOpen(selected)}>{t('teamOpenSession')}</Button>}</>}
     </aside>}
   </div>
 }
