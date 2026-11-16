@@ -1,5 +1,5 @@
 /** Editable organization and delivery graphs, shared by setup and live team editing. */
-import { useId, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
 import type { TeamMember, TeamView } from '../teams/contracts.ts'
 import { planIssues } from '../teams/plan.ts'
 import type { RoleModel } from '../policy.ts'
@@ -17,6 +17,35 @@ type Layout = Record<string, Point>
 type Relation = 'parent' | 'delivery'
 type Edge = { id: string; from: string; to: string; path: string; midpoint: Point }
 type Role = NonNullable<TeamMember['responsibility']>
+type View = { relation: Relation; layouts: Partial<Record<Relation, Layout>>; zoom: number; panelWidth: number; details: boolean }
+type Draft = { members: TeamMember[]; revision: number }
+const viewKey = (id: string) => `dsh-superagent/workflow-view/${id}`
+/** Keep the setup canvas when its draft becomes a real team. */
+export function transferWorkflowView(from: string, to: string) {
+  try { const saved = localStorage.getItem(viewKey(from)); if (saved) { localStorage.setItem(viewKey(to), saved); localStorage.removeItem(viewKey(from)) } } catch { /* Optional local view preferences. */ }
+}
+const bounded = (value: unknown, min: number, max: number, fallback: number) => typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback
+function readView(key: string): View | undefined {
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) ?? 'null'); if (!saved) return
+    const layouts: View['layouts'] = {}
+    for (const relation of ['delivery', 'parent'] as const) if (saved.layouts?.[relation] && typeof saved.layouts[relation] === 'object') {
+      layouts[relation] = Object.fromEntries(Object.entries(saved.layouts[relation]).slice(0, 14).flatMap(([id, point]) => {
+        const p = point as Point | null
+        return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? [[id, { x: bounded(p.x, 24, 10000, 36), y: bounded(p.y, 24, 10000, 40) }]] : []
+      }))
+    }
+    return { relation: saved.relation === 'parent' ? 'parent' : 'delivery', layouts, zoom: bounded(saved.zoom, .6, 1.4, .85), panelWidth: bounded(saved.panelWidth, 280, 480, 340), details: saved.details !== false }
+  } catch { return }
+}
+function readDraft(key: string): Draft | undefined {
+  try {
+    const draft = JSON.parse(sessionStorage.getItem(key) ?? 'null')
+    if (draft && Number.isInteger(draft.revision) && draft.revision >= 0 && Array.isArray(draft.members) && draft.members.length <= 12
+      && draft.members.every((member: TeamMember) => member && typeof member.id === 'string' && typeof member.name === 'string' && typeof member.instructions === 'string'
+        && Array.isArray(member.dependencies) && member.dependencies.every(id => typeof id === 'string'))) return draft
+  } catch { /* Unavailable or damaged browser storage must not prevent editing. */ }
+}
 const commander = COMMANDER, planner = 'coordinator'
 const width = 216, height = 126, gap = 64
 function arrange(members: TeamMember[], relation: Relation): Layout {
@@ -37,20 +66,25 @@ function path(a: Point, b: Point): string {
   return `M${a.x},${a.y} C${a.x + 40},${a.y} ${a.x + 40},${lane} ${a.x + 20},${lane} H${b.x - 32} Q${b.x - 44},${lane} ${b.x - 44},${lane - 12} V${b.y + 12} Q${b.x - 44},${b.y} ${b.x - 32},${b.y} H${b.x}`
 }
 
-export function WorkflowEditor({ members, onChange, model, disabled = false, settings, onOpen }: {
-  members: TeamMember[]; onChange: (members: TeamMember[]) => void; model?: RoleModel; disabled?: boolean; settings?: ReactNode; onOpen?: (id: string) => void
+export function WorkflowEditor({ members, onChange, model, disabled = false, settings, onOpen, storageKey }: {
+  members: TeamMember[]; onChange: (members: TeamMember[]) => void; model?: RoleModel; disabled?: boolean; settings?: ReactNode; onOpen?: (id: string) => void; storageKey: string
 }) {
-  const { t, notify } = usePanel(), [relation, setRelation] = useState<Relation>('delivery')
-  const [selected, setSelected] = useState(planner), [positions, setPositions] = useState(() => arrange(members, 'delivery'))
-  const [zoom, setZoom] = useState(.85), [panelWidth, setPanelWidth] = useState(340), [details, setDetails] = useState(true)
+  const storage = viewKey(storageKey), [saved] = useState(() => readView(storage)), layouts = useRef(saved?.layouts ?? {})
+  const { t, notify } = usePanel(), [relation, setRelation] = useState<Relation>(saved?.relation ?? 'delivery')
+  const [selected, setSelected] = useState(planner), [positions, setPositions] = useState(() => saved?.layouts[relation] ?? arrange(members, relation))
+  const [zoom, setZoom] = useState(saved?.zoom ?? .85), [panelWidth, setPanelWidth] = useState(saved?.panelWidth ?? 340), [details, setDetails] = useState(saved?.details ?? true)
   const [link, setLink] = useState<{ from: string; point?: Point; target?: string }>()
   const [lines, setLines] = useState<Edge[]>([]), [edgeId, setEdgeId] = useState<string>(), [reveal, setReveal] = useState<string>()
-  const canvas = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), nodes = useRef(new Map<string, HTMLElement>()), fitted = useRef(false)
+  const canvas = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), nodes = useRef(new Map<string, HTMLElement>()), fitted = useRef(!!saved)
   const drag = useRef<{ kind: 'node' | 'pan' | 'link' | 'resize'; id?: string; x: number; y: number; origin: Point }>()
   const member = members.find(member => member.id === selected)
   const edge = lines.find(line => line.id === edgeId)
   const defaults = arrange(members, relation), at = (id: string) => positions[id] ?? defaults[id]!
   const ids = [commander, planner, ...members.map(member => member.id)]
+  useEffect(() => {
+    layouts.current[relation] = Object.fromEntries(ids.filter(id => positions[id]).map(id => [id, positions[id]!]))
+    try { localStorage.setItem(storage, JSON.stringify({ relation, layouts: layouts.current, zoom, panelWidth, details })) } catch { /* Keep the editor usable without storage. */ }
+  }, [storage, positions, members, relation, zoom, panelWidth, details])
   const size = { x: Math.max(800, ...ids.map(id => at(id).x + width + 70)), y: Math.max(460, ...ids.map(id => at(id).y + height + 70)) }
   const label = (id: string) => id === commander ? t('teamCommander') : id === planner ? t('teamCoordinator') : members.find(member => member.id === id)?.name ?? id
   const anchor = (id: string, side: 'in' | 'out'): Point => {
@@ -159,7 +193,7 @@ export function WorkflowEditor({ members, onChange, model, disabled = false, set
     onPointerMove={move} onPointerUp={up} onPointerCancel={() => { drag.current = undefined; setLink(undefined) }}
     onKeyDown={event => { if (event.key === 'Escape' && link) { event.stopPropagation(); setLink(undefined); drag.current = undefined } }}>
     <div className="dt-flow-main"><div className="dt-flow-toolbar">
-      <SegmentedControl label={t('flowRelations')} value={relation} onChange={value => { setRelation(value); setLink(undefined); setEdgeId(undefined); setPositions(arrange(members, value)) }} options={[
+      <SegmentedControl label={t('flowRelations')} value={relation} onChange={value => { setRelation(value); setLink(undefined); setEdgeId(undefined); setPositions(layouts.current[value] ?? arrange(members, value)) }} options={[
         { value: 'delivery', label: t('flowDelivery') }, { value: 'parent', label: t('flowHierarchy') }]} />
       <Button size="sm" disabled={disabled || members.length >= 12} icon={<Icon name="plus" />} onClick={() => add('implementer')}>{t('teamAddMember')}</Button>
     </div><div className="dt-flow-viewport" ref={canvas} onPointerDown={event => down(event, 'pan')}>
@@ -223,18 +257,20 @@ export function WorkflowEditor({ members, onChange, model, disabled = false, set
 }
 
 export function EditTeamWorkflow({ team, reload, select }: { team: TeamView; reload: () => Promise<void>; select: (id: string) => void }) {
-  const { t, call } = usePanel(), form = useId(), [draft, setDraft] = useState<{ members: TeamMember[]; revision: number }>()
+  const { t, call } = usePanel(), form = useId(), draftKey = `dsh-superagent/workflow-draft/${team.id}`
+  const [draft, setDraft] = useState(() => readDraft(draftKey)), [open, setOpen] = useState(false)
+  useEffect(() => { try { if (draft) sessionStorage.setItem(draftKey, JSON.stringify(draft)); else sessionStorage.removeItem(draftKey) } catch { /* Preserve in-memory draft if storage is unavailable. */ } }, [draftKey, draft])
   const [failure, setFailure] = useState<string>()
   const save = useAction(async () => {
-    try { await call('PUT local/teams/:id/plan', { id: team.id, body: draft! }); setDraft(undefined); await reload() }
+    try { await call('PUT local/teams/:id/plan', { id: team.id, body: draft! }); setDraft(undefined); setOpen(false); await reload() }
     catch (error) { setFailure(errorText(error)); throw error }
   })
-  return <><Button size="sm" disabled={team.state === 'stopped'} icon={<Icon name="agent" />} onClick={() => { setFailure(undefined); setDraft({ revision: team.planRevision ?? 0,
+  return <><Button size="sm" disabled={team.state === 'stopped'} icon={<Icon name="agent" />} onClick={() => { setFailure(draft && draft.revision !== (team.planRevision ?? 0) ? t('flowDraftStale') : undefined); setOpen(true); setDraft(current => current ?? { revision: team.planRevision ?? 0,
     members: team.members.filter(member => member.role === 'member').map(({ plan, id, name, instructions, dependencies, parentId, responsibility, model }) => plan ?? ({ id, name, instructions, dependencies, parentId, responsibility, model: model ?? undefined })) }) }}>{t('flowEdit')}</Button>
-    <Modal open={!!draft} className="dt-workflow-modal" title={t('flowEdit')} closeLabel={t('close')} onClose={() => { if (!save.busy) setDraft(undefined) }}
-      footer={<div className="dt-flow-actions"><span>{t('flowRemoveHint')}</span><Button disabled={save.busy} onClick={() => setDraft(undefined)}>{t('cancel')}</Button><Button type="submit" form={form} variant="primary" disabled={save.busy}>{t('save')}</Button></div>}>
-      {draft && <ComposerForm id={form} disabled={save.busy} failure={failure} onSubmit={() => { void save.run() }}><WorkflowEditor members={draft.members} onChange={members => setDraft({ ...draft, members })} model={team.model} disabled={save.busy}
-        onOpen={id => { select(id); setDraft(undefined) }} settings={<><p className="dt-hint">{team.name}</p>{!!team.retiredMembers?.length && <section><h4>{t('flowRetired')}</h4>{team.retiredMembers.map(member => <div className="dt-flow-retired" key={member.id}><span>{member.name}</span>
+    <Modal open={open} className="dt-workflow-modal" title={t('flowEdit')} closeLabel={t('close')} onClose={() => { if (!save.busy) setOpen(false) }}
+      footer={<div className="dt-flow-actions"><span>{t('flowDraftKept')}</span><Button disabled={save.busy} onClick={() => { setDraft(undefined); setOpen(false) }}>{t('cancel')}</Button><Button type="submit" form={form} variant="primary" disabled={save.busy}>{t('save')}</Button></div>}>
+      {draft && <ComposerForm id={form} disabled={save.busy} failure={failure} onSubmit={() => { void save.run() }}><WorkflowEditor storageKey={team.id} members={draft.members} onChange={members => setDraft({ ...draft, members })} model={team.model} disabled={save.busy}
+        onOpen={id => { select(id); setOpen(false) }} settings={<><p className="dt-hint">{team.name}</p>{!!team.retiredMembers?.length && <section><h4>{t('flowRetired')}</h4>{team.retiredMembers.map(member => <div className="dt-flow-retired" key={member.id}><span>{member.name}</span>
           {member.sessionId && <SessionButton sessionId={member.sessionId} label={t('teamOpenSession')} />}</div>)}</section>}</>} /></ComposerForm>}
     </Modal></>
 }

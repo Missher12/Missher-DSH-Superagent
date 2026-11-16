@@ -37,6 +37,10 @@ it('prepares a team without executing and admits the first native message with i
     ? host!.runtime.store.triggers.get(input.triggerId)?.meta.nativeInput ?? [] : []) as { content: unknown[] }[]
   expect(native).toHaveLength(1)
   expect(native[0]!.content).toContainEqual(image)
+  const delivered = host.deliveries.mock.calls.map(([call]) => call).filter(call => call.sessionId === `worker-${team.coordinatorTicketId}`)
+  expect(delivered[0]!.text).toContain('ticket_id')
+  expect(delivered[0]!.text).toContain('规划回合')
+  expect(delivered.filter(item => item.id === 'first-native')).toHaveLength(1)
 })
 
 it('removes members from the workflow while preserving their original tickets and repairing links', async () => {
@@ -76,6 +80,25 @@ it('appends a reviewer after a completed frontend without redispatching its fini
   expect(done.state).toBe('completed')
   expect(done.members.find(member => member.id === 'frontend')!.sessionId).toBe(`worker-${ticket}`)
   expect(host.runtime.store.tickets.get(ticket)!.assignments).toHaveLength(1)
+}, 40_000)
+
+it('keeps completed work and review intact for a rename, but dispatches a changed responsibility', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const frontend = { id: 'frontend', name: '前端', instructions: '实现页面', responsibility: 'implementer' as const, dependencies: [] }
+  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory, members: [frontend], workflow: { maxRounds: 3 } })
+  await complete(team.coordinatorTicketId!)
+  const ticketId = host.runtime.teams!.get(team.id).members.find(member => member.id === 'frontend')!.ticketId!
+  await complete(ticketId); await review(team.coordinatorTicketId!, 'pass')
+  const plannerCount = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.assignments.length
+  const renamed = { ...frontend, name: '网页前端' }
+  const updated = await host.runtime.teams!.updatePlan(team.id, { revision: 0, members: [renamed] })
+  expect(updated.state).toBe('completed')
+  expect(updated.members.find(member => member.id === 'frontend')).toMatchObject({ name: '网页前端', sessionId: `worker-${ticketId}` })
+  expect(host.runtime.store.tickets.get(ticketId)!.assignments).toHaveLength(1)
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.assignments).toHaveLength(plannerCount)
+  await host.runtime.teams!.updatePlan(team.id, { revision: 1, members: [{ ...renamed, instructions: '增加键盘操作' }] })
+  await complete(team.coordinatorTicketId!); await readySession(ticketId)
+  expect(host.runtime.store.tickets.get(ticketId)!.assignments).toHaveLength(2)
 }, 40_000)
 
 it('exposes the real shared commander without counting it as an executing member', async () => {
@@ -469,6 +492,25 @@ it('automatically resumes an incomplete final review in the same session until r
   view = host.runtime.teams!.get(team.id)
   expect(view.state).toBe('completed')
   expect(view.completion?.unverified).toContain('没有运行浏览器检查')
+}, 40_000)
+
+it('clears an automatic continuation warning when the same planner finally reports a valid completion', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await host.runtime.teams!.create({ ...request(), directory: host.directory })
+  const session = await readySession(team.coordinatorTicketId!)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await readySession(team.coordinatorTicketId!)
+    await host.runTool(session, 'orchestrator_report', { state: 'progress', summary: '尚未提交规划结论' })
+    const agent = host.agents.get(session)!; agent.status = 'idle'; host.ctx.emit('agent/status', { agent, status: 'idle' } as never)
+    await settle()
+  }
+  expect(host.runtime.teams!.get(team.id).error).toContain('连续 2 次')
+  const assignments = host.runtime.store.tickets.get(team.coordinatorTicketId!)!.assignments.length
+  await complete(team.coordinatorTicketId!, '规划结论已补齐')
+  const view = host.runtime.teams!.get(team.id)
+  expect(view.error).toBeUndefined()
+  expect(view.members.find(member => member.id === 'build')!.ticketId).toBeTruthy()
+  expect(host.runtime.store.tickets.get(team.coordinatorTicketId!)!.assignments).toHaveLength(assignments)
 }, 40_000)
 
 it('continues idle planning and member turns, but preserves genuine questions and bounds repeated incomplete turns', async () => {

@@ -123,6 +123,9 @@ it('prepares an editable workflow without dispatching a goal before entering cha
   await click(all('[data-node="build"] .dt-flow-node-body')[0]!)
   await type(field<HTMLTextAreaElement>('分工'), '实现 formatLabel')
   await type(field<HTMLSelectElement>(zh.localTaskModel), JSON.stringify(['worker-provider', 'worker-model']))
+  const node = all('[data-node="build"]')[0]!
+  await act(async () => { node.querySelector('button')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })) })
+  const moved = node.style.top
   await click('进入会话')
   const sent = server.requests.find(item => item.path === 'local/teams/prepare' && item.method === 'POST')?.body
   expect(sent).toMatchObject({ title: '格式化小队', permissionPreset: 'workspace-write',
@@ -130,6 +133,8 @@ it('prepares an editable workflow without dispatching a goal before entering cha
   expect(sent).not.toHaveProperty('instructions')
   expect(server.requests.some(item => item.path === 'local/teams' && item.method === 'POST')).toBe(false)
   expect(all('[role="dialog"]')).toHaveLength(0)
+  await click('编排')
+  expect(all('[data-node="build"]')[0]!.style.top).toBe(moved)
 })
 it('opens member properties immediately and repairs dependencies when deleting a node', async () => {
   await mount(); await click('新建任务'); await click('添加成员')

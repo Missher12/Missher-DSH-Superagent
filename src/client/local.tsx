@@ -11,7 +11,7 @@ import type { TeamMember } from '../teams/contracts.ts'
 import { defaultMembers } from './team-members-editor.tsx'
 import { Select } from './select.tsx'
 import { usePoll } from './api.ts'
-import { WorkflowEditor } from './workflow-editor.tsx'
+import { WorkflowEditor, transferWorkflowView } from './workflow-editor.tsx'
 
 const DRAFT = 'dsh-superagent/local-draft'
 const DRAFT_CHANGED = 'dsh-superagent/task-draft-changed'
@@ -97,6 +97,7 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
       const task = draft.mode === 'team' ? await call('POST local/teams/prepare', { body: { ...setup, coordinatorName: t('teamCoordinator'),
         ...(draft.teamName.trim() ? { name: draft.teamName.trim() } : {}), members: draft.members ?? defaultMembers(t), workflow: { maxRounds: draft.maxRounds ?? 3 } } })
         : await call('POST local/tasks', { body })
+      if ('members' in task) transferWorkflowView(`new-team/${draft.requestId}`, task.id)
       const next = { ...blank(), directory: draft.directory, existing: draft.existing }
       rememberDraft(next); setDraft(next)
       navigate('members' in task ? { page: 'overview', query: { team: task.id, member: 'coordinator' } }
@@ -110,7 +111,7 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
       footer={<div className="dt-flow-actions"><span>{t('flowPrepareHint')}</span><Button disabled={submit.busy} onClick={() => edit({ mode: 'single' })}>{t('teamModeSingle')}</Button>
         <Button disabled={submit.busy} onClick={() => edit({ open: false })}>{t('cancel')}</Button><Button type="submit" form={formId} variant="primary" disabled={submit.busy}>{t('flowEnterChat')}</Button></div>}>
       <ComposerForm key={draft.requestId} id={formId} disabled={submit.busy || paused} failure={failure} onSubmit={() => { void submit.run() }}>
-        <WorkflowEditor members={draft.members ?? defaultMembers(t)} onChange={members => edit({ members })} model={draft.model} disabled={submit.busy || paused}
+        <WorkflowEditor storageKey={`new-team/${draft.requestId}`} members={draft.members ?? defaultMembers(t)} onChange={members => edit({ members })} model={draft.model} disabled={submit.busy || paused}
           settings={<><ComposerField label={t('teamName')}><Input maxLength={160} value={draft.title} placeholder={t('flowNewTeam')} onChange={event => edit({ title: event.target.value })} /></ComposerField>
             <ComposerField label={t('localWorkspaceMode')}><Select value={draft.existing ? 'existing' : 'independent'} onChange={event => edit({ existing: event.target.value === 'existing' })}>
               <option value="independent">{t('localIndependent')}</option><option value="existing">{t('localExistingProject')}</option></Select></ComposerField>

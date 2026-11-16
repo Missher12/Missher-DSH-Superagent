@@ -254,6 +254,50 @@ describe('a worker that goes on after a passing failure', () => {
     expect(told(one.sessionId)).toEqual([])
   })
 })
+describe('report format recovery', () => {
+  const malformed = () => new Error('Tool call "orchestrator_report": Expected comma after property value in JSON at position 283. Received arguments: {"state":"ready"')
+  const emit = (sessionId: string, error = malformed()) => h.ctx.emit('agent/error', { agent: h.agents.get(sessionId), turn: 1, step: 1, error } as never)
+  const repairs = (sessionId: string) => h.deliveries.mock.calls.map(([call]) => call).filter(call => call.sessionId === sessionId && call.text.includes('REPORT_FORMAT_REPAIR'))
+  it('corrects a malformed report in the same assignment, then accepts a real valid report', async () => {
+    const one = await h.acceptedTicket(feishu('1', '@bot 修一'))
+    const ticket = () => h.runtime.store.tickets.get(one.ticket.id)!
+    const assignmentId = latestAssignment(ticket())!.id
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try { emit(one.sessionId); await vi.advanceTimersByTimeAsync(1500) } finally { vi.useRealTimers() }
+    expect(repairs(one.sessionId)).toHaveLength(1)
+    expect(latestAssignment(ticket())!.id).toBe(assignmentId)
+    expect(latestAssignment(ticket())?.report).toBeUndefined()
+    h.step(one.sessionId); await h.runtime.idle()
+    await h.runTool(one.sessionId, 'orchestrator_report', { state: 'ready', summary: '实际交付已完成' })
+    expect(latestAssignment(ticket())?.report?.state).toBe('ready')
+    expect(ticket().assignments).toHaveLength(1)
+  })
+  it('stops after two corrections and does not turn other tool failures into report retries', async () => {
+    const one = await h.acceptedTicket(feishu('1', '@bot 修一'))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try { for (let i = 0; i < 3; i++) { emit(one.sessionId); await vi.advanceTimersByTimeAsync(1500) } } finally { vi.useRealTimers() }
+    expect(repairs(one.sessionId)).toHaveLength(2)
+    expect(latestAssignment(h.runtime.store.tickets.get(one.ticket.id)!)?.report).toMatchObject({ state: 'failed', summary: expect.stringContaining('2') })
+    const two = await h.acceptedTicket(feishu('2', '@bot 修二'))
+    emit(two.sessionId, new Error('Tool call "read": Unexpected token in JSON'))
+    await h.runtime.idle()
+    expect(latestAssignment(h.runtime.store.tickets.get(two.ticket.id)!)?.report?.state).toBe('failed')
+    expect(repairs(two.sessionId)).toEqual([])
+  })
+  it('waits for pause to end and never resumes a stopped assignment', async () => {
+    const one = await h.acceptedTicket(feishu('1', '@bot 修一'))
+    await h.runtime.settings.pause(true, 'panel')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      emit(one.sessionId); await vi.advanceTimersByTimeAsync(6000)
+      expect(repairs(one.sessionId)).toEqual([])
+      await h.runtime.settings.pause(false, 'panel'); await vi.advanceTimersByTimeAsync(5000)
+      expect(repairs(one.sessionId)).toHaveLength(1)
+      emit(one.sessionId); await h.runtime.engine.stopTicket(one.ticket.id); await vi.advanceTimersByTimeAsync(6000)
+      expect(repairs(one.sessionId)).toHaveLength(1)
+    } finally { vi.useRealTimers() }
+  })
+})
 describe('a worker whose work runs in the background', () => {
   /** The worker's last words, as its Session holds them. */
   const said = (sessionId: string, text: string) => {

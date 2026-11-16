@@ -98,7 +98,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
         pr_number: z.number().int().positive().nullish().describe('The ticket GitHub PR, only when GitHub is connected. Omit for local tasks.'),
         reply_to_trigger_id: z.string().optional().describe('The explicit human question this report answers; never for ordinary progress.'),
         ...(host.recordDelivery ? { delivery: DeliverySchema.optional().describe('Local workspace delivery: real files, exact shell commands actually executed this assignment, their reported outcomes, and unverified items. Commands are matched to actual calls. Omit unavailable evidence rather than inventing it.') } : {}),
-        ...(host.teams ? { team_review: TeamReviewSchema.optional().describe('Version-bound review for a managed team. Read orchestrator_team first. A revise decision completes this review turn, then returns to the planner; it does not complete the team.') } : {}),
+        ...(host.teams ? { team_review: TeamReviewSchema.optional().describe('Version-bound review for a managed team. Read orchestrator_team first. In phase=planning, report ready with summary only; OMIT team_review. pass/blocked require targets: []; revise requires affected member IDs. A revise decision returns to the planner; it does not complete the team. If validation rejects the report, correct only its fields and resubmit without repeating completed commands or changes.') } : {}),
       }).strict(),
       execute: async (args, signal) => {
         const review = args.team_review === undefined ? undefined : TeamReviewSchema.parse(args.team_review)

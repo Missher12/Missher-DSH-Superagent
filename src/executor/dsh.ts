@@ -32,6 +32,12 @@ export const ticketOfSession = (sessionId: string): string | undefined => sessio
 const PREPARE_TIMEOUT_MS = 10 * 60_000
 /** Maximum transient retry attempts for a launch or worker turn, and the initial backoff before resuming a turn. */
 const TRANSIENT_TRIES = 3, TRANSIENT_BACKOFF_MS = 15_000
+const REPORT_REPAIR_TRIES = 2
+/** Only malformed report arguments, never command failures or text inside the rejected arguments. */
+function reportFormatError(error: unknown): boolean {
+  const detail = String(error).split('Received arguments:')[0]!
+  return /Tool call ["']orchestrator_report["']:/.test(detail) && /\bJSON\b|Unexpected token|Unterminated string/i.test(detail)
+}
 /** How long a worker's background work may run on after its turn ended before it is stopped and the worker reported waiting. */
 const BACKGROUND_LIMIT_MS = 30 * 60_000
 /** How long a host stop waits for the workers' background work to stop. */
@@ -219,6 +225,7 @@ export class DshExecutor implements Executor {
   private readonly slots: WorkerSlots
   /** Transient failure counts tried so far: keyed by `assignment.id` for worker turns and `launch:<assignment.id>` for launches. */
   private readonly transient = new Map<string, number>()
+  private readonly reportRepairs = new Map<string, { tries: number; reportAt?: string }>()
   /** Assignment IDs currently waiting on a transient-failure backoff timer before resuming their worker turn. */
   private readonly resuming = new Set<string>()
   /**
@@ -398,6 +405,7 @@ export class DshExecutor implements Executor {
   stop(ticket: Ticket, assignment: Assignment, reason: string): void {
     if (this.host.managed?.(ticket)) return
     this.transient.delete(assignment.id); this.transient.delete(`launch:${assignment.id}`)
+    this.reportRepairs.delete(assignment.id)
     const report = assignment.report
     const busy = !!assignment.deliveredAt && !!report && assignment.deliveredAt >= report.at
     const ownTurn = (report?.state === 'ready' || report?.state === 'dropped') && !busy
@@ -576,6 +584,20 @@ export class DshExecutor implements Executor {
       const ticket = this.ticketOf(agent)
       const assignment = ticket && runningAssignment(ticket)
       if (!ticket || !assignment || !liveTicket(ticket) || this.host.closing()) return
+      if (reportFormatError(error)) {
+        const prior = this.reportRepairs.get(assignment.id)
+        const tries = (prior?.reportAt === assignment.report?.at ? prior?.tries ?? 0 : 0) + 1
+        if (tries <= REPORT_REPAIR_TRIES) {
+          this.reportRepairs.set(assignment.id, { tries, reportAt: assignment.report?.at })
+          this.resumeTurn(ticket.id, assignment.id, `report-repair:${assignment.id}:${assignment.report?.at ?? 'initial'}:${tries}`, 1000,
+            `[REPORT_FORMAT_REPAIR ${tries}/${REPORT_REPAIR_TRIES}] Your orchestrator_report arguments were not valid JSON. The report was not recorded. `
+            + 'Correct and resubmit only that report in this same assignment. Preserve completed files and checks; do not repeat commands, edits, messages, commits or other side effects. '
+            + 'Use valid JSON with escaped quotes and newlines, the declared fields and enum values. For team_review pass/blocked, targets must be []; revise requires member IDs. '
+            + 'Read orchestrator_team if you need a current review token. Use only actual evidence; never invent a successful result. '
+            + `Parser error: ${String(error).split('Received arguments:')[0]!.slice(0, 400)}`)
+        } else void this.background(Promise.resolve().then(() => { this.failed(ticket.id, `报告格式自动纠正已达 ${REPORT_REPAIR_TRIES} 次，仍无法提交：${String(error).split('Received arguments:')[0]!.slice(0, 400)}`) }))
+        return
+      }
       if (this.retries(assignment.id, error)) { this.resumeAfter(ticket.id, assignment.id, error); return }
       void this.background(Promise.resolve().then(() => { this.failed(ticket.id, String(error)) }))
     }))
@@ -626,6 +648,9 @@ export class DshExecutor implements Executor {
   private resumeAfter(ticketId: string, assignmentId: string, error: unknown): void {
     const tries = this.transient.get(assignmentId)!
     const text = `Your last turn failed for a passing reason (${String(error).slice(0, 200)}). Continue the assignment where it stopped.`
+    this.resumeTurn(ticketId, assignmentId, `retry:${assignmentId}:${tries}`, TRANSIENT_BACKOFF_MS * 2 ** (tries - 1), text)
+  }
+  private resumeTurn(ticketId: string, assignmentId: string, messageId: string, delayMs: number, text: string): void {
     this.resuming.add(assignmentId)
     const go = () => {
       if (this.host.closing()) return
@@ -639,11 +664,11 @@ export class DshExecutor implements Executor {
         if (!(failure instanceof Later)) throw failure
         this.after(SLOT_WAIT_MS, go); return
       }
-      const sent = this.host.sessions.prompt(sessionId, `retry:${assignmentId}:${tries}`, text, 'queue')
+      const sent = this.host.sessions.prompt(sessionId, messageId, text, 'queue')
       void this.background(sent.finally(() => { if (waking) this.slots.free(ticketId); this.resuming.delete(assignmentId) })
         .catch(failure => { this.failed(ticketId, String(failure)) }))
     }
-    this.after(TRANSIENT_BACKOFF_MS * 2 ** (tries - 1), go)
+    this.after(delayMs, go)
   }
   /** Schedules `then` to run after `ms` milliseconds unless `dispose()` is called first. */
   private after(ms: number, then: () => void): void {

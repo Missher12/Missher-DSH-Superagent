@@ -23,6 +23,8 @@ const done = (ticket: Ticket | undefined) => ticket?.ended?.outcome === 'complet
 const assignment = (ticket: Ticket | undefined) => ticket?.assignments.at(-1)?.id ?? ''
 const version = (ticket: Ticket | undefined) => ticket ? key(ticket.id, assignment(ticket), latestReport(ticket)?.at ?? '', ticket.inputs.at(-1)?.id ?? '') : ''
 const now = () => new Date().toISOString()
+const workPlan = ({ name: _, ...plan }: TeamMember) => JSON.stringify(plan)
+const CONTINUATION_LIMIT = '自动续作连续 2 次仍未完成本回合，请查看会话中的原因，补充要求或点击继续后重试。'
 const EVIDENCE = '\n交付请使用 orchestrator_report 的 delivery：files 只列真实文件；checks.command 必须与本轮实际执行的 bash/pwsh 命令完全一致，未运行的检查放入 unverified，不得虚构通过、费用或进度。'
 
 /** Persists explicit team plans and advances their real local tasks across delivery dependencies and restarts. */
@@ -118,6 +120,10 @@ export class LocalTeams {
     const before = this.require(id)
     if ((before.planRevision ?? 0) !== input.revision) throw new LocalTaskError('分工已更新，请重新打开编排后修改')
     if (JSON.stringify(before.members.map(member => member.plan)) === JSON.stringify(input.members)) return this.get(id)
+    const changed = input.members.length !== before.members.length || input.members.some(plan => {
+      const old = before.members.find(member => member.plan.id === plan.id)
+      return !old || workPlan(old.plan) !== workPlan(plan)
+    })
     const team = this.patch(id, current => {
       if (current.stoppedAt) throw new LocalTaskError('团队已停止')
       if ((current.planRevision ?? 0) !== input.revision) throw new LocalTaskError('分工已更新，请重新打开编排后修改')
@@ -129,10 +135,11 @@ export class LocalTeams {
       }
       current.members = input.members.map(plan => {
         const old = current.members.find(member => member.plan.id === plan.id)
-        return { ...old, plan, ...(old?.ticketId && JSON.stringify(old.plan) !== JSON.stringify(plan) ? { pendingRound: `edit:${input.revision + 1}` } : {}) }
+        return { ...old, plan, ...(old?.ticketId && workPlan(old.plan) !== workPlan(plan) ? { pendingRound: `edit:${input.revision + 1}` } : {}) }
       })
       current.request.members = input.members
       current.planRevision = input.revision + 1
+      if (!changed) return
       if (current.workflow) {
         current.workflow.planVersion++
         delete current.workflow.pendingReview; delete current.workflow.halted; delete current.workflow.changedMembers
@@ -143,7 +150,7 @@ export class LocalTeams {
     for (const member of team.members) if (member.ticketId && JSON.stringify(before.members.find(item => item.plan.id === member.plan.id)?.plan.model) !== JSON.stringify(member.plan.model)) {
       await this.runtime.sessions.selectModel(workerSessionId(member.ticketId), member.plan.model ?? team.request.model ?? null)
     }
-    if (team.coordinatorTicketId) await this.runtime.local!.followup(team.coordinatorTicketId, `plan-edit:${team.planRevision}`, this.planInstructions(team))
+    if (changed && team.coordinatorTicketId) await this.runtime.local!.followup(team.coordinatorTicketId, `plan-edit:${team.planRevision}`, this.planInstructions(team))
     await this.reconcile(); return this.get(id)
   }
 
@@ -456,11 +463,11 @@ export class LocalTeams {
     }
     const review = TeamReviewSchema.parse(input)
     if (team.stoppedAt || team.workflow!.halted || !reviewer) throw new LocalTaskError('当前成员不能提交团队复核')
+    if (team.phase === 'planning') throw new LocalTaskError('当前是规划回合：请用 state="ready" 和 summary 提交规划结论，不要携带 team_review；成员交付后再复核。')
     if (review.planVersion !== context.token.planVersion || review.roundId !== context.token.roundId || review.inputVersion !== context.token.inputVersion || hasUnreadRequest(ticket)) {
       throw new LocalTaskError('复核轮次或输入已过期，请读取当前上下文后重新检查')
     }
     if (review.decision === 'blocked' ? state !== 'blocked' : state !== 'ready') throw new LocalTaskError('受阻复核使用 blocked，完成复核使用 ready')
-    if (team.phase === 'planning') throw new LocalTaskError('规划回合请核对或修改计划；成员交付后再复核')
     if (context.memberId === 'coordinator' && team.phase === 'reviewing' && review.decision === 'pass') throw new LocalTaskError('检验已请求返工，请指定受影响成员；重新检验后再通过')
     if (context.memberId === 'coordinator' && team.workflow!.changedMembers?.length && review.decision === 'pass') throw new LocalTaskError('成员分工已更新，请先分派返工并重新检验，不能沿用旧交付通过')
     for (const id of review.targets) if (!team.members.some(member => member.plan.id === id) || id === context.memberId) throw new LocalTaskError('返工目标必须是团队中其他已有成员')
@@ -564,8 +571,10 @@ export class LocalTeams {
   async stop(): Promise<void> { this.stopped = true; clearInterval(this.timer); await this.running; for (const release of this.releases.splice(0)) release() }
 
   private planInstructions(team: TeamRecord): string {
-    return `团队目标：${team.request.title}\n${team.request.instructions}\n\n你是用户为此任务创建的协调成员。此为规划回合，团队尚未完成。
+    return `你是用户为此任务创建的协调成员。此为规划回合，团队尚未完成。
 核对目标、现有项目规则、成员分工和交付依赖；仅阅读必要内容，不在此回合实现或另建任务/代理。分工已由用户确认，插件在你的本轮 ready 后派发这些成员。若目标或权限受阻，报告 blocked 并提出具体问题。ready 仅表示规划核对完成，不表示团队目标已经完成。
+规划通过只提交 state="ready" 与 summary，不携带 team_review。
+团队目标：${team.request.title}\n${team.request.instructions}
 用户已明确确认的事项不重复拍板；收到问题答复后沿当前会话继续，核对完成就通过 orchestrator_report 回传，由插件继续派发已配置的成员。
 成员分工：\n${team.members.map(member => `${member.plan.id} / ${member.plan.name}: ${member.plan.instructions}\n等待交付：${member.plan.dependencies.join(', ') || '无'}`).join('\n\n')}
 成员全部交付后，你会在同一个会话收到真实结果，再进行目标复核、必要集成与最终汇总。${EVIDENCE}${this.workflowInstructions(team)}`
@@ -606,7 +615,7 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}${this.workflowInstructions
     const prior = team.continuations?.[ticket.id], current = version(ticket)
     const attempts = prior?.cycle === cycle ? prior.attempts + (prior.version === current ? 0 : 1) : 1
     if (attempts > 2) {
-      this.patch(team.id, value => { value.error = '自动续作连续 2 次仍未完成本回合，请查看会话中的原因，补充要求或点击继续后重试。' })
+      this.patch(team.id, value => { value.error = CONTINUATION_LIMIT; value.continuationBlock = { ticketId: ticket.id, assignmentId: assignment(ticket) } })
       return
     }
     this.patch(team.id, value => { (value.continuations ??= {})[ticket.id] = { cycle, attempts, version: current } })
@@ -630,6 +639,13 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}${this.workflowInstructions
     if (team.sourceTicketId && !this.allowedWorker(team.sourceTicketId)) return
     if (!await this.syncSource(team)) return
     team = this.require(id)
+    if (team.error === CONTINUATION_LIMIT && !team.workflow?.halted) {
+      // Older planning warnings predate a stored blocker; planning has exactly one active owner.
+      const blocker = team.continuationBlock ?? (team.phase === 'planning' && team.coordinatorTicketId
+        ? { ticketId: team.coordinatorTicketId, assignmentId: assignment(this.ticket(team.coordinatorTicketId)) } : undefined)
+      const completed = blocker && this.ticket(blocker.ticketId)
+      if (blocker && done(completed) && assignment(completed) === blocker.assignmentId) team = this.patch(id, value => { delete value.error; delete value.continuationBlock })
+    }
     if (team.error || team.workflow?.halted) return
     const local = this.runtime.local!
     if (!team.coordinatorTicketId) {
@@ -644,12 +660,9 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}${this.workflowInstructions
       // Continue below so the first native message is not left waiting for a timer.
     }
     for (const message of team.pendingMessages ?? []) {
-      const sessionId = workerSessionId(team.coordinatorTicketId!)
+      // Let the executor deliver native parts after its assignment brief. Steering here can start
+      // the first turn before the planner knows its role, causing it to implement the whole task.
       this.runtime.local!.receiveNative(team.coordinatorTicketId!, message)
-      await this.runtime.sessions.ensure(sessionId, team.directory!, `${team.request.title} · ${team.request.coordinatorName}`, 'worker')
-      await this.runtime.sessions.nativePrompt(sessionId, message, () => {
-        if (this.stopped || this.require(id).stoppedAt) throw new LocalTaskError('团队已停止')
-      })
       team = this.patch(id, current => { current.pendingMessages = current.pendingMessages?.filter(item => item.id !== message.id) })
     }
     let coordinator = this.ticket(team.coordinatorTicketId)
@@ -763,6 +776,7 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}${this.workflowInstructions
       && ['progress', 'waiting'].includes(latestReport(coordinator)?.state ?? '') && !this.runtime.sessions.activity(workerSessionId(coordinator.id)).running
     this.patch(id, team => {
       delete team.error
+      delete team.continuationBlock
       for (const ticketId of Object.keys(team.continuations ?? {})) {
         const ticket = this.ticket(ticketId)
         if (ticketId === coordinator?.id || (ticket && !ticket.ended && !ticket.attention)) delete team.continuations![ticketId]
@@ -783,6 +797,7 @@ ${this.handoffContext(team, team.members)}${EVIDENCE}${this.workflowInstructions
         delete team.workflow.halted
       }
       if (!team.workflow?.halted) delete team.error
+      if (!automatic) delete team.continuationBlock
       if (!automatic && team.continuations) delete team.continuations[ticketId]
       if (team.eventWaits?.[ticketId]) team.eventWaits[ticketId]!.waiting = false
       if (team.phase === 'completed') {

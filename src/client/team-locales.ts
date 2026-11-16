@@ -52,6 +52,8 @@ export const TEAM_TEXT = {
   flowChatReady: ["团队已就绪，发送消息或图片开始安排工作。", "Your team is ready. Send a message or image to assign work."],
   flowRelations: ["工作流关系", "Workflow connections"],
   flowHierarchy: ["管理层级", "Reporting lines"],
+  flowDraftKept: ["草稿会保留；保存后应用，取消则放弃。", "Draft retained. Save to apply; cancel to discard."],
+  flowDraftStale: ["分工已更新。当前草稿保留，请复制所需内容，取消后重新编排。", "The plan changed. Copy any edits you need, cancel this draft and reopen the editor."],
   flowDelivery: ["执行流程", "Execution flow"],
   flowAddAfter: ['在{name}后添加', 'Add after {name}'],
   flowAddNext: ['添加后续成员', 'Add next member'],
