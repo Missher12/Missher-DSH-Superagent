@@ -7,6 +7,25 @@ import { server } from './fixtures/panel-server.ts'
 import { zh } from '../src/client/locales.ts'
 
 usePanel()
+it.each(['retrying', 'sent', 'unreachable'] as const)('shows external result delivery %s directly in the team pane', async state => {
+  const view = team(); view.state = 'completed'; view.phase = 'completed'
+  view.sourceDelivery = { state, receiptId: 'result-receipt', attempts: state === 'retrying' ? 1 : 0,
+    ...(state === 'retrying' ? { error: '网络连接失败' } : {}) }
+  server.teamViews[view.id] = view
+  at({ page: 'overview', query: { team: view.id } }); await mount()
+  const status = all('.dt-team-source-delivery')[0]
+  expect(status?.textContent).toContain(state === 'retrying' ? '回传重试中' : state === 'sent' ? '已送达' : '来源不可达')
+  if (state === 'retrying') {
+    await click('重试回传')
+    expect(server.requests.some(item => item.method === 'POST' && item.path === `local/teams/${view.id}/delivery/retry`)).toBe(true)
+  } else expect(status?.textContent).not.toContain('重试回传')
+})
+it('offers team recovery for a failed member without treating an unanswered question as a failure', async () => {
+  const view = team(); view.state = 'failed'
+  view.members[1]!.state = 'failed'; view.members[1]!.retry = true; server.teamViews[view.id] = view
+  at({ page: 'overview', query: { team: view.id } }); await mount(); await click('重试失败成员')
+  expect(server.requests.some(item => item.method === 'POST' && item.path === `local/teams/${view.id}/retry`)).toBe(true)
+})
 it('shows interface execution by reviewer and keeps long recovery causes collapsed', async () => {
   const view = team(); view.phase = 'working'
   view.interfaceChecks = [{ id: 'contract', name: '跨成员返回值', command: 'node --test integration.test.mjs', reviewers: ['coordinator', 'check'], passed: ['check'], failed: ['coordinator'] }]

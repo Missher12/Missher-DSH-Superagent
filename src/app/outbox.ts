@@ -31,6 +31,10 @@ export class Outbox implements OutboxPort {
     store.atomic(() => { if (store.receipts.add(message)) effects.enqueue('reply', message.id, {}) })
   }
   status(id: string): ReplyStatus | undefined { return this.host.store.receipts.get(id)?.status }
+  /** Retry the original pending receipt; never create a second message or reopen a dropped target. */
+  retry(id: string): void {
+    if (this.host.store.receipts.get(id)?.status === 'pending') this.host.effects.enqueue('reply', id, {})
+  }
   withdraw(id: string): void {
     const { store, effects } = this.host
     store.atomic(() => { if (store.receipts.withdraw(id)) effects.cancel('reply', id) })

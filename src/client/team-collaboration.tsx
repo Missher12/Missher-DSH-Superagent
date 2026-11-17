@@ -14,6 +14,7 @@ import { Select } from './select.tsx'
 import { EditTeamWorkflow } from './workflow-editor.tsx'
 import { TeamAcceptance } from './team-acceptance.tsx'
 import { TeamRecords } from './team-records.tsx'
+import { TeamSourceDelivery } from './team-delivery.tsx'
 
 function AddTeamMember({ team, reload, select, parentId = 'coordinator', compact = false }: { team: TeamView; reload: () => Promise<void>; select: (id: string) => void; parentId?: string; compact?: boolean }) {
   const { t, call } = usePanel(), form = useId()
@@ -114,6 +115,7 @@ export function TeamCollaboration({ team, selected, select, openSession, reload,
   const review = team.state !== 'stopped' && !!team.completion && ((team.completion.finalReview && !!team.completion.issues.length)
     || (team.completion.members && !team.completion.finalReview && coordinator?.state === 'waiting' && !coordinator.running))
   const participants = teamParticipants(team, t), active = participants.find(member => member.id === selected) ?? team.members[0]!
+  const failed = participants.some(member => member.state === 'failed' && member.retry)
   const processing = participants.filter(member => member.running && !member.quotaWait).length
   const feedback = teamFeedback(team), memberName = (id: string) => participants.find(member => member.id === id)?.name ?? id
   const recent = team.members.flatMap(member => member.events.filter(event => event.summary?.trim()).map(event => ({ ...event, member: member.name })))
@@ -128,8 +130,9 @@ export function TeamCollaboration({ team, selected, select, openSession, reload,
       ]} /></header>
     <div id="dt-team-collaboration-content" className="dt-team-collaboration-body" role="tabpanel"
       aria-labelledby={tab === 'graph' ? 'dt-team-relations' : tab === 'members' ? 'dt-team-assignments' : tab === 'records' ? 'dt-team-records' : 'dt-team-completion'}>
-      {!team.workflow?.halted && (team.error || review) && <div className="dt-team-issue" role="alert"><p>{team.error ?? (team.completion!.issues.join('\n') || t('teamReviewPending'))}</p>
-        {team.state !== 'stopped' && <Button size="sm" disabled={retry.busy} onClick={() => { void retry.run() }}>{t(team.error ? 'teamRetry' : 'teamReviewContinue')}</Button>}</div>}
+      <TeamSourceDelivery team={team} reload={reload} />
+      {!team.workflow?.halted && (team.error || review || failed) && <div className="dt-team-issue" role="alert"><p>{team.error ?? (failed ? t('teamFailedMember') : team.completion!.issues.join('\n') || t('teamReviewPending'))}</p>
+        {team.state !== 'stopped' && <Button size="sm" disabled={retry.busy} onClick={() => { void retry.run() }}>{t(failed ? 'teamRetryFailed' : team.error ? 'teamRetry' : 'teamReviewContinue')}</Button>}</div>}
       {tab === 'graph' ? <><div className="dt-team-count-line"><span title={team.workflow ? t('teamRound', { round: team.workflow.round, version: team.workflow.planVersion }) : undefined}>{team.workflow ? t('teamRoundShort', { round: team.workflow.round }) : t('studioTaskFlow')}{processing > 0 && ` · ${t('teamProcessingCount', { count: processing })}`}</span><span>{t('teamDeliveredShort', { done: team.completedMembers, total: team.memberCount })}</span></div>
         {feedback && <button type="button" className="dt-team-feedback" onClick={() => select(feedback.revising ? feedback.to[0] ?? 'coordinator' : feedback.from)} title={feedback.reason}>
           <Icon name="history" size={15} /><span><strong>{feedback.revising ? t('teamRework') : t('teamReviewReturn', { from: memberName(feedback.from), to: memberName('coordinator') })}</strong>

@@ -456,9 +456,9 @@ export class LocalTeams {
         text = [heading, ...details, '完整记录见 SuperAgent 任务详情。'].join('\n')
       }
       const request = root.inputs.findLast(input => input.kind === 'trigger' && input.human && !input.context)
-      this.runtime.engine.reply({ purpose: 'result', ticketId: root.id,
+      const reply = this.runtime.engine.reply({ purpose: 'result', ticketId: root.id,
         ...(request?.kind === 'trigger' ? { triggerId: request.triggerId } : {}), text })
-      this.patch(team.id, value => { value.sourceResult = result })
+      this.patch(team.id, value => { value.sourceResult = result; value.sourceReplyId = reply.id })
     })
   }
 
@@ -836,11 +836,18 @@ ${this.handoffContext(team, team.members)}${this.gitInstructions(team)}${team.gi
     }
     const ticket = this.ticket(team.commanderTicketId)!
     if (ticket.ended?.by === 'human') { this.stopTeam(team.id); return false }
-    if (!done(ticket) || hasUnreadRequest(ticket)) {
-      await this.continueTurn(team, ticket, 'intake', this.intakeInstructions(team))
+    // Older versions retained intake answers for the future planner without delivering them to the waiting commander.
+    for (const input of team.commanderInputs ?? []) {
+      if (this.runtime.store.triggers.get(input.id) && !this.ticket(ticket.id)!.inputs.some(item => item.kind === 'trigger' && item.triggerId === input.id)) {
+        this.runtime.engine.attach(ticket.id, input.id)
+      }
+    }
+    const current = this.ticket(ticket.id)!
+    if (!done(current) || hasUnreadRequest(current)) {
+      await this.continueTurn(team, current, 'intake', this.intakeInstructions(team))
       return false
     }
-    this.patch(team.id, value => { value.commanderBrief = latestReport(ticket)!.summary; value.phase = 'creating' })
+    this.patch(team.id, value => { value.commanderBrief = latestReport(current)!.summary; value.phase = 'creating' })
     return true
   }
   private async reportToCommander(team: TeamRecord): Promise<void> {
@@ -1093,10 +1100,33 @@ ${this.handoffContext(team, team.members)}${this.gitInstructions(team)}${team.gi
         if (ticketId === coordinator?.id || (ticket && !ticket.ended && !ticket.attention)) delete team.continuations![ticketId]
       }
     })
-    if ((completion.finalReview && completion.issues.length) || waiting) await this.runtime.local!.followup(team.coordinatorTicketId!,
+    const candidates = [coordinator, ...team.members.map(member => this.ticket(member.ticketId)),
+      ...(['briefing', 'reporting'].includes(team.phase) ? [this.ticket(team.commanderTicketId)] : [])]
+    const retried = candidates.filter((ticket): ticket is Ticket => !!ticket && !ticket.attention && canRetry(ticket)
+      && (!!ticket.delivery || latestReport(ticket)?.state === 'failed')).map(ticket => {
+      this.runtime.local!.retry(ticket.id)
+      return ticket.id
+    })
+    if (!retried.includes(team.coordinatorTicketId!) && ((completion.finalReview && completion.issues.length) || waiting)) await this.runtime.local!.followup(team.coordinatorTicketId!,
       key('team-review-retry', id, assignment(coordinator), latestReport(coordinator!)?.at ?? ''),
       this.reviewInstructions(team))
-    await this.reconcile(); return this.get(id)
+    await this.reconcile(); return { ...this.get(id), recovery: { retried } }
+  }
+  private sourceDelivery(team: TeamRecord): TeamView['sourceDelivery'] {
+    if (!team.sourceTicketId || !team.sourceResult) return undefined
+    const receipt = this.runtime.store.read.resultReply(team.sourceTicketId, team.sourceReplyId)
+    if (!receipt) return undefined
+    return { receiptId: receipt.id, attempts: receipt.attempts,
+      state: receipt.status === 'sent' ? 'sent' : receipt.status === 'dropped' ? 'unreachable' : receipt.attempts ? 'retrying' : 'pending',
+      ...(receipt.error ? { error: receipt.error } : {}) }
+  }
+  async retryDelivery(id: string): Promise<TeamView> {
+    const delivery = this.sourceDelivery(this.require(id))
+    if (!delivery) throw new LocalTaskError('尚未生成可回传的结果')
+    if (delivery.state === 'unreachable') throw new LocalTaskError('来源会话已不可达，请先检查原会话或接入设置')
+    this.runtime.outbox.retry(delivery.receiptId)
+    await this.runtime.sendReplies()
+    return this.get(id)
   }
   /** A real human follow-up resumes scheduling as well as the member's original Session. */
   inputReceived(ticketId: string, automatic = false, input?: Trigger): void {
@@ -1172,8 +1202,14 @@ ${this.handoffContext(team, team.members)}${this.gitInstructions(team)}${team.gi
       attention: commanderTicket?.attention?.question, model: commanderSessionId && team.phase !== 'draft' ? this.runtime.sessions.model(commanderSessionId) : team.request.model,
       tools: [], running: false, ...(commanderSessionId ? this.runtime.sessions.activity(commanderSessionId) : {}),
     } : { sessionId: this.runtime.masterId, directory: this.runtime.machine.stateDir, model: this.runtime.sessions.model(this.runtime.masterId), ...this.runtime.sessions.activity(this.runtime.masterId) }
-    if (commanderTicket && team.commanderReporting && !team.stoppedAt) commander.state = done(commanderTicket) ? team.phase === 'completed' ? 'finished' : 'waiting' : commanderTicket.ended ? 'stopped' : commanderTicket.attention ? 'attention'
-      : commander.running ? 'working' : commanderTicket.assignments.at(-1)?.startedAt ? 'waiting' : 'queued'
+    if (commanderTicket && team.commanderReporting && !team.stoppedAt) {
+      const stage = ticketStage(commanderTicket)
+      commander.state = done(commanderTicket) ? team.phase === 'completed' ? 'finished' : 'waiting'
+        : commanderTicket.ended ? commanderTicket.ended.by === 'human' ? 'stopped' : 'failed'
+        : stage.stage === 'person' ? stage.action === 'failed' ? 'failed' : 'attention'
+        : commander.running ? 'working' : stage.stage === 'idle' ? 'waiting'
+        : stage.stage === 'working' && stage.action === 'queued' ? 'queued' : 'working'
+    }
     const completion = this.completion(team)
     if (completion.issues.length && team.phase !== 'completed') {
       members[0]!.state = 'attention'; members[0]!.attention = completion.issues.join('\n')
@@ -1181,6 +1217,7 @@ ${this.handoffContext(team, team.members)}${this.gitInstructions(team)}${team.gi
     let state: TeamState = ['briefing', 'planning', 'creating'].includes(team.phase) ? 'planning' : 'working'
     if (members.some(member => member.state === 'waiting') && !members.some(member => ['queued', 'working'].includes(member.state))) state = 'waiting'
     if (members.some(member => member.state === 'failed')) state = 'failed'
+    if (['briefing', 'reporting'].includes(team.phase) && commander.state === 'failed') state = 'failed'
     if (team.error || members.some(member => member.state === 'attention' || member.state === 'stopped')) state = 'attention'
     if (['briefing', 'reporting'].includes(team.phase) && commander.attention) state = 'attention'
     if (team.phase === 'completed' && done(coordinator) && assignment(coordinator) === team.finalAssignment && this.resultVersion(team) === team.finalVersion) state = 'completed'
@@ -1190,6 +1227,7 @@ ${this.handoffContext(team, team.members)}${this.gitInstructions(team)}${team.gi
     return { id, name: team.request.name ?? team.request.title, title: team.request.title, instructions: team.request.instructions,
       ...(team.git ? { git: { repository: team.git.repository, branch: team.git.integration.branch, head: team.git.integration.head } } : {}),
       finalDelivery: team.finalDelivery, phase: team.phase,
+      sourceDelivery: this.sourceDelivery(team),
       timeline: [...team.timeline ?? [], ...team.workflow?.reviews.map(review => ({ id: key('review', review.ticketId, review.assignmentId), at: review.at,
         kind: 'review' as const, detail: review.reason, memberId: review.reviewerId, decision: review.decision, targets: review.targets,
         round: [...new Set(team.workflow!.reviews.map(item => item.roundId))].indexOf(review.roundId) + 1 })) ?? []].sort((a, b) => a.at.localeCompare(b.at)),

@@ -205,6 +205,7 @@ function routes(runtime: HttpHost): Routes {
     'GET local/teams/:id/file': ({ params, query }) => teams().file(params.id, query.path ?? ''),
     'POST local/teams/:id/stop': ({ params }) => teams().stopTeam(params.id),
     'POST local/teams/:id/retry': ({ params }) => teams().retry(params.id),
+    'POST local/teams/:id/delivery/retry': ({ params }) => teams().retryDelivery(params.id),
     'POST local/teams/:id/followup': async ({ params, body }) => {
       const request = z.object({ memberId: z.string().min(1), requestId: z.string().min(1).max(200), text: z.string().trim().min(1).max(64000) }).strict().parse(await body(256 * 1024))
       return teams().followup(params.id, request.memberId, request.requestId, request.text)

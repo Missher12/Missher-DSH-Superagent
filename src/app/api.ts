@@ -38,6 +38,7 @@ export interface Api {
   'GET local/teams/:id/file': { query: { path: string }; response: ReturnType<LocalTeams['file']> }
   'POST local/teams/:id/stop': { response: ReturnType<LocalTeams['stopTeam']> }
   'POST local/teams/:id/retry': { response: Awaited<ReturnType<LocalTeams['retry']>> }
+  'POST local/teams/:id/delivery/retry': { response: Awaited<ReturnType<LocalTeams['retryDelivery']>> }
   'POST local/teams/:id/followup': { body: { memberId: string; requestId: string; text: string }; response: Awaited<ReturnType<LocalTeams['followup']>> }
   'GET local/sessions/:id/model': { response: import('../policy.ts').RoleModel | null }
   'PUT local/sessions/:id/model': { body: import('../policy.ts').RoleModel | null; response: import('../policy.ts').RoleModel }

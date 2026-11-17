@@ -201,10 +201,11 @@ export class LocalTasks {
     if (previous) return this.get(id)
     if (nativeInput) trigger.meta = { ...trigger.meta, nativeInput }
     this.runtime.store.atomic(() => {
-      if (!automatic && this.runtime.teams?.target(id)?.member === '$commander') {
+      const teams = this.runtime.teams, target = teams?.target(id)
+      if (!automatic && teams && target?.member === '$commander' && teams.get(target.team).phase !== 'briefing') {
         // Retain the receipt without reopening the reporting worker or taking its workspace slot.
         this.runtime.store.triggers.save(trigger)
-        this.runtime.teams.inputReceived(id, false, trigger)
+        teams.inputReceived(id, false, trigger)
         return
       }
       this.runtime.receive(trigger)

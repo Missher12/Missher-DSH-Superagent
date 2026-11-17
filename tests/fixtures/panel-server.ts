@@ -346,6 +346,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET local/tasks/:id/file': { query: ['path'], answer: ({ query }) => server.teamFiles[query.path ?? ''] ?? refuse(404, 'File not found') },
   'POST local/teams/:id/stop': { answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },
   'POST local/teams/:id/retry': { answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },
+  'POST local/teams/:id/delivery/retry': { answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },
   'PUT local/teams/:id/acceptance': { body: true, answer: ({ params, body }) => {
     const team = server.teamViews[params.id]; if (!team) return refuse(404, 'Team not found')
     if ((team.controlRevision ?? 0) !== body.revision) return refuse(400, '团队设置已更新')

@@ -5,6 +5,20 @@ import { Button, Icon, Modal } from './controls.tsx'
 import { usePanel } from './provider.tsx'
 import { ArtifactDownload, FilePreview } from './team-file-preview.tsx'
 import { MarkdownLite, SessionButton, When } from './widgets.tsx'
+import { useAction } from './provider.tsx'
+
+export function TeamSourceDelivery({ team, reload }: { team: TeamView; reload?: () => Promise<void> }) {
+  const { t, call } = usePanel(), delivery = team.sourceDelivery
+  const retry = useAction(async () => { await call('POST local/teams/:id/delivery/retry', { id: team.id }); await reload?.() })
+  if (!delivery) return null
+  const pending = delivery.state === 'pending' || delivery.state === 'retrying'
+  return <section className="dt-team-source-delivery" role="status" aria-live="polite" data-state={delivery.state}>
+    <div><Icon size={14} name={delivery.state === 'sent' ? 'decision' : delivery.state === 'unreachable' ? 'alert' : 'clock'} />
+      <span>{t('teamSourceDelivery')}</span><strong>{t(`teamSourceDelivery.${delivery.state}`)}</strong>
+      {pending && reload && <Button size="sm" variant="ghost" disabled={retry.busy} onClick={() => { void retry.run() }}>{t('teamRetryDelivery')}</Button>}</div>
+    {delivery.error && <details><summary>{t('teamDeliveryCause')}</summary><p>{delivery.error}</p></details>}
+  </section>
+}
 
 export function TeamFilesButton({ team }: { team: TeamView }) {
   const { t } = usePanel(), [open, setOpen] = useState(false)
@@ -24,6 +38,7 @@ export function TeamDelivery({ team, compact = false }: { team: TeamView; compac
   const finalReview = team.state === 'completed' ? deliveries.find(delivery => delivery.memberId === 'coordinator') : undefined
   const unverified = (finalReview ? [finalReview] : deliveries).flatMap(delivery => delivery.record.unverified.map(text => ({ text, name: delivery.name })))
   return <div className="dt-team-delivery">
+    <TeamSourceDelivery team={team} />
     {!compact && <details className="dt-team-result-summary"><summary>{t(team.completion?.commander !== undefined ? 'teamFinalReport' : 'teamResultReport')}</summary><MarkdownLite text={team.commander?.summary || team.summary || t('teamReportPending')} /></details>}
     <section><h3>{t(compact ? 'teamSharedFiles' : 'teamFiles')}<span className="dt-count">{files.length}</span></h3>
       {files.length ? <ul className="dt-team-files">{files.map(file => <li key={file.path}>

@@ -111,6 +111,7 @@ export interface TeamRecord {
   sourceTicketId?: string
   sourceInputs?: Record<string, string>
   sourceResult?: string
+  sourceReplyId?: string
 }
 
 /** Public views intentionally distinguish planned roles, ended member runs, and completed team goals. */
@@ -138,6 +139,8 @@ export interface TeamIndex {
   activeMembers?: number; currentAction?: string
 }
 export interface TeamView extends TeamIndex {
+  sourceDelivery?: { state: 'pending' | 'retrying' | 'sent' | 'unreachable'; receiptId: string; attempts: number; error?: string }
+  recovery?: { retried: string[] }
   controlRevision?: number
   interfaceChecks?: (InterfaceCheck & { reviewers: string[]; passed: string[]; failed?: string[] })[]
   timeline?: TeamTimelineEvent[]

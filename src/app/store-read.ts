@@ -66,6 +66,14 @@ export function storeReads(db: DatabaseSync) {
   },
   /** Newest decisions of the given kinds, for surfaces that must surface rare outcomes among many ignores. */
   decisionsOfKinds: (kinds: string[], limit = 30): Decision[] => db.prepare(`SELECT value FROM decision WHERE json_extract(value, '$.kind') IN (${kinds.map(() => '?').join(',')}) ORDER BY rowid DESC LIMIT ?`).all(...kinds, limit).map(row => JSON.parse(String(row.value)) as Decision),
+  /** Result receipt and its delivery attempts; the optional ID keeps newer conversation replies from masking it. */
+  resultReply: (ticketId: string, receiptId?: string): (Receipt & { attempts: number; error: string }) | undefined => {
+    const row = db.prepare(`SELECT o.value, IFNULL(e.attempts, 0) AS attempts, IFNULL(e.error, '') AS error FROM outbox o
+      LEFT JOIN effect e ON e.kind = 'reply' AND e.key = o.id
+      WHERE o.value ->> '$.ticketId' = ? AND o.value ->> '$.kind' = 'reply' AND (? IS NULL OR o.id = ?)
+      ORDER BY o.rowid DESC LIMIT 1`).get(ticketId, receiptId ?? null, receiptId ?? null)
+    return row ? { ...JSON.parse(String(row.value)) as Receipt, attempts: Number(row.attempts), error: String(row.error) } : undefined
+  },
   /** Messages whose `reply` effect failed, with consecutive failure count and last error, oldest first. */
   failingReplies: (): (Receipt & { attempts: number; error: string })[] => db.prepare(`SELECT o.value, e.attempts, e.error FROM effect e
     JOIN outbox o ON o.id = e.key WHERE e.kind = 'reply' AND e.attempts > 0 ORDER BY e.seq`).all()
