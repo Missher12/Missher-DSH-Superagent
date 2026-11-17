@@ -12,6 +12,8 @@ import { errorText, shortText } from './text.ts'
 import { When } from './widgets.tsx'
 import { Select } from './select.tsx'
 import { EditTeamWorkflow } from './workflow-editor.tsx'
+import { TeamAcceptance } from './team-acceptance.tsx'
+import { TeamRecords } from './team-records.tsx'
 
 function AddTeamMember({ team, reload, select, parentId = 'coordinator', compact = false }: { team: TeamView; reload: () => Promise<void>; select: (id: string) => void; parentId?: string; compact?: boolean }) {
   const { t, call } = usePanel(), form = useId()
@@ -66,7 +68,6 @@ export function TeamCompletion({ team }: { team: TeamView }) {
     {facts && <div className="dt-team-check-totals"><span>{t('teamCompletionPassed', { count: facts.checks.passed })}</span>
       <span>{t('teamCompletionFailed', { count: facts.checks.failed })}</span><span>{t('teamCompletionNotRun', { count: facts.checks.notRun })}</span></div>}
     {!!facts?.unverified.length && <section><h3>{t('teamUnverified')}</h3><ul>{facts.unverified.map((item, index) => <li key={index}>{item}</li>)}</ul></section>}
-    <p className="dt-hint">{t('teamCompletionHint')}</p>
   </section>
 }
 
@@ -107,7 +108,7 @@ export function ResumeTeam({ team, reload }: { team: TeamView; reload: () => Pro
 export function TeamCollaboration({ team, selected, select, openSession, reload, delivery }: {
   team: TeamView; selected: string; select: (id: string) => void; openSession: (id: string) => void; reload: () => Promise<void>; delivery: () => void
 }) {
-  const { t, call } = usePanel(), [tab, setTab] = useState<'graph' | 'members' | 'completion'>('graph')
+  const { t, call } = usePanel(), [tab, setTab] = useState<'graph' | 'members' | 'completion' | 'records'>('graph')
   const retry = useAction(async () => { await call('POST local/teams/:id/retry', { id: team.id }); await reload() })
   const coordinator = team.members[0]
   const review = team.state !== 'stopped' && !!team.completion && ((team.completion.finalReview && !!team.completion.issues.length)
@@ -120,12 +121,13 @@ export function TeamCollaboration({ team, selected, select, openSession, reload,
   return <aside className="dt-team-collaboration" aria-label={t('teamCollaboration')}>
     <header><div className="dt-team-collaboration-title"><div><h2>{t('teamCollaboration')}</h2><small>{t('teamConversationCount', { count: participants.filter(member => member.sessionId).length })}</small></div><EditTeamWorkflow key={team.id} team={team} reload={reload} select={openSession} /></div>
       <SegmentedTabs value={tab} onChange={setTab} label={t('teamCollaboration')} items={[
-        { value: 'graph', label: t('teamRelations'), id: 'dt-team-relations', panelId: 'dt-team-collaboration-content' },
-        { value: 'members', label: t('teamMembers'), id: 'dt-team-assignments', panelId: 'dt-team-collaboration-content' },
-        { value: 'completion', label: t('teamCompletionTitle'), id: 'dt-team-completion', panelId: 'dt-team-collaboration-content' },
+        { value: 'graph', label: t('teamRelationsTab'), id: 'dt-team-relations', panelId: 'dt-team-collaboration-content' },
+        { value: 'members', label: t('teamMembersTab'), id: 'dt-team-assignments', panelId: 'dt-team-collaboration-content' },
+        { value: 'completion', label: t('teamAcceptanceTab'), id: 'dt-team-completion', panelId: 'dt-team-collaboration-content' },
+        { value: 'records', label: t('teamRecords'), id: 'dt-team-records', panelId: 'dt-team-collaboration-content' },
       ]} /></header>
     <div id="dt-team-collaboration-content" className="dt-team-collaboration-body" role="tabpanel"
-      aria-labelledby={tab === 'graph' ? 'dt-team-relations' : tab === 'members' ? 'dt-team-assignments' : 'dt-team-completion'}>
+      aria-labelledby={tab === 'graph' ? 'dt-team-relations' : tab === 'members' ? 'dt-team-assignments' : tab === 'records' ? 'dt-team-records' : 'dt-team-completion'}>
       {!team.workflow?.halted && (team.error || review) && <div className="dt-team-issue" role="alert"><p>{team.error ?? (team.completion!.issues.join('\n') || t('teamReviewPending'))}</p>
         {team.state !== 'stopped' && <Button size="sm" disabled={retry.busy} onClick={() => { void retry.run() }}>{t(team.error ? 'teamRetry' : 'teamReviewContinue')}</Button>}</div>}
       {tab === 'graph' ? <><div className="dt-team-count-line"><span title={team.workflow ? t('teamRound', { round: team.workflow.round, version: team.workflow.planVersion }) : undefined}>{team.workflow ? t('teamRoundShort', { round: team.workflow.round }) : t('studioTaskFlow')}{processing > 0 && ` · ${t('teamProcessingCount', { count: processing })}`}</span><span>{t('teamDeliveredShort', { done: team.completedMembers, total: team.memberCount })}</span></div>
@@ -144,7 +146,7 @@ export function TeamCollaboration({ team, selected, select, openSession, reload,
             <span><strong>{member.name}</strong><TeamStatus state={member.state} member label={participantStatus(team, member, t)} /></span><Icon name="chevron-right" size={14} /></button>
           <TeamText text={member.instructions} /><div className="dt-team-assignment-meta"><span>{member.model?.model ?? t('teamModelInherit')}{member.model?.reasoningEffort ? ` · ${member.model.reasoningEffort}` : ''}</span>
             <Button size="sm" onClick={() => select(member.id)}>{t('teamOpenSession')}</Button></div>
-        </li>)}</ul> : <TeamCompletion team={team} />}
+        </li>)}</ul> : tab === 'records' ? <TeamRecords team={team} select={openSession} /> : <><TeamCompletion team={team} /><TeamAcceptance team={team} reload={reload} /></>}
     </div><footer><Button size="sm" aria-label={t('teamDelivery')} icon={<Icon name="folder" />} onClick={delivery}>{t('teamDelivery')}<span className="dt-count">{teamProductCount(team)}</span></Button></footer>
   </aside>
 }

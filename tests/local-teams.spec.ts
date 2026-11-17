@@ -236,6 +236,51 @@ async function review(ticketId: string, decision: 'pass' | 'revise', targets: st
   return team_review
 }
 
+it('requires the agreed interface command in both reviewer and final planner sessions, with real current-run evidence', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const command = 'node --test interface.test.mjs'
+  const team = await createTeam({ ...request(), directory: host.directory, workflow: { maxRounds: 3 },
+    interfaceChecks: [{ id: 'integration', name: '跨成员契约', command }],
+    members: request().members.map(member => ({ ...member, responsibility: member.id === 'check' ? 'reviewer' : 'implementer' })) })
+  await complete(team.coordinatorTicketId!)
+  const build = host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!.ticketId!
+  await complete(build)
+  const check = host.runtime.teams!.get(team.id).members.find(member => member.id === 'check')!.ticketId!
+  for (const ticketId of [check, team.coordinatorTicketId!]) {
+    const session = await readySession(ticketId), context = host.runtime.teams!.contextFor(ticketId)!
+    const report = { state: 'ready', summary: '接口检查通过', team_review: { ...context.token, decision: 'pass', targets: [], reason: '接口与联动符合约定', evidence: [context.ownEvidence] } }
+    await expect(host.runTool(session, 'orchestrator_report', { ...report, delivery: { checks: [] } })).rejects.toThrow('接口验收')
+    await expect(host.runTool(session, 'orchestrator_report', { ...report, delivery: { checks: [{ command, outcome: 'passed' }] } })).rejects.toThrow('真实执行')
+    const agent = host.agents.get(session)!, callId = `integration-${ticketId}`
+    host.ctx.emit('session/event', host.ctx.agents.get(session as never)!.session, { type: 'tool/call', seq: 1, time: Date.now(), data: { callId, name: 'pwsh', arguments: JSON.stringify({ command }) } } as never)
+    await nativeShellResult(session, callId, { exitCode: 0 })
+    host.ctx.emit('session/event', host.ctx.agents.get(session as never)!.session, { type: 'tool/result', seq: 2, time: Date.now(), data: { message: { toolCallId: callId, isError: false } } } as never)
+    await host.runTool(session, 'orchestrator_report', { ...report, delivery: { checks: [{ command, outcome: 'passed' }] } })
+    agent.status = 'idle'; host.ctx.emit('agent/status', { agent, status: 'idle' } as never); await settle()
+  }
+  await finishCommander()
+  const result = host.runtime.teams!.get(team.id)
+  expect(result.state).toBe('completed')
+  expect(result.interfaceChecks?.[0]?.passed).toEqual(['coordinator', 'check'])
+  expect(result.timeline?.filter(event => event.kind === 'review')).toHaveLength(2)
+  await expect(host.runtime.teams!.updatePlan(team.id, { revision: result.planRevision!, members: [request().members[0]!] })).rejects.toThrow('独立审核')
+  expect(await host.api('PUT', `local/teams/${team.id}/acceptance`, { revision: 0, interfaceChecks: [] })).toMatchObject({ status: 400 })
+}, 45_000)
+
+it('lets only the initial planner define interface checks and prevents bypassing them in a later round', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await createTeam({ ...request(), directory: host.directory, workflow: { maxRounds: 3 },
+    members: request().members.map(member => ({ ...member, responsibility: member.id === 'check' ? 'reviewer' : 'implementer' })) })
+  const session = await readySession(team.coordinatorTicketId!)
+  const checks = [{ id: 'contract', name: '返回值联动', command: 'node --test integration.test.mjs' }]
+  const first = host.runtime.teams!.contextFor(team.coordinatorTicketId!)!
+  await host.runTool(session, 'orchestrator_team', { action: 'revise_plan', planVersion: first.token.planVersion, interfaceChecks: checks })
+  expect(host.runtime.teams!.get(team.id).interfaceChecks?.[0]?.command).toBe(checks[0]!.command)
+  const next = host.runtime.teams!.contextFor(team.coordinatorTicketId!)!
+  await expect(host.runTool(session, 'orchestrator_team', { action: 'revise_plan', planVersion: next.token.planVersion, interfaceChecks: [] })).rejects.toThrow('不能')
+  expect(await host.api('PUT', `local/teams/${team.id}/acceptance`, { revision: 0, interfaceChecks: [] })).toMatchObject({ status: 400 })
+}, 20_000)
+
 it('keeps revised work pending until the planner dispatches it and refuses dropping the team as a duplicate', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const team = await createTeam({ ...request(), directory: host.directory, workflow: { maxRounds: 3 },
@@ -991,6 +1036,10 @@ it('restores a persisted team without redispatching its completed planning round
   const restored = host.runtime.teams!.get(team.id)
   expect(restored.members.map(member => member.ticketId)).toEqual(before.members.map(member => member.ticketId))
   expect(restored.state).not.toBe('completed')
+  expect(restored.timeline?.filter(event => event.kind === 'interrupted')).toHaveLength(1)
+  expect(restored.timeline?.filter(event => event.kind === 'recovered')).toHaveLength(1)
+  await host.runtime.teams!.reconcile()
+  expect(host.runtime.teams!.get(team.id).timeline).toEqual(restored.timeline)
   expect(host.runtime.store.tickets.list()).toHaveLength(3)
 }, 20_000)
 

@@ -16,7 +16,7 @@ import { family } from '../kv.ts'
 import { settingsPolicy } from '../policy.ts'
 import { canonicalWorkspace, workspaceOf } from '../executor/workspace.ts'
 import { LocalTaskError } from '../sources/local.ts'
-import { TeamMemberSchema, TeamRequestSchema, TeamPreparationSchema, TeamEditSchema, TeamReviewSchema, TeamPlanPatchSchema, type TeamPreparation, type TeamEdit, type TeamReview, type TeamReviewRecord, type TeamMember, type TeamRecord, type TeamRequest, type TeamMemberView, type TeamView, type TeamIndex, type TeamCompletion, type MemberState, type TeamState } from './contracts.ts'
+import { TeamMemberSchema, TeamRequestSchema, TeamPreparationSchema, TeamEditSchema, TeamReviewSchema, TeamPlanPatchSchema, TeamControlsSchema, type TeamControls, type TeamTimelineEvent, type TeamPreparation, type TeamEdit, type TeamReview, type TeamReviewRecord, type TeamMember, type TeamRecord, type TeamRequest, type TeamMemberView, type TeamView, type TeamIndex, type TeamCompletion, type MemberState, type TeamState } from './contracts.ts'
 import { latestDelivery, previewDeliveryFile, workspaceFile } from './delivery.ts'
 import { GitWorkspaces, GitDeliveryPending, type GitTeam } from './git-workspaces.ts'
 
@@ -90,10 +90,47 @@ export class LocalTeams {
   }
   private patch(id: string, change: (team: TeamRecord) => void): TeamRecord {
     return this.runtime.store.atomic(() => {
-      const team = this.require(id); change(team); team.updatedAt = now(); this.runtime.store.set(records(id), team); return team
+      const team = this.require(id), phase = team.phase, error = team.error; change(team); team.updatedAt = now()
+      if (phase !== team.phase) this.log(team, 'phase', team.phase)
+      if (team.error && team.error !== error) this.log(team, 'blocked', team.error)
+      this.runtime.store.set(records(id), team); return team
     })
   }
+  private log(team: TeamRecord, kind: TeamTimelineEvent['kind'], detail: string, memberId?: string): void {
+    (team.timeline ??= []).push({ id: key(team.id, kind, String(team.timeline?.length ?? 0), now(), detail), at: now(), kind, detail: detail.slice(0, 2000), round: team.workflow?.round, memberId })
+    team.timeline = team.timeline.slice(-200)
+  }
+  async controls(id: string, value: TeamControls): Promise<TeamView> {
+    const input = TeamControlsSchema.parse(value); await this.running
+    const team = this.require(id)
+    if ((team.controlRevision ?? 0) !== input.revision) throw new LocalTaskError('团队设置已更新，请重新打开后修改')
+    const changed = JSON.stringify(input.interfaceChecks) !== JSON.stringify(team.request.interfaceChecks ?? [])
+    if (!changed) return this.get(id)
+    if (!['draft', 'briefing', 'planning'].includes(team.phase)) throw new LocalTaskError('接口检查请在实施前设置；进行中的检查保持原约定')
+    if (input.interfaceChecks.length && (!team.workflow || !team.members.some(member => member.plan.responsibility === 'reviewer'))) throw new LocalTaskError('接口验收需要独立审核成员与循环工作流')
+    this.patch(id, value => {
+      value.request.interfaceChecks = input.interfaceChecks; value.controlRevision = input.revision + 1
+      if (value.workflow) value.workflow.planVersion++
+      this.log(value, 'controls', '接口验收已更新')
+    })
+    if (team.coordinatorTicketId) await this.runtime.local!.followup(team.coordinatorTicketId, `acceptance:${input.revision}`, `用户更新了接口验收，请重新核对：${JSON.stringify(input.interfaceChecks)}。成员交付后，独立审核和策划都需实际执行并报告真实命令依据。`, true)
+    await this.reconcile(); return this.get(id)
+  }
   private ticket(id: string | undefined) { return id ? this.runtime.store.tickets.get(id) : undefined }
+  private interfaceChecks(team: TeamRecord) {
+    const reviewers = ['coordinator', ...team.members.filter(member => member.plan.responsibility === 'reviewer').map(member => member.plan.id)]
+    const results = (id: string, command: string) => {
+      const member = team.members.find(member => member.plan.id === id), ticket = this.ticket(id === 'coordinator' ? team.coordinatorTicketId : member?.ticketId)
+      return member?.pendingRound ? [] : latestDelivery(this.runtime.store, ticket)?.checks.filter(result => result.command === command && !!result.toolCallId) ?? []
+    }
+    return (team.request.interfaceChecks ?? []).map(check => ({ ...check, reviewers,
+      passed: reviewers.filter(id => results(id, check.command).some(result => result.outcome === 'passed')),
+      failed: reviewers.filter(id => results(id, check.command).some(result => result.outcome === 'failed')) }))
+  }
+  private interfaceIssues(team: TeamRecord, memberId: string): string[] {
+    return this.interfaceChecks(team).filter(check => check.reviewers.includes(memberId) && !check.passed.includes(memberId))
+      .map(check => `接口验收“${check.name}”尚未通过：请在本轮实际运行 ${check.command}，并在 delivery.checks 报告相同命令及通过结果。`)
+  }
   private dependencies(team: TeamRecord, member: TeamRecord['members'][number]) {
     return member.plan.dependencies.map(id => team.members.find(member => member.plan.id === id)!)
   }
@@ -129,7 +166,7 @@ export class LocalTeams {
   private gitInstructions(team: TeamRecord, member = 'coordinator'): string {
     if (!team.git) return ''
     const workspace = member === 'coordinator' ? team.git.integration : team.git.members[member]
-    return `\nGit 并行：在本会话的独立工作区完成分工，保留分支 ${workspace?.branch ?? ''}，不要切换分支或修改原项目 ${team.git.repository}。插件会把本工作区的修改记录为本地交付提交，不自动推送。\n前置提交：${workspace?.inputs.join(', ') || '无'}。如存在合并冲突，先用 git status 查看并解决、git add 和 git commit 完成当前合并；再逐个 git merge --no-edit 合并尚未包含的上述提交，随后实际运行相关检查。不要丢弃其他成员改动。`
+    return `\nGit 并行：在本会话的独立工作区完成分工，保留分支 ${workspace?.branch ?? ''}，不要切换分支或修改原项目 ${team.git.repository}。插件会把本工作区的修改记录为本地交付提交，不自动推送。\n当前目录只包含已声明依赖的交付；其他并行成员的模块尚不可见时，不遍历其工作区或临时伪造实现。需要前置结果才能运行的检查如实写入 unverified，等声明依赖的审核成员集成后实跑；若实施本身必须依赖该接口，先向策划说明以调整依赖。\n前置提交：${workspace?.inputs.join(', ') || '无'}。如存在合并冲突，先用 git status 查看并解决、git add 和 git commit 完成当前合并；再逐个 git merge --no-edit 合并尚未包含的上述提交，随后实际运行相关检查。不要丢弃其他成员改动。`
   }
   /** Seal a finished, idle member once, then let dependents consume its exact commit. */
   private async sealGit(team: TeamRecord, member: string): Promise<boolean> {
@@ -204,6 +241,7 @@ export class LocalTeams {
     await this.running
     const before = this.require(id)
     if ((before.planRevision ?? 0) !== input.revision) throw new LocalTaskError('分工已更新，请重新打开编排后修改')
+    TeamRequestSchema.parse({ ...before.request, members: input.members })
     if (JSON.stringify(before.members.map(member => member.plan)) === JSON.stringify(input.members)) return this.get(id)
     const changed = input.members.length !== before.members.length || input.members.some(plan => {
       const old = before.members.find(member => member.plan.id === plan.id)
@@ -503,6 +541,7 @@ export class LocalTeams {
     }
     if (finalReview && !delivery) issues.push('最终汇总尚未提供结构化交付记录，请协调成员补齐文件、检查和未验证事项。')
     if (delivery) {
+      issues.push(...this.interfaceIssues(team, 'coordinator'))
       if (team.git && !delivery.checks.some(check => check.outcome === 'passed' && check.toolCallId)) issues.push('Git 汇总后尚未实际运行检查，请在最终会话验证集成结果。')
       for (const file of delivery.files) {
         try { if (!team.directory || !workspaceFile(team.directory, file.path).exists) issues.push(`交付文件目前不存在：${file.path}`) }
@@ -548,6 +587,7 @@ export class LocalTeams {
         inputVersion: key(workflow.roundId, String(workflow.planVersion), assignment(ticket), ticket.inputs.at(-1)?.id ?? '', dependencies) },
       ownEvidence: { ticketId, assignmentId: assignment(ticket) },
       members: team.members.map(member => ({ ...member.plan, ticketId: member.ticketId })),
+      interfaceChecks: team.request.interfaceChecks ?? [],
       pendingReview: workflow.pendingReview && reviewData(workflow.pendingReview),
       nextAction: target.member === 'coordinator' && team.phase === 'reviewing' ? PLAN_DISPATCH : undefined,
       reviews: workflow.reviews.filter(review => review.roundId === workflow.roundId).map(reviewData),
@@ -586,6 +626,10 @@ export class LocalTeams {
       return
     }
     const review = TeamReviewSchema.parse(input)
+    if (review.decision === 'pass') {
+      const issues = this.interfaceIssues(team, context.memberId)
+      if (issues.length) throw new LocalTaskError(issues.join('\n'))
+    }
     if (team.stoppedAt || team.workflow!.halted || !reviewer) throw new LocalTaskError('当前成员不能提交团队复核')
     if (team.phase === 'planning') throw new LocalTaskError('当前是规划回合：请用 state="ready" 和 summary 提交规划结论，不要携带 team_review；成员交付后再复核。')
     if (review.planVersion !== context.token!.planVersion || review.roundId !== context.token!.roundId || review.inputVersion !== context.token!.inputVersion || hasUnreadRequest(ticket)) {
@@ -640,7 +684,13 @@ export class LocalTeams {
       const finalPlanning = context.memberId === 'coordinator' && team.phase === 'integrating' && team.members.every(member => done(this.ticket(member.ticketId)))
       if (!['planning', 'reviewing'].includes(team.phase) && !finalPlanning && (own?.plan.responsibility !== 'manager'
         || patch.changes.some(change => team.members.find(member => member.plan.id === change.id)?.ticketId))) throw new LocalTaskError('请在规划、返工或最终复核回合调整计划；组长可在下属首次派出前调整分工')
-      if (!patch.changes.length && !patch.add.length && !patch.remove.length) throw new LocalTaskError('请提供要调整、新增或移除的分工')
+      if (!patch.changes.length && !patch.add.length && !patch.remove.length && !patch.interfaceChecks) throw new LocalTaskError('请提供要调整、新增或移除的分工')
+      if (patch.interfaceChecks) {
+        if (context.memberId !== 'coordinator' || team.phase !== 'planning' || team.request.interfaceChecks?.length) throw new LocalTaskError('接口验收只能由策划在首次规划时补充，已确定的检查不能由执行会话改写')
+        team.request.interfaceChecks = patch.interfaceChecks
+        team.controlRevision = (team.controlRevision ?? 0) + 1
+        this.log(team, 'controls', '策划已确定接口验收')
+      }
       if (patch.changes.some(change => !allowed.has(change.id)) || patch.remove.some(id => !allowed.has(id))) throw new LocalTaskError('只能调整本团队中由你管理的成员')
       if (patch.remove.some(id => team.members.find(member => member.plan.id === id)?.ticketId)) throw new LocalTaskError('已派发的成员保留原会话；请调整分工，或由用户在面板移除')
       if (patch.add.some(plan => team.members.some(member => member.plan.id === plan.id) || team.retiredMembers?.some(member => member.plan.id === plan.id))) throw new LocalTaskError('新增分工需要使用未占用的成员标识')
@@ -648,6 +698,7 @@ export class LocalTeams {
       const plans = [...team.members.filter(member => !patch.remove.includes(member.plan.id)).map(member =>
         ({ ...member.plan, ...patch.changes.find(change => change.id === member.plan.id) })), ...additions]
       TeamRequestSchema.parse({ ...team.request, members: plans })
+      if (team.request.interfaceChecks?.length && !plans.some(plan => plan.responsibility === 'reviewer')) throw new LocalTaskError('接口验收需要保留独立审核成员')
       if (team.members.some(member => member.plan.responsibility === 'reviewer') && !plans.some(plan => plan.responsibility === 'reviewer')) throw new LocalTaskError('需要保留独立审核成员，不能通过移除审核跳过验收')
       for (const member of additions) allowed.add(member.id)
       if (context.memberId !== 'coordinator' && plans.some(plan => allowed.has(plan.id) && plan.parentId !== context.memberId && !allowed.has(plan.parentId ?? 'coordinator'))) throw new LocalTaskError('不能把成员移出当前小组')
@@ -691,9 +742,14 @@ export class LocalTeams {
   private workflowInstructions(team: TeamRecord): string {
     if (!team.workflow) return ''
     const root = this.ticket(team.sourceTicketId)
-    return `\n当前第 ${team.workflow.round}/${team.workflow.roundLimit ?? team.request.workflow?.maxRounds ?? 3} 轮。你属于 SuperAgent 层级团队；总指挥负责来源与最终交付，当前协调成员负责项目策划。不要另开原生子代理。编排工具连续报错时报告 blocked 并说明接口错误，不搜索或修改宿主程序、数据库、凭据或插件运行文件。\n使用 orchestrator_team action=get 获取当前计划、轮次 token、交付依据。策划可在规划、返工分派或最终复核阶段用 revise_plan 拆分任务：changes 调整分工，add 新增团队成员，remove 仅移除尚未派发的成员。优先复用用户已安排的成员；按目标补充实施、管理和独立审核，审核必须等待相关实施交付。新增成员继承团队模型、目录与权限，不能开启原生子代理或扩大授权。首次规划完成后只报告 ready，不带 team_review；返工或最终复核阶段改变分工后，必须以 decision=revise 指定相关成员重新执行，不能直接通过旧交付。\n检验或管理成员发现缺陷后，用 orchestrator_report state=ready、team_review.decision=revise、targets=具体实施成员、reason=具体问题回传；若需求理解或拆分有误，可用 targets=["coordinator"] 退回策划重排，并附实际 delivery（失败检查允许作为返工依据）。插件会先交回策划；策划依据问题调整后，用具体实施成员作为 targets 分派下一轮，不需要用户再次拍板。实施缺陷属于返工，不要把它当成缺少用户权限。检验和最终复核通过时用 decision=pass；真正缺权限或信息用 state=blocked、decision=blocked、human_action=具体问题。team_review 必须原样使用最新 token，并引用 evidence 的 ticketId/assignmentId；本轮自己的 delivery 可引用 ownEvidence。没有执行的检查写 unverified。${root ? `\n等待 CI 等外部事件前，先读取实际远端状态；仍在等待时，读取 orchestrator_team 的 source.cursor，用 orchestrator_report state=waiting、wait_for={thread: 原来源或已绑定 PR 的线程, after: source.cursor} 登记后结束回合，不轮询或后台盯守。新外部数据只恢复原成员，不增加权限；已结束的检查应立即处理。\n来源主工单：${root.id}。授权范围：${root.mandate.scope}\n${mandateInstructions(root.mandate)}\n${root.execution?.assignment ?? ''}` : ''}`
+    const acceptance = team.request.interfaceChecks?.length ? `\n接口验收约定：${JSON.stringify(team.request.interfaceChecks)}。独立审核与策划最终复核都须在各自当前集成工作区实际运行每条 command；delivery.checks 的 command 必须完全相同、outcome=passed 并能关联本轮真实命令。接口不兼容应正式返工，不得删改约定或以单成员单元测试替代。` : '\n跨成员实现存在调用关系时，策划请在首次规划用 revise_plan.interfaceChecks=[{id,name,command}] 确定实际集成检查命令（先确认真实运行时路径），由独立审核编写检查覆盖成员间导入、参数、返回结构与异常；命令可以在测试文件实现后运行。'
+    return `${acceptance}\n当前第 ${team.workflow.round}/${team.workflow.roundLimit ?? team.request.workflow?.maxRounds ?? 3} 轮。你属于 SuperAgent 层级团队；总指挥负责来源与最终交付，当前协调成员负责项目策划。不要另开原生子代理。编排工具连续报错时报告 blocked 并说明接口错误，不搜索或修改宿主程序、数据库、凭据或插件运行文件。\n使用 orchestrator_team action=get 获取当前计划、轮次 token、交付依据。策划可在规划、返工分派或最终复核阶段用 revise_plan 拆分任务：changes 调整分工，add 新增团队成员，remove 仅移除尚未派发的成员。优先复用用户已安排的成员；按目标补充实施、管理和独立审核，审核必须等待相关实施交付。新增成员继承团队模型、目录与权限，不能开启原生子代理或扩大授权。首次规划完成后只报告 ready，不带 team_review；返工或最终复核阶段改变分工后，必须以 decision=revise 指定相关成员重新执行，不能直接通过旧交付。\n检验或管理成员发现缺陷后，用 orchestrator_report state=ready、team_review.decision=revise、targets=具体实施成员、reason=具体问题回传；若需求理解或拆分有误，可用 targets=["coordinator"] 退回策划重排，并附实际 delivery（失败检查允许作为返工依据）。插件会先交回策划；策划依据问题调整后，用具体实施成员作为 targets 分派下一轮，不需要用户再次拍板。实施缺陷属于返工，不要把它当成缺少用户权限。检验和最终复核通过时用 decision=pass；真正缺权限或信息用 state=blocked、decision=blocked、human_action=具体问题。team_review 必须原样使用最新 token，并引用 evidence 的 ticketId/assignmentId；本轮自己的 delivery 可引用 ownEvidence。没有执行的检查写 unverified。${root ? `\n等待 CI 等外部事件前，先读取实际远端状态；仍在等待时，读取 orchestrator_team 的 source.cursor，用 orchestrator_report state=waiting、wait_for={thread: 原来源或已绑定 PR 的线程, after: source.cursor} 登记后结束回合，不轮询或后台盯守。新外部数据只恢复原成员，不增加权限；已结束的检查应立即处理。\n来源主工单：${root.id}。授权范围：${root.mandate.scope}\n${mandateInstructions(root.mandate)}\n${root.execution?.assignment ?? ''}` : ''}`
   }
-  start(): void { if (this.timer || this.stopped) return; this.timer = setInterval(() => this.request(), 1000); this.request() }
+  start(): void {
+    if (this.timer || this.stopped) return
+    for (const team of this.all()) if (team.phase !== 'draft' && team.phase !== 'completed' && !team.stoppedAt) this.patch(team.id, value => this.log(value, 'recovered', '插件重新接入，沿用原任务与会话'))
+    this.timer = setInterval(() => this.request(), 1000); this.request()
+  }
   request(): void {
     if (this.stopped) return
     this.dirty = true
@@ -713,7 +769,11 @@ export class LocalTeams {
     })
   }
   async reconcile(): Promise<void> { this.request(); while (this.running) await this.running }
-  async stop(): Promise<void> { this.stopped = true; clearInterval(this.timer); await this.running; for (const release of this.releases.splice(0)) release() }
+  async stop(): Promise<void> {
+    this.stopped = true; clearInterval(this.timer); await this.running
+    for (const team of this.all()) if (team.phase !== 'draft' && team.phase !== 'completed' && !team.stoppedAt) this.patch(team.id, value => this.log(value, 'interrupted', '插件关闭，任务与文件保留'))
+    for (const release of this.releases.splice(0)) release()
+  }
 
   private planInstructions(team: TeamRecord): string {
     return `你是用户为此任务创建的协调成员。此为规划回合，团队尚未完成。
@@ -1043,6 +1103,7 @@ ${this.handoffContext(team, team.members)}${this.gitInstructions(team)}${team.gi
     const target = this.target(ticketId)
     if (!target || this.require(target.team).stoppedAt) return
     this.patch(target.team, team => {
+      if (!automatic && (team.error || team.workflow?.halted || this.ticket(ticketId)?.attention)) this.log(team, 'resumed', '收到补充，继续原分工', target.member)
       if (!automatic && target.member === COMMANDER && input) {
         if (!team.commanderInputs?.some(item => item.id === input.id)) (team.commanderInputs ??= []).push({ id: input.id, text: input.text,
           ...(input.meta.nativeInput ? { native: input.meta.nativeInput as UserMessage } : {}) })
@@ -1129,6 +1190,10 @@ ${this.handoffContext(team, team.members)}${this.gitInstructions(team)}${team.gi
     return { id, name: team.request.name ?? team.request.title, title: team.request.title, instructions: team.request.instructions,
       ...(team.git ? { git: { repository: team.git.repository, branch: team.git.integration.branch, head: team.git.integration.head } } : {}),
       finalDelivery: team.finalDelivery, phase: team.phase,
+      timeline: [...team.timeline ?? [], ...team.workflow?.reviews.map(review => ({ id: key('review', review.ticketId, review.assignmentId), at: review.at,
+        kind: 'review' as const, detail: review.reason, memberId: review.reviewerId, decision: review.decision, targets: review.targets,
+        round: [...new Set(team.workflow!.reviews.map(item => item.roundId))].indexOf(review.roundId) + 1 })) ?? []].sort((a, b) => a.at.localeCompare(b.at)),
+      controlRevision: team.controlRevision ?? 0, interfaceChecks: this.interfaceChecks(team),
       directory: team.directory, state, createdAt: team.createdAt, updatedAt, coordinatorTicketId: team.coordinatorTicketId,
       completedMembers: members.filter(member => member.role === 'member' && member.state === 'finished').length, memberCount: team.members.length,
       summary: state === 'completed' ? latestReport(commanderTicket ?? coordinator!)?.summary ?? '' : team.phase === 'reporting' ? commander.summary ?? '' : members.find(member => ['attention', 'failed', 'working'].includes(member.state))?.summary ?? '',
@@ -1144,7 +1209,7 @@ ${this.handoffContext(team, team.members)}${this.gitInstructions(team)}${team.gi
       deliveries: members.flatMap(member => member.delivery ? [{ memberId: member.id, name: member.name, record: member.delivery }] : []) }
   }
   list(): TeamIndex[] { return this.all().map(team => {
-    const { members: _members, commander: _commander, handoffs: _handoffs, deliveries: _deliveries, finalDelivery: _final, git: _git, error: _error, completion: _completion, model: _model, ...entry } = this.get(team.id); return entry
+    const { members: _members, commander: _commander, handoffs: _handoffs, deliveries: _deliveries, finalDelivery: _final, git: _git, error: _error, completion: _completion, model: _model, timeline: _timeline, interfaceChecks: _checks, controlRevision: _controlRevision, ...entry } = this.get(team.id); return entry
   }) }
   file(id: string, path: string) {
     const team = this.get(id)

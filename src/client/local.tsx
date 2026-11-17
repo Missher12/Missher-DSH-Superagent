@@ -7,7 +7,8 @@ import { errorText } from './text.ts'
 import { ComposerField, ComposerForm, ComposerModal, WritingArea } from './composer.tsx'
 import { ModelSelect, ReasoningSelect } from './model-picker.tsx'
 import type { RoleModel } from '../policy.ts'
-import type { TeamMember } from '../teams/contracts.ts'
+import type { TeamMember, InterfaceCheck } from '../teams/contracts.ts'
+import { InterfaceCheckFields } from './team-acceptance.tsx'
 import { defaultMembers } from './team-members-editor.tsx'
 import { Select } from './select.tsx'
 import { usePoll } from './api.ts'
@@ -15,7 +16,7 @@ import { WorkflowEditor, transferWorkflowView } from './workflow-editor.tsx'
 
 const DRAFT = 'dsh-superagent/local-draft'
 const DRAFT_CHANGED = 'dsh-superagent/task-draft-changed'
-interface TaskDraft { requestId: string; title: string; directory: string; instructions: string; open: boolean; existing: boolean; model?: RoleModel; permissionPreset?: string; mode: 'single' | 'team'; teamName: string; members?: TeamMember[]; maxRounds?: number; workspace?: 'shared' | 'worktree' }
+interface TaskDraft { requestId: string; title: string; directory: string; instructions: string; open: boolean; existing: boolean; model?: RoleModel; permissionPreset?: string; mode: 'single' | 'team'; teamName: string; members?: TeamMember[]; interfaceChecks?: InterfaceCheck[]; maxRounds?: number; workspace?: 'shared' | 'worktree' }
 const blank = (): TaskDraft => ({ requestId: crypto.randomUUID(), title: '', directory: '', instructions: '', open: false, existing: false, mode: 'team', teamName: '' })
 function readDraft() {
   const fallback = blank()
@@ -29,6 +30,7 @@ function readDraft() {
       permissionPreset: typeof value.permissionPreset === 'string' && value.permissionPreset.trim() ? value.permissionPreset.trim() : undefined,
       mode: value.mode === 'team' ? 'team' as const : 'single' as const, teamName: typeof value.teamName === 'string' ? value.teamName : '',
       maxRounds: typeof value.maxRounds === 'number' && value.maxRounds >= 1 && value.maxRounds <= 8 ? value.maxRounds : 3,
+      interfaceChecks: Array.isArray(value.interfaceChecks) && value.interfaceChecks.length <= 8 && value.interfaceChecks.every(check => check && typeof check.id === 'string' && typeof check.name === 'string' && typeof check.command === 'string') ? value.interfaceChecks as InterfaceCheck[] : undefined,
       workspace: value.workspace === 'worktree' ? 'worktree' as const : value.workspace === 'shared' ? 'shared' as const : undefined,
       members: Array.isArray(value.members) && value.members.length <= 12 && value.members.every(member => member
         && typeof member.id === 'string' && typeof member.name === 'string' && typeof member.instructions === 'string'
@@ -99,7 +101,7 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
         ...(draft.model ? { model: draft.model } : {}), instructions: draft.instructions.trim() }
       const { instructions, ...setup } = body
       const task = draft.mode === 'team' ? await call('POST local/teams/prepare', { body: { ...setup, coordinatorName: t('teamCoordinator'),
-        ...(draft.teamName.trim() ? { name: draft.teamName.trim() } : {}), members: draft.members ?? defaultMembers(t), workflow: { maxRounds: draft.maxRounds ?? 3, workspace } } })
+        ...(draft.teamName.trim() ? { name: draft.teamName.trim() } : {}), members: draft.members ?? defaultMembers(t), interfaceChecks: draft.interfaceChecks, workflow: { maxRounds: draft.maxRounds ?? 3, workspace } } })
         : await call('POST local/tasks', { body })
       if ('members' in task) transferWorkflowView(`new-team/${draft.requestId}`, task.id)
       const next = { ...blank(), directory: draft.directory, existing: draft.existing }
@@ -129,6 +131,7 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
             <ComposerField label={t('modelEffort')}><ReasoningSelect value={draft.model} onChange={model => edit({ model })} /></ComposerField>
             <ComposerField label={t('localPermissionTitle')}><PermissionSelect value={draft.permissionPreset} onChange={permissionPreset => edit({ permissionPreset })} /></ComposerField>
             <ComposerField label={t('teamRoundLimit')}><Input type="number" min={1} max={8} required value={draft.maxRounds ?? 3} onChange={event => edit({ maxRounds: Number(event.target.value) })} /></ComposerField>
+            <InterfaceCheckFields checks={draft.interfaceChecks ?? []} change={interfaceChecks => edit({ interfaceChecks })} />
           </>} />
       </ComposerForm>
     </Modal> : <ComposerModal open={draft.open} title={t('localNewTask')} kind="task" busy={submit.busy} form={formId} action={t('localDispatch')}

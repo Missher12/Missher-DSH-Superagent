@@ -346,6 +346,12 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
   'GET local/tasks/:id/file': { query: ['path'], answer: ({ query }) => server.teamFiles[query.path ?? ''] ?? refuse(404, 'File not found') },
   'POST local/teams/:id/stop': { answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },
   'POST local/teams/:id/retry': { answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },
+  'PUT local/teams/:id/acceptance': { body: true, answer: ({ params, body }) => {
+    const team = server.teamViews[params.id]; if (!team) return refuse(404, 'Team not found')
+    if ((team.controlRevision ?? 0) !== body.revision) return refuse(400, '团队设置已更新')
+    team.interfaceChecks = body.interfaceChecks.map(check => ({ ...check, reviewers: ['coordinator', 'check'], passed: [] })); team.controlRevision = body.revision + 1
+    return team
+  } },
   'POST local/teams/:id/followup': { body: true, answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },
   'GET local/sessions/:id/model': { answer: ({ params }) => server.sessionModels[params.id] ?? null },
   'PUT local/sessions/:id/model': { body: true, answer: ({ params, body }) => {

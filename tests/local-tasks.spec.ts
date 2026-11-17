@@ -310,6 +310,22 @@ describe('DSH local task source', () => {
   })
 })
 
+it('keeps one generated SuperAgent workspace and unregisters only the legacy router account', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const registry = host.ctx.workspaceRegistry
+  const old = await registry.create(realpathSync(host.directory))
+  await old.setTitle('Superagent')
+  Object.defineProperty(old, 'sessionIds', { configurable: true, value: [host.runtime.masterId] })
+  const retained = join(host.directory, 'router-record.txt'); writeFileSync(retained, 'retain this data')
+  await host.runtime.local!.ensureWorkspace(); await host.runtime.local!.ensureWorkspace()
+  expect(registry.list().filter(item => item.title.startsWith('Super'))).toHaveLength(1)
+  expect(readFileSync(retained, 'utf8')).toBe('retain this data')
+  const foreign = await registry.create(realpathSync(host.directory)); await foreign.setTitle('我的项目')
+  Object.defineProperty(foreign, 'sessionIds', { configurable: true, value: ['user-conversation'] })
+  await host.runtime.local!.ensureWorkspace()
+  expect(registry.list().some(item => item.id === foreign.id)).toBe(true)
+})
+
 it('registers an existing project as a DSH workspace without dispatching a task', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const directory = `${host.directory}/workspace-project`

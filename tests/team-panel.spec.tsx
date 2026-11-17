@@ -7,6 +7,34 @@ import { server } from './fixtures/panel-server.ts'
 import { zh } from '../src/client/locales.ts'
 
 usePanel()
+it('shows interface execution by reviewer and keeps long recovery causes collapsed', async () => {
+  const view = team(); view.phase = 'working'
+  view.interfaceChecks = [{ id: 'contract', name: '跨成员返回值', command: 'node --test integration.test.mjs', reviewers: ['coordinator', 'check'], passed: ['check'], failed: ['coordinator'] }]
+  view.timeline = [{ id: 'return', at: view.updatedAt, kind: 'review', memberId: 'check', decision: 'revise', targets: ['build'], round: 1, detail: '返回结构不一致，需要实施修复并重新验证。' },
+    { id: 'restore', at: view.updatedAt, kind: 'recovered', round: 2, detail: '插件重新接入，沿用原任务与会话' }]
+  server.teamViews[view.id] = view; at({ page: 'overview', query: { team: view.id } }); await mount()
+  await click('验收')
+  expect(all('.dt-team-interface')[0]?.textContent).toContain('跨成员返回值1/2')
+  expect(all('.dt-team-interface details')[0]?.hasAttribute('open')).toBe(false)
+  expect(all('.dt-team-interface')[0]?.textContent).toContain('未通过')
+  await click('记录')
+  expect(all('.dt-team-records')[0]?.textContent).toContain('审核退回')
+  expect(all('.dt-team-records')[0]?.textContent).toContain('插件恢复')
+  expect(all('.dt-team-records details').every(item => !item.hasAttribute('open'))).toBe(true)
+  vi.spyOn(all('.dt-team-focus-workbench')[0]!, 'getBoundingClientRect').mockReturnValue({ width: 1000 } as DOMRect)
+  await click(all('.dt-team-record-meta button')[0]!)
+  expect(all('[data-test-session="worker-check-task"]')).toHaveLength(1)
+})
+it('edits acceptance rows without losing input and saves the exact configured command', async () => {
+  const view = team(); view.phase = 'draft'; view.state = 'draft'; server.teamViews[view.id] = view
+  at({ page: 'overview', query: { team: view.id } }); await mount(); await click('验收'); await click('编辑'); await click('添加')
+  await type(field<HTMLInputElement>('名称'), '前后端契约')
+  await type(field<HTMLTextAreaElement>('检查命令'), 'node --test integration.test.mjs')
+  expect(field<HTMLInputElement>('名称').value).toBe('前后端契约')
+  await click('保存')
+  expect(server.requests.find(item => item.method === 'PUT' && item.path.endsWith('/acceptance'))?.body).toMatchObject({ revision: 0, interfaceChecks: [{ name: '前后端契约', command: 'node --test integration.test.mjs' }] })
+  expect(all('[role="dialog"]')).toHaveLength(0)
+})
 it('shows active work and prerequisite names without opening each member', async () => {
   const view = team(); view.phase = 'working'
   Object.assign(view.members[1]!, { state: 'working', running: true, tools: [{ id: 'edit', name: 'edit', state: 'running', at: view.updatedAt, detail: 'domain.mjs' }] })

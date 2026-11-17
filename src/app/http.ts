@@ -201,6 +201,7 @@ function routes(runtime: HttpHost): Routes {
       return runtime.local.file(params.id, query.path ?? '')
     },
     'GET local/teams/:id': ({ params }) => teams().get(params.id),
+    'PUT local/teams/:id/acceptance': async ({ params, body }) => teams().controls(params.id, await body(64 * 1024) as Api['PUT local/teams/:id/acceptance']['body']),
     'GET local/teams/:id/file': ({ params, query }) => teams().file(params.id, query.path ?? ''),
     'POST local/teams/:id/stop': ({ params }) => teams().stopTeam(params.id),
     'POST local/teams/:id/retry': ({ params }) => teams().retry(params.id),

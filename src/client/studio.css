@@ -108,7 +108,7 @@
 .dt-team-collaboration-title h2 { font-size:15px; line-height:22px; }
 .dt-team-collaboration-title small { color:var(--dsw-alias-label-tertiary); font-size:11px; line-height:18px; }
 .dt-team-collaboration-title .dt-btn { min-height:30px; height:30px; padding:0 8px; font-size:12px; }
-.dt-team-collaboration>header>.dt-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; width:100%; max-width:none; padding:0; border:0; border-bottom:1px solid var(--dsw-alias-border-l2); border-radius:0; background:none; }
+.dt-team-collaboration>header>.dt-tabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; width:100%; max-width:none; padding:0; border:0; border-bottom:1px solid var(--dsw-alias-border-l2); border-radius:0; background:none; }
 .dt-team-collaboration>header>.dt-tabs>.dt-tab { padding:0 2px 8px; height:34px; min-width:0; font-size:12px; border:0; border-bottom:2px solid transparent; border-radius:0; text-align:center; }
 .dt-team-collaboration>header>.dt-tabs>.dt-tab[aria-selected=true] { background:none; color:var(--dsw-alias-label-primary); border-bottom-color:var(--dsw-alias-label-primary); }
 .dt-team-collaboration>header>.dt-tabs>.dt-tab::after { display:none; }
@@ -245,3 +245,32 @@
 .dt-studio-shell[data-compact][data-drawer]>.dt-studio-sidebar { display:flex; }
 .dt-studio-drawer-mask { position:absolute; z-index:5; inset:0; padding:0; border:0; background:var(--dsw-alias-bg-mask-1); cursor:default; }
 @media (prefers-reduced-motion:reduce) { .dt-team-flow-packet { display:none; } .dt-team-nav-item[data-active]::after,.dt-team-overview-item[data-active]::after { animation:none; left:0; width:100%; opacity:.25; } }
+
+.dt-interface-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.dt-interface-heading h3,.dt-team-records h3 { font-size:14px; font-weight:600; margin:0; }
+.dt-interface-fields,.dt-team-interface { display:flex; flex-direction:column; gap:16px; min-width:0; }
+.dt-team-interface { margin-top:28px; }
+.dt-interface-field+.dt-interface-field { border-top:1px solid var(--dsw-alias-border-l2); padding-top:16px; }
+.dt-interface-remove { display:flex; justify-content:flex-end; padding-top:8px; }
+.dt-interface-remove .dt-btn { color:var(--dsw-alias-label-secondary); }
+.dt-team-interface ul,.dt-team-records ol { list-style:none; padding:0; margin:0; }
+.dt-team-interface>ul>li { padding:14px 0; border-bottom:1px solid var(--dsw-alias-border-l2); }
+.dt-team-interface>ul>li>div { display:flex; align-items:center; gap:8px; font-size:12px; }
+.dt-team-interface>ul>li>div>span:last-child { margin-left:auto; color:var(--dsw-alias-label-secondary); }
+.dt-team-interface details { margin-top:8px; font-size:12px; min-width:0; }
+.dt-team-interface summary { cursor:pointer; color:var(--dsw-alias-label-secondary); }
+.dt-team-interface code { display:block; padding:12px 0; white-space:pre-wrap; overflow-wrap:anywhere; font-size:11px; }
+.dt-team-interface details li { display:flex; justify-content:space-between; gap:12px; padding:6px 0; }
+.dt-team-records ol { margin-top:14px; }
+.dt-team-records li { display:flex; align-items:flex-start; gap:10px; padding:14px 0; border-bottom:1px solid var(--dsw-alias-border-l2); }
+.dt-team-records li>svg { flex:none; margin-top:3px; color:var(--dsw-alias-label-secondary); }
+.dt-team-records li>div { flex:1; min-width:0; }
+.dt-team-record-title { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:12px; }
+.dt-team-record-title strong { font-weight:500; }
+.dt-team-record-title time { font-size:11px; color:var(--dsw-alias-label-secondary); }
+.dt-team-record-meta { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--dsw-alias-label-secondary); margin-top:6px; }
+.dt-team-record-meta .dt-btn { font-size:11px; padding:0 4px; min-height:24px; height:24px; }
+.dt-team-records details { margin-top:5px; font-size:12px; line-height:1.6; color:var(--dsw-alias-label-secondary); }
+.dt-team-records summary { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer; }
+.dt-team-records details[open] summary { white-space:normal; }
+.dt-team-records details p { white-space:pre-wrap; overflow-wrap:anywhere; margin:6px 0 0; }

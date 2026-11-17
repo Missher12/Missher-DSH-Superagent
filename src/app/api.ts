@@ -14,7 +14,7 @@ import type { TicketListView } from './views/tickets.ts'
 import type { WorkbenchView } from './views/workbench.ts'
 import type { LocalTeams } from '../teams/local.ts'
 import type { FeishuConnectRequest, FeishuConnectResult } from './feishu-connect.ts'
-import type { TeamRequest, TeamMember, TeamPreparation, TeamEdit } from '../teams/contracts.ts'
+import type { TeamRequest, TeamMember, TeamPreparation, TeamEdit, TeamControls } from '../teams/contracts.ts'
 
 export const TICKET_FILTERS = ['open', 'person', 'working', 'idle', 'ended'] as const
 export const THREAD_FILTERS = ['subscribed', 'evaluating', 'recent', 'all'] as const
@@ -32,6 +32,7 @@ export interface Api {
   'POST local/teams': { body: TeamRequest; response: Awaited<ReturnType<LocalTeams['create']>> }
   'POST local/teams/prepare': { body: TeamPreparation; response: Awaited<ReturnType<LocalTeams['prepare']>> }
   'PUT local/teams/:id/plan': { body: TeamEdit; response: Awaited<ReturnType<LocalTeams['updatePlan']>> }
+  'PUT local/teams/:id/acceptance': { body: TeamControls; response: Awaited<ReturnType<LocalTeams['controls']>> }
   'POST local/teams/:id/members': { body: TeamMember; response: Awaited<ReturnType<LocalTeams['addMember']>> }
   'GET local/teams/:id': { response: ReturnType<LocalTeams['get']> }
   'GET local/teams/:id/file': { query: { path: string }; response: ReturnType<LocalTeams['file']> }

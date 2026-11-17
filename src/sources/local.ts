@@ -92,7 +92,13 @@ export class LocalTasks {
   async ensureWorkspace(): Promise<void> {
     const directory = executionRoot(this.runtime.store.settings(), this.runtime.machine.stateDir)
     mkdirSync(directory, { recursive: true })
-    await this.ctx.workspaceRegistry.create(realpathSync(directory), 'Superagent 工作区')
+    const root = await this.ctx.workspaceRegistry.create(realpathSync(directory), 'SuperAgent 工作区')
+    if (root.title === 'Superagent 工作区') await root.setTitle('SuperAgent 工作区')
+    // Old releases registered the internal router directory as a second workspace.
+    // Removing that generated account never deletes the directory or Session logs.
+    const internal = realpathSync(this.runtime.machine.stateDir)
+    for (const workspace of this.ctx.workspaceRegistry.list()) if (workspace.id !== root.id && workspace.path === internal
+      && workspace.title === 'Superagent') await this.ctx.workspaceRegistry.delete(workspace.id)
   }
   async addWorkspace(directory: string, title?: string): Promise<{ id: string; title: string; directory: string }> {
     directory = projectDirectory(directory)

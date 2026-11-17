@@ -5,6 +5,14 @@ import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import { RoleModelSchema, type RoleModel } from '../policy.ts'
 import type { GitTeam } from './git-workspaces.ts'
 
+export const InterfaceCheckSchema = z.object({ id: z.string().regex(/^[\w-]{1,60}$/), name: z.string().trim().min(1).max(80),
+  command: z.string().trim().min(1).max(6000) }).strict()
+const interfaceChecks = z.array(InterfaceCheckSchema).max(8).refine(items => new Set(items.map(item => item.id)).size === items.length, '验收标识不能重复')
+export const TeamControlsSchema = z.object({ revision: z.number().int().nonnegative(), interfaceChecks }).strict()
+export type TeamControls = z.infer<typeof TeamControlsSchema>
+export type InterfaceCheck = z.infer<typeof InterfaceCheckSchema>
+export interface TeamTimelineEvent { id: string; at: string; kind: 'phase' | 'review' | 'interrupted' | 'recovered' | 'resumed' | 'controls' | 'blocked'; round?: number; memberId?: string; targets?: string[]; decision?: TeamReview['decision']; detail: string }
+
 export const TeamMemberSchema = z.object({
   id: z.string().regex(/^[\w-]{1,60}$/).refine(id => id !== 'coordinator', '成员标识不能使用 coordinator'),
   name: z.string().trim().min(1).max(60), instructions: z.string().trim().min(1).max(4000),
@@ -18,11 +26,13 @@ const TeamRequestFields = z.object({
   directory: z.string().min(1).optional(), model: RoleModelSchema.optional(),
   permissionPreset: z.string().trim().min(1).max(200).optional(),
   coordinatorName: z.string().trim().min(1).max(60).default('协调'),
+  interfaceChecks: interfaceChecks.optional(),
   members: z.array(TeamMemberSchema).max(12),
   workflow: z.object({ maxRounds: z.number().int().min(1).max(8).default(3), workspace: z.enum(['shared', 'worktree']).optional() }).strict().optional(),
 }).strict()
-function validatePlan(request: { members: TeamMember[] }, context: z.RefinementCtx) {
+function validatePlan(request: { members: TeamMember[]; interfaceChecks?: InterfaceCheck[]; workflow?: unknown }, context: z.RefinementCtx) {
   for (const issue of planIssues(request.members)) context.addIssue({ code: 'custom', ...issue })
+  if (request.interfaceChecks?.length && (!request.workflow || !request.members.some(member => member.responsibility === 'reviewer'))) context.addIssue({ code: 'custom', path: ['interfaceChecks'], message: '接口验收需要循环工作流与独立审核成员' })
 }
 export const TeamRequestSchema = TeamRequestFields.superRefine(validatePlan)
 export const TeamPreparationSchema = TeamRequestFields.omit({ instructions: true }).superRefine(validatePlan)
@@ -33,6 +43,7 @@ export type TeamRequest = z.infer<typeof TeamRequestSchema>
 export type TeamMember = z.infer<typeof TeamMemberSchema>
 export const TeamPlanPatchSchema = z.object({
   planVersion: z.number().int().positive(),
+  interfaceChecks: interfaceChecks.optional(),
   changes: z.array(TeamMemberSchema.pick({ id: true, instructions: true, parentId: true }).partial().required({ id: true })
     .extend({ dependencies: z.array(z.string()).max(11).optional() })).max(12).default([]),
   add: z.array(TeamMemberSchema.omit({ model: true })).max(12).default([]),
@@ -70,6 +81,8 @@ export interface DeliveryRecord extends Omit<DeliveryInput, 'files' | 'checks'> 
   checks: (DeliveryInput['checks'][number] & { toolCallId?: string; exitCode?: number })[]
 }
 export interface TeamRecord {
+  controlRevision?: number
+  timeline?: TeamTimelineEvent[]
   git?: GitTeam
   commanderReporting?: true
   commanderIntake?: true
@@ -125,6 +138,9 @@ export interface TeamIndex {
   activeMembers?: number; currentAction?: string
 }
 export interface TeamView extends TeamIndex {
+  controlRevision?: number
+  interfaceChecks?: (InterfaceCheck & { reviewers: string[]; passed: string[]; failed?: string[] })[]
+  timeline?: TeamTimelineEvent[]
   phase?: TeamRecord['phase']
   git?: { repository: string; branch: string; head?: string }
   finalDelivery?: TeamRecord['finalDelivery']

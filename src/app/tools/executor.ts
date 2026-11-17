@@ -35,7 +35,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
       schema: z.discriminatedUnion('action', [z.object({ action: z.literal('get') }).strict(),
         TeamPlanPatchSchema.extend({ action: z.literal('revise_plan') })]),
       execute: async args => toolValue(args.action === 'get' ? host.teams!.contextFor(ticketId) ?? { team: null }
-        : host.teams!.revisePlan(ticketId, { planVersion: args.planVersion, changes: args.changes, add: args.add, remove: args.remove })),
+        : host.teams!.revisePlan(ticketId, { planVersion: args.planVersion, changes: args.changes, add: args.add, remove: args.remove, interfaceChecks: args.interfaceChecks })),
     })] : [],
     readTool('Read one page of a resource of this ticket that the resource parameter lists. Follow next_offset, and next_resource where a page names one.',
       true, (resource, offset, limit, signal) => readResource(host.resources, resource, offset, limit, ticketId, signal)),

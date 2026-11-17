@@ -5,7 +5,7 @@ import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { MessageId, UserMessage } from '@deepseek-ai/dsh-llm'
 import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import { basename, dirname } from 'node:path'
+import { dirname } from 'node:path'
 import { z } from 'zod'
 import { key, liveTicket, UserError, type Ticket } from '../core/index.ts'
 import { mandateInstructions, ticketOfSession, workerSessionId } from '../executor/dsh.ts'
@@ -257,10 +257,6 @@ export class Sessions {
   /** Resolves or creates session `id` in workspace `cwd`, seeds its model, and decorates its tools and prompts. */
   async ensure(id: string, cwd: string, title: string, role: 'orchestrator' | 'worker'): Promise<Agent> {
     const ctx = this.ctx
-    if (this.host.local && role === 'orchestrator') {
-      const workspace = await ctx.workspaceRegistry.create(cwd, 'Superagent')
-      if (workspace.title === basename(cwd)) await workspace.setTitle('Superagent')
-    }
     let created = false
     let result = await ctx.sessionController.resolveAgent(id as SessionId)
     if ('error' in result && result.error.code === 'session/not-found') {
