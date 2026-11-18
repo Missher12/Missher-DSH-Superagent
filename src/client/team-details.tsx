@@ -35,7 +35,8 @@ export function TeamDetails({ team, member, reload, view: selectedView, onView, 
   view?: 'activity' | 'conversation' | 'context' | 'delivery'; onView?: (view: 'activity' | 'conversation' | 'context' | 'delivery') => void }) {
   const { t, call, renderSession, renderContext, nativeSession, navigate } = usePanel()
   const [ownView, setOwnView] = useState<'activity' | 'conversation' | 'context' | 'delivery'>('conversation')
-  const view = selectedView ?? ownView, setView = onView ?? setOwnView
+  const preferredView = selectedView ?? ownView, setView = onView ?? setOwnView
+  const view = preferredView === 'context' && (!renderContext || !member.sessionId) ? 'conversation' : preferredView
   const commander = member.role === 'commander', directory = member.directory ?? team.directory
   const sharedCommander = commander && !member.ticketId
   const files = [...team.finalDelivery?.artifacts ?? team.finalDelivery?.record.files ?? [], ...team.deliveries.flatMap(delivery => delivery.record.files)].map(file => file.path)
@@ -48,7 +49,7 @@ export function TeamDetails({ team, member, reload, view: selectedView, onView, 
       <div><h2 title={member.name}>{member.name}</h2><p className="dt-team-session-caption" title={member.instructions}>{commander ? t('teamCommanderShared') : shortText(participantWork(member, t), 45)}</p></div></div>
       <div className="dt-actions dt-team-native-controls">
         <Button variant="ghost" size="sm" aria-label={t('teamOpenSession')} title={t('teamOpenSession')} aria-pressed={view === 'conversation'} aria-controls="dt-member-content" onClick={() => setView('conversation')}>{t('workbenchConversation')}</Button>
-        <Button variant="ghost" size="sm" disabled={!member.sessionId || !renderContext} aria-pressed={view === 'context'} aria-controls="dt-member-content" onClick={() => setView('context')}>{t('sessionContextTitle')}</Button>
+        {renderContext && <Button variant="ghost" size="sm" disabled={!member.sessionId} aria-pressed={view === 'context'} aria-controls="dt-member-content" onClick={() => setView('context')}>{t('sessionContextTitle')}</Button>}
         {directory ? <OpenWorkspaceButton directory={directory} compact /> : <Button variant="ghost" size="sm" disabled icon={<Icon name="folder" />} aria-label={t('localOpenWorkspace')} />}
         <Button variant="ghost" size="sm" aria-pressed={view === 'delivery'} aria-controls="dt-member-content" onClick={() => setView('delivery')}>{t('teamProducts')}</Button>
         <TeamFilesButton team={team} />

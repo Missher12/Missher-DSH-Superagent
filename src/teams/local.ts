@@ -219,7 +219,13 @@ export class LocalTeams {
     const input = messages.filter(message => message.source.kind === 'user' && message.content.length)
     if (!input.length) return
     const agent = this.context.agents.get(sessionId as SessionId)
-    const selected = agent?.session.requestHeader()?.config
+    // The setup conversation adopts the first input before it ever requests a model.
+    // Read DSH's pending native choice before falling back to the last request.
+    const projection = agent && team.phase === 'draft'
+      ? await this.context.sessionController.projections({ sessionId: agent.id }, this.runtime.lifetime)
+      : null
+    const selected = (projection?.kind === 'sequenced' ? projection.values.modelSelection?.next : undefined)
+      ?? agent?.session.requestHeader()?.config
     const permissionPreset = this.runtime.local!.resolvePermissionPreset(agent ? this.context.permissionPresets.current(agent.session) : team.permissionPreset)
     this.patch(team.id, current => {
       if (current.phase === 'draft') {

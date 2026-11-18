@@ -1,5 +1,5 @@
 /** Browser plugin entry point registering the sidebar icon, main management panel, and Plugin Manager config view. */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { SidebarPanelIconOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -31,6 +31,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 type ConversationSeat = PropsRenderSlots<'superagent.session' | 'superagent.context'>
+const CONTEXT_VIEW = 'context-manager'
 
 /** Keep the embedded transcript independent of the native page's last selected view. */
 function ChatSessionView({ renderSlot }: ConversationViewsProps) {
@@ -39,7 +40,7 @@ function ChatSessionView({ renderSlot }: ConversationViewsProps) {
 
 /** Select the installed context plugin inside an independently scoped native Conversation factory. */
 function ContextPluginView({ renderSlot }: ConversationViewsProps) {
-  return renderSlot('conversation.session', { view: 'context-manager' })
+  return renderSlot('conversation.session', { view: CONTEXT_VIEW })
 }
 
 /** Own a native Session reference only while this embedded transcript is mounted. Native input is adopted by the durable task intake. */
@@ -112,9 +113,12 @@ function Mounted({ ctx, t, seat }: { ctx: ClientContext; t: T; seat: Conversatio
     if (result.value.application !== 'applied') throw new Error(t('sourceConnectRestart'))
   }, [ctx, t])
   const form = usePageForm(ctx.get('configForms')?.get<Record<string, unknown>>(ENTRY))
+  const subscribeContext = useCallback((listener: () => void) => ctx.slots.subscribe('conversation.view', listener), [ctx])
+  const contextAvailable = useSyncExternalStore(subscribeContext, useCallback(() =>
+    ctx.slots.entriesOfSlot('conversation.view').some(entry => entry.options.id === CONTEXT_VIEW), [ctx]))
   const renderSession = useCallback((id: string) => <EmbeddedSession key={id} ctx={ctx} id={id} seat={seat} t={t} />, [ctx, seat, t])
   const renderContext = useCallback((id: string) => <EmbeddedSession key={id} ctx={ctx} id={id} seat={seat} t={t} slot="superagent.context" />, [ctx, seat, t])
-  return <App t={t} openSession={openSession} renderSession={renderSession} renderContext={renderContext} nativeSession enableSource={enableSource} openWorkspace={openWorkspace} pickDirectory={pickDirectory} deploymentForm={form} />
+  return <App t={t} openSession={openSession} renderSession={renderSession} renderContext={contextAvailable ? renderContext : undefined} nativeSession enableSource={enableSource} openWorkspace={openWorkspace} pickDirectory={pickDirectory} deploymentForm={form} />
 }
 
 export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace', 'remote.pluginManager']

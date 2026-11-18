@@ -64,7 +64,8 @@ export function SingleWorkbench({ sessionId }: { sessionId?: string }) {
     return { ...value, members: value.members.filter(member => !member.taskId || !teamTasks.has(member.taskId)),
       tasks: value.tasks.filter(task => !teamTasks.has(task.id)), activity: value.activity.filter(item => !item.ticketId || !teamTasks.has(item.ticketId)) }
   }, [call, restarts, sessionId], 2000)
-  const [view, setView] = useState<'conversation' | 'context' | 'activity'>('conversation')
+  const [selectedView, setView] = useState<'conversation' | 'context' | 'activity'>('conversation')
+  const view = selectedView === 'context' && !renderContext ? 'conversation' : selectedView
   const select = (id?: string) => { setView(view => view === 'context' ? 'context' : 'conversation'); navigate({ page: 'overview', ...(id ? { query: { session: id } } : {}) }, true) }
   const member = data?.members.find(member => member.id === sessionId)
   const files: FileScope | undefined = member && { kind: member.taskId ? 'task' : 'session', id: member.taskId ?? member.id,

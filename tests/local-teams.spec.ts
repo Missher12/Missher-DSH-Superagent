@@ -44,6 +44,22 @@ it('prepares a team without executing and admits the first native message with i
   expect(delivered.filter(item => item.id === 'first-native')).toHaveLength(1)
 }, 20000)
 
+it('hands the model chosen in the preparation conversation to the commander', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const { instructions, ...setup } = request()
+  const draft = await host.runtime.teams!.prepare({
+    ...setup, model: { provider: 'test', model: 'initial', reasoningEffort: 'high' },
+  })
+  host.controller.projections.mockResolvedValueOnce({
+    kind: 'sequenced', values: { modelSelection: { lastUsed: null, next: { provider: 'test', model: 'review', reasoningEffort: 'max' } } },
+  })
+  const message = { id: 'start-with-new-model', role: 'user', content: [{ type: 'text', text: instructions }], source: { kind: 'user' } }
+  await host.runtime.teams!.acceptPrepared(draft.commanderSessionId!, [message as never])
+  const launched = host.runtime.teams!.get(draft.id)
+  expect(launched.model).toEqual({ provider: 'test', model: 'review', reasoningEffort: 'max' })
+  expect(launched.commander?.model).toEqual(launched.model)
+}, 20000)
+
 it('removes members from the workflow while preserving their original tickets and repairing links', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const team = await createTeam({ ...request(), directory: host.directory })
