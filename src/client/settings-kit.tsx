@@ -55,16 +55,16 @@ export function Fields({ disabled, children }: { disabled: boolean; children: Re
   return <fieldset ref={set} className="dt-fieldset" disabled={disabled}>{children}</fieldset>
 }
 export function Field({ label, hint, note,
-  children }: { label: string; hint?: string | undefined; note?: ReactNode; children: ReactElement<{ id?: string; 'aria-label'?: string }> }) {
-  const id = useId()
+  children }: { label: string; hint?: string | undefined; note?: ReactNode; children: ReactElement<{ id?: string; 'aria-label'?: string; 'aria-describedby'?: string }> }) {
+  const generated = useId(), id = children.props.id ?? generated
   return <div className="dt-field">
     <span className="dt-field-head"><label htmlFor={id}>{label}</label>{hint && <InfoTip text={hint} />}</span>{cloneElement(children,
-      { id, 'aria-label': children.props['aria-label'] ?? label })}{note && <small title={typeof note === 'string' ? note : undefined}>{note}</small>}
+      { id, 'aria-label': children.props['aria-label'] ?? label, 'aria-describedby': [children.props['aria-describedby'], note && `${id}-note`].filter(Boolean).join(' ') || undefined })}{note && <small id={`${id}-note`} title={typeof note === 'string' ? note : undefined}>{note}</small>}
   </div>
 }
 /** Long paths retain a compact row and can be viewed, copied and edited in full. */
-function ValueInput({ id, label, value, onChange, readOnly, pattern, 'aria-label': ariaLabel }: {
-  id?: string; label: string; value: string; onChange: (value: string) => void; readOnly?: boolean; pattern?: string; 'aria-label'?: string
+function ValueInput({ id, label, value, onChange, readOnly, pattern, 'aria-label': ariaLabel, 'aria-describedby': description }: {
+  id?: string; label: string; value: string; onChange: (value: string) => void; readOnly?: boolean; pattern?: string; 'aria-label'?: string; 'aria-describedby'?: string
 }) {
   const { t, notify } = usePanel(), root = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false), [editing, setEditing] = useState(value)
@@ -73,7 +73,7 @@ function ValueInput({ id, label, value, onChange, readOnly, pattern, 'aria-label
     if (input && input !== document.activeElement) input.scrollLeft = input.scrollWidth
   }, [value])
   return <div className="dt-value-input" ref={root}>
-    <Input id={id} aria-label={ariaLabel} value={value} title={value} readOnly={readOnly} pattern={pattern} spellCheck={false}
+    <Input id={id} aria-label={ariaLabel} aria-describedby={description} value={value} title={value} readOnly={readOnly} pattern={pattern} spellCheck={false}
       onChange={event => onChange(event.target.value)} onBlur={event => { event.currentTarget.scrollLeft = event.currentTarget.scrollWidth }} />
     <Button variant="ghost" size="sm" icon={<Icon name="expand" size={14} />} aria-label={t('expandValue', { name: label })}
       title={t('expandValue', { name: label })} onClick={() => { setEditing(value); setOpen(true) }} />
@@ -208,7 +208,7 @@ function RowsField({ field, value, saved, onChange, labels, refreshLabels }: {
   refreshLabels: (() => Promise<string[]>) | undefined
 }) {
   const { t, notify } = usePanel()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(false), list = useRef<HTMLUListElement>(null), added = useRef<number>()
   const refresh = useAction(async () => {
     try {
       const added = await refreshLabels!()
@@ -217,6 +217,11 @@ function RowsField({ field, value, saved, onChange, labels, refreshLabels }: {
   })
   const label = localized(t, field.label), hint = localized(t, field.hint)
   const rows = Array.isArray(value) ? value as Row[] : []
+  useLayoutEffect(() => {
+    if (added.current === undefined) return
+    const target = list.current?.children[added.current]?.querySelector<HTMLElement>('input:not([type="hidden"]), .dt-choice-trigger')
+    if (target) { target.focus(); added.current = undefined }
+  }, [rows.length, open])
   const set = (index: number, row: Row) => onChange(rows.map((item, position) => position === index ? row : item))
   const key = field.columns[0]!
   const savedKeys = new Set((Array.isArray(saved) ? saved as Row[] : []).map(row => row[key.key]))
@@ -258,7 +263,7 @@ function RowsField({ field, value, saved, onChange, labels, refreshLabels }: {
         {key.type === 'text' && key.refresh && refreshLabels && <Button variant="ghost" size="sm" className={refresh.busy ? 'dt-btn-busy'
           : undefined} icon={<Icon name="refresh" />}
           disabled={refresh.busy} aria-busy={refresh.busy} onClick={() => { void refresh.run() }}>{localized(t, key.refresh)}</Button>}
-        <Button variant="ghost" size="sm" icon={<Icon name="plus" />} onClick={() => { setOpen(true); onChange([...rows,
+        <Button variant="ghost" size="sm" icon={<Icon name="plus" />} onClick={() => { added.current = rows.length; setOpen(true); onChange([...rows,
           blank]) }}>{t('addRow')}</Button>
       </span>
     </div>
@@ -266,9 +271,10 @@ function RowsField({ field, value, saved, onChange, labels, refreshLabels }: {
       onClick={() => setOpen(!open)}>
       {open ? t('collapse') : rows.map(rowName).join(t('listSeparator'))}
     </button>}
-    {(rows.length <= ROWS_SHOWN || open) && <ul className="dt-rows"
+    {(rows.length <= ROWS_SHOWN || open) && <ul ref={list} className="dt-rows dt-source-rows"
       style={{ ['--dt-columns' as string]: field.columns.length }}>{rows.map((row, index) => <li key={index} className="dt-rows-item">
-      {field.columns.map(column => cell(row, index, column))}
+      {field.columns.map(column => <div key={column.key} className="dt-source-cell">
+        <span aria-hidden="true">{localized(t, column.label)}</span>{cell(row, index, column)}</div>)}
       <Button variant="ghost" size="sm" icon={<Icon name="trash" />} aria-label={t('removeRow', { name: labels[row[key.key] ?? '']
         || row[key.key] || label })}
         onClick={() => onChange(rows.filter((_, position) => position !== index))} />

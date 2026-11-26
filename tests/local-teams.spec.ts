@@ -1,3 +1,4 @@
+import { Commands } from '../src/infra/commands.ts'
 import { wordCount } from '../src/infra/text.ts'
 import { realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -6,6 +7,8 @@ import { z } from 'zod'
 import { TeamRequestSchema } from '../src/teams/contracts.ts'
 import { previewDeliveryFile } from '../src/teams/delivery.ts'
 import { hasUnreadRequest } from '../src/core/index.ts'
+import * as githubPull from '../src/sources/github-pull.ts'
+import { githubKind } from '../src/sources/github.ts'
 import { startRuntime, type Host } from './fixtures/host.ts'
 
 let host: Host | undefined
@@ -73,6 +76,15 @@ it('removes members from the workflow while preserving their original tickets an
   expect(result.retiredMembers?.[0]).toMatchObject({ id: 'build', ticketId: build.ticketId })
   expect(host.runtime.store.tickets.get(build.ticketId!)?.ended?.by).toBe('human')
   expect(host.runtime.teams!.allowedWorker(build.ticketId!)).toBe(false)
+  const coordinator = host.runtime.store.tickets.get(team.coordinatorTicketId!)!
+  const original = coordinator.assignments.findLast(run => run.report?.summary)!
+  const runs = Array.from({ length: 24 }, (_, i) => ({ ...original, id: 'history-' + i }))
+  host.runtime.store.tickets.save({ ...coordinator, assignments: runs })
+  expect(host.runtime.teams!.get(team.id).members[0]!.events).toHaveLength(16)
+  const history = host.runtime.teams!.get(team.id, true)
+  expect(history.members[0]!.events.filter(event => event.summary)).toHaveLength(24)
+  expect(history.retiredMembers?.[0]?.events).toBeDefined()
+
   await expect(host.runtime.teams!.updatePlan(team.id, { revision: before.planRevision!, members: [] })).rejects.toThrow(/更新/)
 }, 20000)
 
@@ -197,6 +209,26 @@ it('persists an explicit event wait, wakes only its member with data, and never 
   host.runtime.receive({ ...event, id: 'after-stop', at: new Date().toISOString() }); await settle()
   expect(notes()).toHaveLength(2)
 }, 40_000)
+
+it('adds draft members below the commander, planner and worker and keeps the accepted plan through launch', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const { instructions, ...setup } = request()
+  const teams = host.runtime.teams!, draft = await teams.prepare({ ...setup, members: [] })
+  const direct = { id: 'command-review', name: '直属检验', parentId: '$commander', responsibility: 'reviewer' as const, instructions: '复核交付', dependencies: [] }
+  const child = { ...direct, id: 'review-helper', parentId: direct.id, dependencies: [direct.id] }
+  const owner = { ...direct, id: 'planner-helper', parentId: 'coordinator', dependencies: [direct.id] }
+  for (const plan of [direct, owner, child, direct]) await teams.addMember(draft.id, plan)
+  expect(teams.get(draft.id).members.filter(member => member.id === direct.id)).toHaveLength(1)
+  expect(host.runtime.store.tickets.list()).toHaveLength(0)
+  await teams.acceptPrepared(draft.commander!.sessionId!, [{ id: 'msg-launch', role: 'user', source: { type: 'user-rpc', kind: 'user', rpcId: 'msg-launch' }, content: [{ type: 'text', text: instructions }] } as never])
+  await finishIntake(draft.id)
+  await complete(teams.get(draft.id).coordinatorTicketId!)
+  const view = teams.get(draft.id)
+  expect(view.members.find(member => member.id === direct.id)).toMatchObject({ parentId: '$commander', ticketId: expect.any(String) })
+  expect(view.members.find(member => member.id === child.id)?.ticketId).toBeUndefined()
+  await complete(view.members.find(member => member.id === direct.id)!.ticketId!)
+  expect(teams.get(draft.id).members.find(member => member.id === child.id)?.ticketId).toBeTruthy()
+}, 30000)
 
 it('validates the organization tree separately from execution dependencies', () => {
   const members = [
@@ -427,6 +459,61 @@ it('preserves a pending review across reload and refuses work beyond the authori
   await host.runtime.teams!.followup(team.id, 'coordinator', 'human-resume', '已检查失败依据，请补齐输入边界，再执行一轮。')
   expect(host.runtime.teams!.get(team.id).workflow?.halted).toBeTruthy() // Replaying the same request cannot grant another round.
 }, 40_000)
+it('gives the commander and planner the root GitHub branch before they delegate any publication', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  host.runtime.sources.register(githubKind)
+  const settings = host.runtime.store.settings(), github = settings.sources.github!
+  host.runtime.store.saveSettings({ ...settings, sources: { ...settings.sources, github: {
+    ...github, enabled: true, execution: 'team', config: { ...github.config, workspaceDirectory: host.directory },
+  } }, policy: { ...settings.policy, sources: { ...settings.policy.sources, github: { allowed: [{ id: 'alice' }] } } } })
+  const trigger = { id: 'github-branch-order', source: 'github', threads: [{ source: 'github', id: '18' }],
+    actor: { source: 'github', id: 'alice' }, human: true, addressed: 'mention' as const, at: new Date().toISOString(),
+    text: '验证已有实现，在测试仓库开一个 PR。', channel: { source: 'github', thread: 'github:18', address: { number: '18' } }, meta: { number: 18, kind: 'issue', isPr: false } }
+  host.runtime.receive(trigger)
+  const { ticketId } = host.runtime.engine.decide(trigger.id, { kind: 'accept', title: '核对分支', name: 'clamp',
+    scope: trigger.text, reason: '授权测试' })
+  await settle()
+  const teams = host.runtime.teams!, team = teams.list()[0]!
+  const branch = `agent/${host.runtime.store.tickets.get(ticketId!)!.execution!.name}`
+  const commander = teams.get(team.id).commander!.ticketId!
+  const commanderSession = await readySession(commander)
+  const guards = vi.mocked(host.agents.get(commanderSession)!.ctx.tools.guard).mock.calls
+  const verdicts = (command: string) => guards.map(([check]) => check({ name: 'bash', arguments: { command } } as never))
+  expect(verdicts('curl -X POST https://api.github.com/repos/acme/widgets/issues/18/comments -d @reply.json')).toEqual(expect.arrayContaining([expect.stringContaining('统一回传')]))
+  expect(verdicts('gh pr create --body-file description')).toEqual(expect.not.arrayContaining([expect.any(String)]))
+  expect(teams.contextFor(commander)?.source?.pullRequest).toMatchObject({ branch })
+  expect(host.runtime.store.tickets.get(commander)?.mandate.scope).toContain(branch)
+  const discover = vi.spyOn(githubPull, 'findTicketPull').mockRejectedValue(new Error('GitHub transport EOF'))
+  const planned = await finishIntake(team.id)
+  expect(teams.contextFor(planned.coordinatorTicketId!)?.source?.pullRequest).toMatchObject({ branch })
+  expect(host.runtime.store.tickets.get(planned.coordinatorTicketId!)?.mandate.scope).toContain(branch)
+  await complete(planned.coordinatorTicketId!)
+  expect(discover).not.toHaveBeenCalled()
+  discover.mockRestore()
+  host.runtime.engine.bindThread(ticketId!, { source: 'github', id: '19' }, true)
+  expect(teams.contextFor(planned.coordinatorTicketId!)?.source?.pullRequest).toMatchObject({ number: 19, checks: 'github/pulls/19/checks', changes: 'github/pulls/19/changes' })
+  const followed = host.runtime.store.threads.get('github:19')!
+  host.runtime.store.threads.save({ ...followed, meta: { ...followed.meta, url: 'https://github.com/acme/widgets/pull/19', ciHead: 'older', facts: { ci: { label: 'CI', value: '旧提交已通过' } } } })
+  const revision = { head: { sha: 'abcdef012345' }, base: { sha: '9000000' }, changed_files: 1 }
+  vi.mocked(Commands.prototype.gh).mockImplementation(async args => {
+    if (args[1]?.includes('/git/commits/')) return { tree: { sha: 'unchanged-tree' } }
+    if (args[1]?.endsWith('pulls/19/files?per_page=100')) return [{ filename: 'README.md' }]
+    if (args[1]?.endsWith('pulls/19')) return revision
+    return []
+  })
+  await complete(teams.get(team.id).members.find(member => member.id === 'build')!.ticketId!)
+  await review(teams.get(team.id).members.find(member => member.id === 'check')!.ticketId!, 'pass')
+  await review(planned.coordinatorTicketId!, 'pass', [], '新增 clamp.mjs 和验收测试。')
+  await settle()
+  expect(teams.get(team.id).finalDelivery?.githubChanges).toMatchObject({ number: 19, head: revision.head.sha, files: ['README.md'] })
+  const reply = host.runtime.store.receipts.get(teams.get(team.id).sourceDelivery!.receiptId)
+  expect(reply?.text).toContain('相对分叉点列出 1 个文件')
+  expect(reply?.text).toContain('无净文件改动')
+  expect(reply?.text).toContain('README.md')
+  expect(reply?.text).not.toContain('clamp.mjs')
+  expect(reply?.text).not.toContain('旧提交已通过')
+}, 40000)
+
 it('keeps an external root open through planning and delivers only the verified team result to its original thread', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
   const sent: { text: string; ticketId?: string }[] = []
@@ -1068,3 +1155,57 @@ async function createTeam(input: Parameters<NonNullable<Host['runtime']['teams']
   const team = await host!.runtime.teams!.create(input)
   return finishIntake(team.id)
 }
+
+it('keeps discussion and attachments in a draft until the user separately confirms the start', async () => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const { instructions: _, ...setup } = request()
+  const team = await host.runtime.teams!.prepare({ ...setup, confirmStart: true })
+  const changed = await host.runtime.teams!.updatePlan(team.id, { revision: team.planRevision!, members: setup.members.map(member =>
+    member.id === 'check' ? { ...member, instructions: '独立检查断线提示' } : member) })
+  expect(changed.phase).toBe('draft')
+  expect(changed.members.find(member => member.id === 'check')?.instructions).toBe('独立检查断线提示')
+  const message = (id: string, text: string) => ({ id, role: 'user' as const, content: [{ type: 'text' as const, text }],
+    source: { type: 'user-rpc', kind: 'user', rpcId: id } }) as never
+  const accept = (id: string, text: string) => host!.runtime.teams!.acceptPrepared(team.commanderSessionId!, [message(id, text)])
+  for (const text of ['先确认两端断线提示', '先不要开工', '如果我说“开工”会怎样？']) expect(await accept(text, text)).toBe(true)
+  await accept('attachment', '要保留两端的状态')
+  await accept('attachment', '要保留两端的状态')
+  expect(host.runtime.teams!.get(team.id).phase).toBe('draft')
+  expect(host.runtime.store.tickets.list()).toHaveLength(0)
+  await accept('authorized', '开工。')
+  const running = host.runtime.teams!.get(team.id)
+  expect(running.phase).toBe('briefing')
+  expect(running.instructions).toContain('先确认两端断线提示')
+  expect(running.instructions.match(/要保留两端的状态/g)).toHaveLength(1)
+  expect(running.instructions).not.toContain('开工。')
+}, 30000)
+
+it.each([false, true])('recovers a failed review missing its decision unless the user must answer (question=%s)', async question => {
+  host = await startRuntime(undefined, { mode: 'local' })
+  const team = await createTeam({ ...request(), directory: host.directory, workflow: { maxRounds: 3 }, members: request().members.map(member => ({
+    ...member, responsibility: member.id === 'check' ? 'reviewer' : 'implementer',
+  })) })
+  await complete(team.coordinatorTicketId!)
+  await complete(host.runtime.teams!.get(team.id).members.find(member => member.id === 'build')!.ticketId!)
+  const id = host.runtime.teams!.get(team.id).members.find(member => member.id === 'check')!.ticketId!
+  const session = await readySession(id), agent = host.agents.get(session)!, command = 'node --test acceptance.test.mjs'
+  host.ctx.emit('session/event', host.ctx.agents.get(session as never)!.session, { type: 'tool/call', seq: 1, time: Date.now(), data: {
+    callId: 'red-test', name: 'bash', arguments: JSON.stringify({ command }),
+  } } as never)
+  host.ctx.emit('session/event', host.ctx.agents.get(session as never)!.session, { type: 'tool/result', seq: 2, time: Date.now(), data: {
+    message: { toolCallId: 'red-test', isError: true },
+  } } as never)
+  await host.runTool(session, 'orchestrator_report', { state: 'blocked', summary: '测试未通过，等待处理。',
+    ...(question ? { human_action: '需要哪一个测试账号？' } : {}),
+    delivery: { checks: [{ command, outcome: 'failed' }] } })
+  agent.status = 'idle'; host.ctx.emit('agent/status', { agent, status: 'idle' } as never)
+  await settle(); await settle()
+  const prompts = host.runtime.store.tickets.get(id)!.inputs.flatMap(input => input.kind === 'trigger'
+    ? [host!.runtime.store.triggers.get(input.triggerId)?.text ?? ''] : [])
+  expect(prompts.filter(text => text.includes('尚缺正式审核决定'))).toHaveLength(question ? 0 : 1)
+  expect(host.runtime.store.tickets.get(id)!.attention?.question).toBe(question ? '需要哪一个测试账号？' : undefined)
+  if (!question) {
+    await review(id, 'revise', ['build'])
+    expect(host.runtime.teams!.get(team.id).workflow?.reviews.some(review => review.decision === 'revise')).toBe(true)
+  }
+}, 40000)

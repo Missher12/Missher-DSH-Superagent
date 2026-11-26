@@ -1,13 +1,27 @@
 /** Editable, explicit member plans; no sessions exist until the task is dispatched. */
 import { useState } from 'react'
 import type { TeamMember } from '../teams/contracts.ts'
-import { Button, Icon, Input } from './controls.tsx'
+import { Button, Icon, Input, SegmentedControl } from './controls.tsx'
 import { ModelSelect, ReasoningSelect } from './model-picker.tsx'
 import { usePanel } from './provider.tsx'
 import { ComposerField as Field } from './composer.tsx'
 import type { T } from './text.ts'
 import type { RoleModel } from '../policy.ts'
+import { COMMANDER } from '../teams/plan.ts'
 import { Select } from './select.tsx'
+
+export type MemberPlacement = { parentId: string; responsibility: NonNullable<TeamMember['responsibility']> }
+export function MemberPlacementFields({ parents, value, onChange }: {
+  parents: { id: string; name: string }[]; value: MemberPlacement; onChange: (value: MemberPlacement) => void
+}) {
+  const { t } = usePanel()
+  return <><Field label={t('teamParent')}><Select value={value.parentId} onChange={event => onChange({ ...value, parentId: event.target.value })}>
+    {parents.map(parent => <option key={parent.id} value={parent.id}>{parent.name}</option>)}
+  </Select></Field>
+    <Field label={t('teamResponsibility')}><SegmentedControl label={t('teamResponsibility')} value={value.responsibility}
+      options={(['implementer', 'reviewer', 'manager'] as const).map(role => ({ value: role, label: t(`teamRole.${role}`) }))}
+      onChange={responsibility => onChange({ ...value, responsibility })} /></Field></>
+}
 
 export function defaultMembers(t: T): TeamMember[] {
   return [{ id: 'build', name: t('teamDefaultBuild'), instructions: t('teamDefaultBuildWork'), dependencies: [], responsibility: 'implementer' },
@@ -36,7 +50,7 @@ export function TeamMembersEditor({ members, onChange, disabled, model }: { memb
         {(['implementer', 'reviewer', 'manager'] as const).map(role => <option key={role} value={role}>{t(`teamRole.${role}`)}</option>)}
       </Select></Field>
       <Field label={t('teamParent')}><Select value={member.parentId ?? 'coordinator'} onChange={event => edit(member.id, { parentId: event.target.value })}>
-        <option value="coordinator">{t('teamCoordinator')}</option>{members.filter(parent => parent.id !== member.id && parent.responsibility === 'manager').map(parent => <option key={parent.id} value={parent.id}>{parent.name}</option>)}
+        <option value={COMMANDER}>{t('teamCommander')}</option><option value="coordinator">{t('teamCoordinator')}</option>{members.filter(parent => parent.id !== member.id).map(parent => <option key={parent.id} value={parent.id}>{parent.name}</option>)}
       </Select></Field>
       <div className="dt-danger-zone"><Button size="sm" icon={<Icon name="trash" />} disabled={disabled || members.length <= 2} title={members.length <= 2 ? t('teamMinMembers') : undefined}
         onClick={() => onChange(members.filter(value => value.id !== member.id).map(value => ({ ...value, dependencies: value.dependencies.filter(id => id !== member.id),

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it } from 'vitest'
 import { zh } from '../src/client/locales.ts'
-import { usePanel, mount, remount, all, find, click, type, field, text, at } from './fixtures/panel.tsx'
+import { openLocalOption, usePanel, mount, remount, all, find, click, type, field, text, at } from './fixtures/panel.tsx'
 import { server, ticketSummary } from './fixtures/panel-server.ts'
 
 usePanel()
@@ -253,6 +253,7 @@ it('lets the user dispatch a local task and sends follow-up requirements to that
   await type(field<HTMLInputElement>('任务标题'), '检查设置页')
   await type(field<HTMLSelectElement>('任务位置'), 'existing')
   await type(field<HTMLSelectElement>('选择工作区'), '/tmp/work')
+  expect(field<HTMLSelectElement>('选择工作区').value).toBe('/tmp/work')
   await type(field<HTMLTextAreaElement>('任务要求'), '检查并修复已有按钮的对齐问题')
   await click('派出任务')
   expect(server.requests.find(item => item.path === 'local/tasks')?.body).toMatchObject({ title: '检查设置页', directory: '/tmp/work', instructions: '检查并修复已有按钮的对齐问题' })
@@ -351,9 +352,10 @@ it('opens the workbench and keeps local navigation understandable', async () => 
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   at({ page: 'overview' })
   await mount()
-  expect(all('[role="tab"]').map(tab => tab.textContent)).toEqual(['工作台', '任务', '工作区', '设置', '帮助'])
+  expect(all('.dt-head [role="tablist"]')).toHaveLength(0)
+  expect(all('main[aria-label="工作台"]')).toHaveLength(1)
   expect(text()).not.toContain('打开主 Session')
-  await click('帮助')
+  await openLocalOption('使用帮助')
   expect(text()).toContain('交给 Superagent 后台执行')
   expect(text()).toContain('DSH 关闭后')
   expect(text()).toContain('Git / MCP')
@@ -381,9 +383,9 @@ it('preserves an unfinished task draft across panel navigation and generates a t
   await type(field<HTMLInputElement>('工作区目录'), '/tmp/work')
   await type(field<HTMLTextAreaElement>('任务要求'), '分析登录失败的原因\n先分析，不改文件。')
   await click('取消')
-  await click('帮助')
+  await openLocalOption('使用帮助')
   await remount()
-  await click('任务')
+  await click('返回工作台'); await click('任务看板')
   await click('新建任务')
   expect(field<HTMLTextAreaElement>('任务要求').value).toContain('分析登录失败')
   await click('派出任务')
@@ -472,7 +474,7 @@ it('prepares a stopped task as a new draft without silently dispatching it', asy
 it('opens a real workspace and prepares its task without dispatching or losing the draft', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   await mount()
-  await click('工作区')
+  await click('返回工作台'); await click('全部工作区')
   expect(text()).toContain('/tmp/work')
   await click('打开工作区')
   expect(server.openedWorkspaces).toEqual(['workspace-test'])
@@ -480,14 +482,14 @@ it('opens a real workspace and prepares its task without dispatching or losing t
   expect(field<HTMLInputElement>('工作区目录').value).toBe('/tmp/work')
   expect(server.requests.filter(item => item.method === 'POST' && item.path === 'local/tasks')).toHaveLength(0)
   await type(field<HTMLTextAreaElement>('任务要求'), '保留这段要求')
-  await click('工作区')
+  await click('返回工作台'); await click('全部工作区')
   await click('派任务')
   expect(field<HTMLTextAreaElement>('任务要求').value).toBe('保留这段要求')
 })
 it('filters workspace names and paths without changing the list or dispatching a task', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   server.workspaceChoices = [{ id: 'a', title: 'Alpha', directory: '/tmp/one' }, { id: 'b', title: 'Beta', directory: '/srv/project-two' }]
-  await mount(); await click('工作区')
+  await mount(); await click('返回工作台'); await click('全部工作区')
   const search = field<HTMLInputElement>(zh.localSearchWorkspaces)
   await type(search, 'alpha')
   expect(all('.dt-local-workspace-row').map(row => row.textContent)).toEqual([expect.stringContaining('Alpha')])
@@ -501,7 +503,7 @@ it('filters workspace names and paths without changing the list or dispatching a
 })
 it('opens advanced settings separately and retains an unsaved basic setting', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
-  await mount(); await click('设置')
+  await mount(); await openLocalOption('插件设置')
   await type(field<HTMLInputElement>(zh.localMaxWorkers), '4')
   expect(all('.dt-mcp-connection')).toHaveLength(0)
   await click(zh.localConnections)
@@ -515,7 +517,7 @@ it('confirms workspace removal separately and disables removal for running and p
   server.workspaceChoices = [{ id: 'old', title: '旧项目', directory: '/tmp/old' },
     { id: 'active', title: '活动项目', directory: '/tmp/active', activeTasks: 1 },
     { id: 'root', title: '任务根目录', directory: '/tmp/root', protected: true }]
-  await mount(); await click('工作区')
+  await mount(); await click('返回工作台'); await click('全部工作区')
   const buttons = all('.dt-workspace-remove button') as HTMLButtonElement[]
   expect(buttons.map(button => button.disabled)).toEqual([false, true, true])
   await click(buttons[0]!)
@@ -529,7 +531,7 @@ it('confirms workspace removal separately and disables removal for running and p
 })
 it('keeps plugin configuration in the host instead of duplicating it in local settings', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
-  await mount(); await click('设置')
+  await mount(); await openLocalOption('插件设置')
   expect(text()).not.toContain('插件能力')
   expect(server.requests.some(request => request.path === 'local/capabilities')).toBe(false)
 })
@@ -550,7 +552,7 @@ it('keeps full reports in task details while the board stays concise', async () 
 it('adds the directory selected by the native picker and treats cancellation as no change', async () => {
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   await mount()
-  await click('工作区')
+  await click('返回工作台'); await click('全部工作区')
   await click('添加工作区')
   expect(server.requests.filter(item => item.method === 'POST' && item.path === 'local/workspaces')).toHaveLength(0)
   await click('选择项目目录')

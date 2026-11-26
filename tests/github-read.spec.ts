@@ -94,3 +94,64 @@ it('reads an Issue or PR as its author, time, title, state, description and a PR
   expect(await readGithub(commands, 'github/pulls/9')).toEqual({ number: 9, title: 'Fix the margin', state: 'open', draft: true, head: 'agent/fix',
     base: 'main', labels: ['ui'], id: '9', from: 'carol', at: '2026-09-09T00:00:00Z', text: 'Details', url: 'https://github.com/acme/widgets/pull/9' })
 })
+
+it('keeps the reviewed PR file list distinct from files already present on base', async () => {
+  const ref = { base: { sha: 'base' }, head: { sha: 'head' }, changed_files: 1 }
+  const gh = vi.spyOn(commands, 'gh').mockResolvedValueOnce(ref).mockResolvedValueOnce([{ filename: 'README.md' }]).mockResolvedValueOnce({ tree: { sha: 'same' } }).mockResolvedValueOnce({ tree: { sha: 'same' } }).mockResolvedValueOnce(ref)
+  expect(await readGithub(commands, 'github/pulls/27/changes')).toEqual({ number: 27, base: 'base', head: 'head', total: 1, files: ['README.md'], sameTreeAsBase: true })
+  expect(gh.mock.calls.map(call => call[0][1])).toEqual(['repos/acme/widgets/pulls/27', 'repos/acme/widgets/pulls/27/files?per_page=100', 'repos/acme/widgets/git/commits/base', 'repos/acme/widgets/git/commits/head', 'repos/acme/widgets/pulls/27'])
+})
+
+it.each(['base', 'head', 'incomplete'])('rejects an unstable or partial PR file list: %s', async change => {
+  const ref = { base: { sha: 'b' }, head: { sha: 'h' }, changed_files: 1 }
+  vi.spyOn(commands, 'gh').mockResolvedValueOnce(ref).mockResolvedValueOnce(change === 'incomplete' ? [] : [{ filename: 'README.md' }])
+    .mockResolvedValueOnce({ tree: { sha: 'one' } }).mockResolvedValueOnce({ tree: { sha: 'two' } })
+    .mockResolvedValueOnce(change === 'incomplete' ? ref : { ...ref, [change]: { sha: 'other' } })
+  await expect(readGithub(commands, 'github/pulls/27/changes')).rejects.toThrow('不完整')
+})
+
+it.each([['completed', 'success', 0, 0], ['completed', 'failure', 1, 0], ['in_progress', null, 0, 1]] as const)(
+  'keeps the actual Actions workflow result when jobs and statuses are forbidden (%s, %s)', async (status, conclusion, failed, running) => {
+    const denied = new CliError('forbidden', 403)
+    vi.spyOn(commands, 'gh').mockRejectedValueOnce(denied).mockResolvedValueOnce([{ workflow_runs: [
+      { id: 2, workflow_id: 9, name: 'test', event: 'pull_request', status, conclusion },
+    ] }]).mockRejectedValueOnce(denied)
+    vi.spyOn(commands, 'pages').mockRejectedValueOnce(denied)
+    const result = await pullChecks(commands, 'abc')
+    expect(ciCounts(result)).toEqual({ failed, running, coverage: 'actions-only' })
+    expect(result.checks[0]?.name).toContain('job details unavailable')
+    expect(ciSummary(result, 'PR', 'checks')).toContain('GitHub Actions only')
+  })
+
+it('routes direct team CLI comments and Checks reads to the host while allowing repository work', async () => {
+  const { githubTeamShellAdvice: advice } = await import('../src/sources/github-channel.ts')
+  for (const write of ['gh issue comment 21 --body-file note', 'GH=/tools/github-agent; "$GH" pr comment 21 --body ok',
+    '"/tools/github-agent" api --method POST repos/acme/widgets/issues/21/comments -f body=ok',
+    'gh api repos/acme/widgets/pulls/3/comments --input note.json']) expect(advice(write)).toContain('统一回传')
+  for (const read of ['gh pr checks 27', '/tools/github-agent api repos/a/b/commits/sha/check-runs',
+    'gh pr view 27 --json statusCheckRollup']) expect(advice(read)).toContain('orchestrator_read')
+  for (const allowed of ['gh pr create --body-file note', 'gh api repos/a/b/issues/2/comments', 'git diff origin/main']) expect(advice(allowed)).toBeUndefined()
+})
+
+it('retries an interrupted plain GitHub read once and never replays a comment write', async () => {
+  const { z } = await import('zod')
+  const eof = new CliError('Get https://api.github.com: EOF')
+  const gh = vi.spyOn(commands, 'gh').mockRejectedValueOnce(eof).mockResolvedValueOnce({ ok: true })
+  expect(await commands.api(z.unknown(), 'pulls/9')).toEqual({ ok: true })
+  expect(gh).toHaveBeenCalledTimes(2)
+  gh.mockClear().mockRejectedValue(eof)
+  await expect(commands.api(z.unknown(), 'issues/9/comments', '--method', 'POST', '-f', 'body=test')).rejects.toBe(eof)
+  expect(gh).toHaveBeenCalledTimes(1)
+})
+
+it('blocks GitHub comment writes over HTTP without blocking reads or pull creation', async () => {
+  const { githubTeamShellAdvice: advice } = await import('../src/sources/github-channel.ts')
+  const issue = 'https://api.github.com/repos/acme/widgets/issues/25/comments'
+  for (const write of [
+    ['curl -sS -X POST', '  -H "Accept: application/vnd.github+json"', '  "' + issue + '"', "  -d '{\"body\":\"done\"}'"].join(' \\\n'),
+    'curl --json @response.json "' + issue + '"', 'Invoke-RestMethod -Method Post -Uri "' + issue + '" -Body $message',
+    "python3 -c \"import requests; requests.post('" + issue + "', json=payload)\"",
+    "gh api graphql -f query='mutation{addComment(input:$input){clientMutationId}}'",
+  ]) expect(advice(write)).toContain('统一回传')
+  for (const allowed of ['curl -sS "' + issue + '"', 'gh pr create --body-file note', 'curl -X POST https://api.github.com/repos/a/b/pulls -d @pr.json']) expect(advice(allowed)).toBeUndefined()
+})

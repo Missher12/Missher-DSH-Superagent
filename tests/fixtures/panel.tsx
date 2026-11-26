@@ -59,6 +59,10 @@ export async function click(target: string | HTMLElement) {
   await act(async () => { element.click() })
   await settle()
 }
+export async function openLocalOption(label: string) {
+  await click('更多选项')
+  await click(find(label, '[role=menuitem]'))
+}
 export async function type(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {
   const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : element instanceof HTMLSelectElement
     ? HTMLSelectElement.prototype

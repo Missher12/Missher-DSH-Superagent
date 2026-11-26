@@ -1,4 +1,5 @@
 import { Select } from './select.tsx'
+import { ComposerField, ComposerForm } from './composer.tsx'
 /** Eval status view (Decision log) and Eval settings group (Policy rules, per-Source admission, and assessor settings). */
 import { useId, useState } from 'react'
 import { ADMISSION_DEFAULTS, ADMISSION_OPTIONS, type Admission, type AdmissionCell } from '../admission.ts'
@@ -99,16 +100,16 @@ function NativeRuleList({ rules, onChange, invalidRule, clearInvalid }: { rules:
     })}</ul> : <Hint>{t('rulesEmpty')}</Hint>}
     <Modal className="dt-rule-dialog" open={!!active} title={t(editor?.created ? 'newRule' : 'dispatchRuleTitle')} closeLabel={t('close')} onClose={close}
       footer={<><Hint>{t('dispatchRuleDraftHint')}</Hint><Button type="submit" form={formId} variant="primary">{t('dispatchFinishEdit')}</Button></>}>
-      {active && <form id={formId} className="dt-form" onSubmit={event => { event.preventDefault(); event.stopPropagation(); close() }}>
-        <Field label={t('ruleName')}><Input required value={active.name} maxLength={LIMITS.ruleName}
-          onChange={event => update({ ...active, name: event.target.value })} /></Field>
-        <Field label={t('ruleInstruction')}><textarea className="dt-textarea" required rows={5} value={active.instruction}
+      {active && <ComposerForm id={formId} disabled={false} onSubmit={close}>
+        <ComposerField required label={t('ruleName')}><Input required value={active.name} maxLength={LIMITS.ruleName}
+          onChange={event => update({ ...active, name: event.target.value })} /></ComposerField>
+        <ComposerField required label={t('ruleInstruction')}><textarea className="dt-textarea" required rows={5} value={active.instruction}
           maxLength={LIMITS.ruleInstruction} placeholder={t('ruleInstructionPlaceholder')}
-          onChange={event => update({ ...active, instruction: event.target.value })} /></Field>
+          onChange={event => update({ ...active, instruction: event.target.value })} /></ComposerField>
         <div className="dt-danger-zone"><Button size="sm" icon={<Icon name="trash" />} onClick={() => {
           onChange(rules.filter(rule => rule.id !== active.id)); setEditor(undefined); clearInvalid()
         }}>{t('dispatchDeleteRule')}</Button></div>
-      </form>}
+      </ComposerForm>}
     </Modal>
   </>
 }

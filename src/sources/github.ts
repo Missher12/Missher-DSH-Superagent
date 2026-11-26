@@ -441,8 +441,11 @@ async function pollChecks(ctx: SourceContext, round: Round, number: number, pr: 
   if (previous || ctx.tickets.open().some(ticket => pullsOf(ticket, true).includes(number))) {
     await ctx.receive(ciTrigger(pr, revision, ciSummary(snapshot, `PR #${number}`, `github/pulls/${number}/checks`)))
   }
-  ctx.state.set(KV.github.ci(number), { fingerprint, revision })
-  ctx.threads.describe(`github:${number}`, { facts: { ci: ciFact(ciCounts(snapshot)) } })
+  ctx.atomic(() => {
+    ctx.state.set(KV.github.ci(number), { fingerprint, revision })
+    ctx.threads.describe(`github:${number}`, { facts: { ci: ciFact(ciCounts(snapshot)) } })
+    ctx.threads.patch(`github:${number}`, { ciHead: snapshot.head })
+  })
 }
 function nameThread(ctx: SourceContext, number: number, title: string): void {
   ctx.threads.patch(`github:${number}`, { title })

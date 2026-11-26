@@ -15,6 +15,14 @@ import { localized } from './text.ts'
 import { Select } from './select.tsx'
 
 type ConnectionSource = string
+function ConnectionEditor({ id }: { id: string }) {
+  const { settings: { sources } } = useSettings()
+  if (id === 'policy') return <EvalSettings layout="local" />
+  if (id !== 'mcp') return <SourceSettings include={[id]} />
+  const mcp = sources.find(source => source.id === 'mcp')
+  return <>{mcp && <SourceExecution source={mcp} />}<McpSettings /></>
+}
+
 function Connections({ selected, onSelect }: { selected: ConnectionSource; onSelect: (source: ConnectionSource) => void }) {
   const { t } = usePanel(), { settings: { sources } } = useSettings()
   const connections = sources.filter(source => source.id !== 'local').map(source => ({
@@ -26,7 +34,7 @@ function Connections({ selected, onSelect }: { selected: ConnectionSource; onSel
     connections.push({ id, name: t(`source.${id}`), state: 'missing', policy: false })
   connections.sort((a, b) => Number(b.id === 'mcp') - Number(a.id === 'mcp'))
   const current = connections.find(source => source.id === selected) ?? connections[0]
-  const mcp = sources.find(source => source.id === 'mcp')
+  const editor = selected === 'policy' ? selected : current?.id
   return <div className="dt-connections">
     <nav className="dt-connections-nav" aria-label={t('localConnectionSources')}>
       {connections.map(source => {
@@ -40,8 +48,8 @@ function Connections({ selected, onSelect }: { selected: ConnectionSource; onSel
       })}
       <button type="button" aria-current={selected === 'policy' ? 'page' : undefined} onClick={() => onSelect('policy')}><Icon name="shield" size={18} /><span><strong>{t('localExternalPolicy')}</strong></span></button>
     </nav>
-    <div id="dt-connection-content" className="dt-connections-body" key={selected === 'policy' ? 'policy' : current?.id}>
-      {selected === 'policy' ? <EvalSettings layout="local" /> : current?.id === 'mcp' ? <>{mcp && <SourceExecution source={mcp} />}<McpSettings /></> : current ? <SourceSettings include={[current.id]} /> : null}
+    <div id="dt-connection-content" className="dt-connections-body" key={editor}>
+      {editor && <ConnectionEditor id={editor} />}
     </div>
   </div>
 }
@@ -93,3 +101,12 @@ function SettingsBody() {
 }
 
 export function LocalSettings() { return <SettingsProvider><SettingsBody /></SettingsProvider> }
+
+export function WorkbenchSettings({ tool }: { tool: 'mcp' | 'execution' }) {
+  const { t } = usePanel()
+  const [connection, setConnection] = useState<ConnectionSource>('mcp')
+  return <div className="dt-local-settings-root"><div className="dt-local-settings-content">
+    <SettingsProvider>{tool === 'execution' ? <SettingsForm /> : <Connections selected={connection} onSelect={setConnection} />}</SettingsProvider>
+    <p className="dt-hint dt-shared-scope">{t('studioSettingsScope')}</p>
+  </div></div>
+}

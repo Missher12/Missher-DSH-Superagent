@@ -3,13 +3,13 @@
 import { act } from 'react'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import { zh } from '../src/client/locales.ts'
-import { usePanel, mount, remount, settle, all, find, tab, click, type, text, field, at } from './fixtures/panel.tsx'
+import { openLocalOption, usePanel, mount, remount, settle, all, find, tab, click, type, text, field, at } from './fixtures/panel.tsx'
 import { server, problemOf, droppedReply } from './fixtures/panel-server.ts'
 
 usePanel()
 it('opens a complete long path for editing and keeps cancel and apply scoped to the draft', async () => {
   server.setup = { ...server.setup, mode: 'local' }
-  await mount(); await click('设置'); await click(zh.localConnections); await click('GitHub')
+  await mount(); await openLocalOption('插件设置'); await click(zh.localConnections); await click('GitHub')
   const path = '/Users/test/' + 'long-workspace/'.repeat(12) + 'project'
   await type(field<HTMLInputElement>('工作区'), path)
   await click('展开：工作区')
@@ -25,7 +25,7 @@ it('opens a complete long path for editing and keeps cancel and apply scoped to 
 })
 it('connects Feishu with app credentials without persisting the secret in a form draft', async () => {
   server.setup = { ...server.setup, mode: 'local' }; server.running = 0
-  await mount(); await click('设置'); await click(zh.localConnections); await click('飞书')
+  await mount(); await openLocalOption('插件设置'); await click(zh.localConnections); await click('飞书')
   const appId = field<HTMLInputElement>('App ID').value
   expect(appId).toMatch(/^cli_/)
   expect(all('input[aria-label="机器人的 lark-cli"]')).toHaveLength(0)
@@ -41,7 +41,7 @@ it('connects Feishu with app credentials without persisting the secret in a form
 it('keeps a rejected app secret only in memory and leaves the working connection unchanged', async () => {
   server.setup = { ...server.setup, mode: 'local' }; server.running = 0
   const before = structuredClone(server.settings.sources.feishu)
-  await mount(); await click('设置'); await click(zh.localConnections); await click('飞书')
+  await mount(); await openLocalOption('插件设置'); await click(zh.localConnections); await click('飞书')
   await type(field<HTMLInputElement>('App Secret'), 'rejected-secret'); await click(zh.save)
   expect(text()).toContain('App ID 或 App Secret 验证失败')
   expect(server.settings.sources.feishu).toEqual(before)
@@ -52,7 +52,7 @@ it('keeps a rejected app secret only in memory and leaves the working connection
 it('opens a replacement draft without changing the running connection, and can discard it', async () => {
   server.setup = { ...server.setup, mode: 'local' }
   const before = structuredClone(server.settings.sources.feishu!)
-  await mount(); await click('设置'); await click(zh.localConnections); await click('飞书')
+  await mount(); await openLocalOption('插件设置'); await click(zh.localConnections); await click('飞书')
   await click(find('更换接入', '#dt-source-feishu button'))
   expect(field<HTMLInputElement>('App ID').value).toBe('')
   expect(field<HTMLInputElement>('App Secret').value).toBe('')
@@ -65,7 +65,7 @@ it('opens a replacement draft without changing the running connection, and can d
 it('removes only a confirmed connection and offers a fresh setup, retaining GitHub repository ownership', async () => {
   server.setup = { ...server.setup, mode: 'local' }; server.running = 0
   const other = structuredClone(server.settings.sources.github!)
-  await mount(); await click('设置'); await click(zh.localConnections); await click('飞书')
+  await mount(); await openLocalOption('插件设置'); await click(zh.localConnections); await click('飞书')
   await click(find('移除接入', '#dt-source-feishu button'))
   expect(server.requests.some(r => r.method === 'PUT')).toBe(false)
   await click(zh.confirm)
@@ -81,7 +81,7 @@ it('removes only a confirmed connection and offers a fresh setup, retaining GitH
 
 it('does not remove a connection while any task is executing', async () => {
   server.setup = { ...server.setup, mode: 'local' }
-  await mount(); await click('设置'); await click(zh.localConnections); await click('飞书')
+  await mount(); await openLocalOption('插件设置'); await click(zh.localConnections); await click('飞书')
   expect((find('移除接入', '#dt-source-feishu button') as HTMLButtonElement).disabled).toBe(true)
   expect(server.requests.some(r => r.method === 'PUT')).toBe(false)
 })
@@ -89,7 +89,7 @@ it('opens bundled GitHub and Feishu setup directly from local settings when thei
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   server.installedSources = []
   server.enableSource = async id => { server.installedSources!.push(id) }
-  await mount(); await click('设置'); await click(zh.localConnections); await click('GitHub')
+  await mount(); await openLocalOption('插件设置'); await click(zh.localConnections); await click('GitHub')
   expect(text()).toContain('GitHub'); expect(text()).toContain('飞书')
   await click('启用 GitHub')
   expect(field<HTMLInputElement>('监听的仓库')).toBeDefined()
@@ -104,7 +104,7 @@ it('keeps connector setup available and shows the host refusal if enabling fails
   server.setup = { ...server.setup, mode: 'local', accounts: null }
   server.installedSources = []
   server.enableSource = async () => { throw new Error('DSH 暂时无法启用此组件') }
-  await mount(); await click('设置'); await click(zh.localConnections); await click('GitHub')
+  await mount(); await openLocalOption('插件设置'); await click(zh.localConnections); await click('GitHub')
   await click('启用 GitHub')
   expect(text()).toContain('DSH 暂时无法启用此组件')
   expect(document.querySelector('.dt-local-settings-editor [role="alert"]')?.textContent).toBe('DSH 暂时无法启用此组件')

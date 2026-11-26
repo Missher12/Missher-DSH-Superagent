@@ -18,7 +18,7 @@ export function OpenWorkspaceButton({ directory, compact = false }: { directory:
     aria-label={t('localOpenWorkspace')} title={directory} onClick={() => { void open.run() }}>{compact ? null : t('localOpenWorkspace')}</Button>
 }
 
-export function LocalWorkspaces() {
+export function LocalWorkspaces({ inline = false }: { inline?: boolean } = {}) {
   const { t, call, navigate, openWorkspace, pickDirectory, notify } = usePanel()
   const { data, error, reload } = usePoll(() => call('GET local/workspaces'), [call])
   const [query, setQuery] = useState('')
@@ -41,7 +41,7 @@ export function LocalWorkspaces() {
     catch (error) { setFailure(errorText(error)); throw error }
   })
   return <section className="dt-local-workspaces" aria-label={t('localWorkspaces')}>
-    <div className="dt-local-workspace-tools"><h2>{t('localWorkspaces')}{data && <span className="dt-count">{data.length}</span>}</h2><Button variant="primary" icon={<Icon name="plus" />}
+    <div className="dt-local-workspace-tools">{!inline && <h2>{t('localWorkspaces')}{data && <span className="dt-count">{data.length}</span>}</h2>}<Button variant="primary" icon={<Icon name="plus" />}
       disabled={add.busy} onClick={() => { if (renaming) setDraft({ title: '', directory: '' }); setRenaming(false); setFailure(undefined); setAdding(true) }}>{t('localAddWorkspace')}</Button></div>
     <Input type="search" icon={<Icon name="search" />} aria-label={t('localSearchWorkspaces')} placeholder={t('localSearchWorkspaces')}
       maxLength={200} value={query} onChange={event => setQuery(event.target.value)} />
@@ -56,7 +56,7 @@ export function LocalWorkspaces() {
         aria-label={t('localOpenWorkspace')} onClick={() => { void open.run(workspace.id) }}>{t('localWorkspaceOpenShort')}</Button>
         <Button variant="ghost" icon={<Icon name="plus" size={14} />} aria-label={t('localWorkspaceTask')}
           onClick={() => { selectLocalWorkspace(workspace.directory); navigate({ page: 'execution' }) }}>{t('localWorkspaceTask')}</Button>
-        <Button variant="ghost" onClick={() => { setDraft({ title: workspace.title, directory: workspace.directory }); setFailure(undefined); setRenaming(true); setAdding(true) }}>{t('workspaceRename')}</Button></div>
+        <Button variant="ghost" icon={<Icon name="pencil" size={14} />} title={t('workspaceRename')} onClick={() => { setDraft({ title: workspace.title, directory: workspace.directory }); setFailure(undefined); setRenaming(true); setAdding(true) }}>{t('workspaceRename')}</Button></div>
       <div className="dt-workspace-remove"><ConfirmButton variant="ghost" icon="trash" label={t('localRemoveWorkspace')}
         title={t('localRemoveWorkspaceTitle', { name: workspace.title })} message={t('localRemoveWorkspaceConfirm')}
         confirmLabel={t('localRemoveWorkspace')} disabled={workspace.protected || workspace.activeTasks > 0}
@@ -70,11 +70,11 @@ export function LocalWorkspaces() {
       close={() => setAdding(false)} note={renaming ? undefined : t('studioWorkspaceNote')}>
       <ComposerForm id={form} disabled={add.busy || pick.busy} failure={failure} onSubmit={() => { void add.run() }}>
         <section className="dt-composer-brief"><ComposerField label={t('studioWorkspaceName')}><Input className="dt-composer-name" maxLength={80}
-          placeholder={t('studioWorkspaceNamePlaceholder')} value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} /></ComposerField></section>
-        <section className="dt-composer-properties"><ComposerField label={t('studioProjectDirectory')} required><Input required readOnly={renaming} value={draft.directory}
-          placeholder="/Users/.../project" onChange={event => setDraft({ ...draft, directory: event.target.value })} /></ComposerField>
-          {!renaming && <Button variant="ghost" size="sm" icon={<Icon name="folder" />} disabled={add.busy || pick.busy}
-            onClick={() => { void pick.run() }}>{t('studioPickDirectory')}</Button>}</section>
+          placeholder={t('studioWorkspaceNamePlaceholder')} value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} /></ComposerField>
+          <ComposerField label={t('studioProjectDirectory')} required action={!renaming && <Button variant="outline" icon={<Icon name="folder" />}
+            title={t('studioPickDirectory')} aria-label={t('studioPickDirectory')} disabled={add.busy || pick.busy} onClick={() => { void pick.run() }} />}>
+            <Input required readOnly={renaming} value={draft.directory}
+          placeholder="/Users/.../project" onChange={event => setDraft({ ...draft, directory: event.target.value })} /></ComposerField></section>
       </ComposerForm>
     </ComposerModal>
     <Modal open={!!path} title={t('workspacePath')} closeLabel={t('close')} onClose={() => setPath(undefined)}

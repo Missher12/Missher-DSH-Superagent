@@ -1,5 +1,7 @@
 /** Host-independent graph validation; the client must not import runtime policy schemas. */
 import type { TeamMember } from './contracts.ts'
+export const COMMANDER = '$commander'
+
 export function planIssues(members: TeamMember[]): { path: (string | number)[]; message: string }[] {
   const issues: { path: (string | number)[]; message: string }[] = []
   const ids = new Set(members.map(member => member.id))
@@ -14,10 +16,10 @@ export function planIssues(members: TeamMember[]): { path: (string | number)[]; 
     }
     const seen = new Set([member.id])
     let parent = member.parentId ?? 'coordinator'
-    while (parent !== 'coordinator') {
+    while (parent !== 'coordinator' && parent !== COMMANDER) {
       const owner = members.find(member => member.id === parent)
-      if (!owner || seen.has(parent) || owner.responsibility !== 'manager') {
-        issues.push({ path: ['members', index, 'parentId'], message: '上级必须是已有管理成员，上下级不能形成循环' }); break
+      if (!owner || seen.has(parent)) {
+        issues.push({ path: ['members', index, 'parentId'], message: '上级必须是团队中的其他成员，上下级不能形成循环' }); break
       }
       seen.add(parent); parent = owner.parentId ?? 'coordinator'
     }

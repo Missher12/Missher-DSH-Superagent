@@ -35,7 +35,7 @@ function validatePlan(request: { members: TeamMember[]; interfaceChecks?: Interf
   if (request.interfaceChecks?.length && (!request.workflow || !request.members.some(member => member.responsibility === 'reviewer'))) context.addIssue({ code: 'custom', path: ['interfaceChecks'], message: '接口验收需要循环工作流与独立审核成员' })
 }
 export const TeamRequestSchema = TeamRequestFields.superRefine(validatePlan)
-export const TeamPreparationSchema = TeamRequestFields.omit({ instructions: true }).superRefine(validatePlan)
+export const TeamPreparationSchema = TeamRequestFields.omit({ instructions: true }).extend({ confirmStart: z.boolean().optional() }).superRefine(validatePlan)
 export const TeamEditSchema = z.object({ revision: z.number().int().nonnegative(), members: z.array(TeamMemberSchema).max(12) }).strict().superRefine(validatePlan)
 export type TeamPreparation = z.infer<typeof TeamPreparationSchema>
 export type TeamEdit = z.infer<typeof TeamEditSchema>
@@ -81,6 +81,8 @@ export interface DeliveryRecord extends Omit<DeliveryInput, 'files' | 'checks'> 
   checks: (DeliveryInput['checks'][number] & { toolCallId?: string; exitCode?: number })[]
 }
 export interface TeamRecord {
+  githubChanges?: import('../sources/github-read.ts').PullChanges
+  confirmStart?: boolean
   controlRevision?: number
   timeline?: TeamTimelineEvent[]
   git?: GitTeam
@@ -91,6 +93,7 @@ export interface TeamRecord {
   commanderVersion?: string
   commanderAssignment?: string
   finalDelivery?: { version: string; summary: string; record: DeliveryRecord;
+    githubChanges?: import('../sources/github-read.ts').PullChanges
     artifacts?: (DeliveryRecord['files'][number] & { memberId: string; name: string })[] }
   commanderInputs?: { id: string; text: string; native?: UserMessage }[]
   id: string; request: TeamRequest; encoded: string; createdAt: string; updatedAt: string
@@ -136,9 +139,11 @@ export interface TeamCompletion {
 export interface TeamIndex {
   id: string; name: string; title: string; instructions: string; directory?: string; state: TeamState
   coordinatorTicketId?: string; createdAt: string; updatedAt: string; completedMembers: number; memberCount: number; summary: string
+  deliveredBeforeStop?: boolean
   activeMembers?: number; currentAction?: string
 }
 export interface TeamView extends TeamIndex {
+  confirmStart?: boolean
   sourceDelivery?: { state: 'pending' | 'retrying' | 'sent' | 'unreachable'; receiptId: string; attempts: number; error?: string }
   recovery?: { retried: string[] }
   controlRevision?: number
@@ -148,7 +153,7 @@ export interface TeamView extends TeamIndex {
   git?: { repository: string; branch: string; head?: string }
   finalDelivery?: TeamRecord['finalDelivery']
   planRevision?: number
-  retiredMembers?: { id: string; name: string; ticketId?: string; sessionId?: string; removedAt: string }[]
+  retiredMembers?: { id: string; name: string; ticketId?: string; sessionId?: string; removedAt: string; events?: TeamMemberView['events'] }[]
   members: TeamMemberView[]; handoffs: TeamRecord['handoffs']; error?: string
   deliveries: { memberId: string; name: string; record: DeliveryRecord }[]
   completion?: TeamCompletion

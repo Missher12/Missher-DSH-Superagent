@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { Fields } from '../src/client/settings-kit.tsx'
 import { expect, it, onTestFinished } from 'vitest'
 import { zh } from '../src/client/locales.ts'
-import { usePanel, mount, remount, settle, all, find, tab, click, type, text, field } from './fixtures/panel.tsx'
+import { openLocalOption, usePanel, mount, remount, settle, all, find, tab, click, type, text, field } from './fixtures/panel.tsx'
 import { server } from './fixtures/panel-server.ts'
 
 usePanel()
@@ -99,7 +99,7 @@ it('lets settings select reasoning for the inherited DSH model and saves its com
   server.models = { default: { provider: 'worker-provider', model: 'worker-model' }, routableProviders: [], failures: [],
     groups: [{ id: 'worker-provider', name: 'Worker provider', models: [{ id: 'worker-model', name: 'Worker model',
       reasoning: { efforts: [{ id: 'high', name: 'High' }] } }] }] }
-  await mount(); await click('设置')
+  await mount(); await openLocalOption('插件设置')
   const effort = field<HTMLSelectElement>(zh.modelEffort)
   expect(effort.disabled).toBe(false)
   await type(effort, 'high'); await click(zh.save)

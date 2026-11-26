@@ -15,7 +15,9 @@ const ICON_PATHS = {
   'chevron-up': 'M5 15l7-7 7 7',
   search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4',
   question: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01',
+  more: 'M5 12h.2M12 12h.2M19 12h.2',
   plus: 'M12 5v14M5 12h14',
+  pencil: 'M4 20l4.5-1 12-12-3.5-3.5-12 12L4 20zM15 5.5L18.5 9',
   trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
   refresh: 'M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5',
   clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2',
@@ -132,8 +134,22 @@ export function SegmentedControl<V extends string>({ options, value, onChange, l
 }
 
 export function Input({ icon, className, ...rest }: { icon?: ReactNode; className?: string } & InputHTMLAttributes<HTMLInputElement>) {
-  return <span className={cx('dt-input', className)}>{icon !== undefined && <span
-    className="dt-input-icon">{icon}</span>}<input {...rest} /></span>
+  const input = useRef<HTMLInputElement>(null)
+  const [wrapped, setWrapped] = useState('')
+  const readable = [undefined, 'text', 'search', 'url', 'email'].includes(rest.type) && !String(rest.autoComplete ?? '').includes('password')
+  useLayoutEffect(() => {
+    const el = input.current
+    if (!readable || !el) return
+    const measure = () => setWrapped(el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1 ? el.value : '')
+    measure()
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure)
+    observer?.observe(el)
+    el.addEventListener('input', measure)
+    return () => { observer?.disconnect(); el.removeEventListener('input', measure) }
+  }, [readable, rest.value, rest.defaultValue])
+  const fullValue = readable && wrapped
+  return <span className={cx('dt-input', className)} data-wrapped-value={fullValue ? true : undefined}>{icon !== undefined && <span
+    className="dt-input-icon">{icon}</span>}<input {...rest} ref={input} />{fullValue && <span className="dt-input-full-value" aria-hidden="true">{fullValue}</span>}</span>
 }
 
 export function Switch({ checked, onChange, label,

@@ -6,7 +6,6 @@ import { Button, Icon, Input } from './controls.tsx'
 import { ticketMark } from './marks.ts'
 import { useAction, usePanel } from './provider.tsx'
 import { ConfirmButton, LoadState, SessionButton, StageMark, When } from './widgets.tsx'
-import { shortText } from './text.ts'
 
 const PAGE_SIZE = 20
 
@@ -27,9 +26,9 @@ function TaskCard({ ticket, onChanged }: { ticket: ApiResponse<'GET local/board'
       {ticket.title}
     </button>
     {ticket.team && <span className="dt-hint">{t('teamCompletedCount', { done: ticket.team.completed, total: ticket.team.members })}</span>}
-    {note ? <p className="dt-board-note" data-error={ticket.note?.error || undefined}>{shortText(note, 100)}</p>
+    {note ? <p className="dt-board-note" data-error={ticket.note?.error || undefined}>{note}</p>
       : ticket.directory && <span className="dt-board-path" title={ticket.directory}><Icon name="folder" size={13} />
-        <span>{ticket.directory.split('/').filter(Boolean).at(-1)}</span></span>}</div>
+        <span>{ticket.directory}</span></span>}</div>
     <div className="dt-board-card-head">
       <button type="button" className="dt-board-card-status" disabled={open.busy} title={t('teamStatusOpen')}
         onClick={() => { void open.run() }}><StageMark state={completed ? 'done' : mark.dot} icon={completed ? 'decision' : mark.icon} label={mark.label} /></button>
@@ -81,7 +80,7 @@ function BoardColumn({ column, query, filter, onCount, revision, onChanged }: { 
   </section>
 }
 
-export function LocalTaskBoard({ tools }: { tools: ReactNode }) {
+export function LocalTaskBoard({ tools, inline }: { tools: ReactNode; inline?: boolean }) {
   const { t } = usePanel()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | LocalBoardColumn>('all')
@@ -93,8 +92,8 @@ export function LocalTaskBoard({ tools }: { tools: ReactNode }) {
   }, [])
   useEffect(() => { setCounts({}) }, [query.trim()])
   const total = Object.values(counts).reduce((sum, value) => sum + value, 0)
-  return <section className="dt-board" aria-labelledby="dt-board-title">
-    <header className="dt-board-heading"><h2 id="dt-board-title">{t('localTasks')}<span className="dt-count">{Object.keys(counts).length === LOCAL_BOARD_COLUMNS.length ? total : '—'}</span></h2>
+  return <section className="dt-board" aria-labelledby={inline ? 'dt-tool-title' : 'dt-board-title'}>
+    <header className="dt-board-heading">{!inline && <h2 id="dt-board-title">{t('localTasks')}<span className="dt-count">{Object.keys(counts).length === LOCAL_BOARD_COLUMNS.length ? total : '—'}</span></h2>}
       <div className="dt-actions">{tools}</div></header>
     <div className="dt-board-toolbar">
       <Input type="search" icon={<Icon name="search" />} aria-label={t('localSearch')} placeholder={t('localSearch')}

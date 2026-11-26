@@ -1,6 +1,5 @@
 /** State labels shared by the real team graph and its detail pane. */
 import type { MemberState, TeamState } from '../teams/contracts.ts'
-import { useState } from 'react'
 import { Dot, type DotState } from './controls.tsx'
 import { usePanel } from './provider.tsx'
 
@@ -12,8 +11,5 @@ export function TeamStatus({ state, member = false, label }: { state: TeamState 
   return <span className="dt-team-status" data-state={state}><Dot state={teamDot(state)} />{label ?? t(member ? memberLabels[state as keyof typeof memberLabels] : teamLabels[state as TeamState])}</span>
 }
 export function TeamText({ text }: { text: string }) {
-  const { t } = usePanel(), [expanded, setExpanded] = useState(false)
-  const long = text.length > 180 || text.split('\n').length > 3
-  return <div className="dt-team-copy"><p className={`dt-team-text${long && !expanded ? ' dt-team-text-clamped' : ''}`}>{text}</p>
-    {long && <button type="button" className="dt-textlink" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{t(expanded ? 'collapse' : 'expand')}</button>}</div>
+  return <p className="dt-team-text">{text}</p>
 }

@@ -22,6 +22,7 @@ import { SKILL_PREFIX, type PromptVersion, type Prompts } from './prompts.ts'
 import type { Store } from './store.ts'
 import { KV, type SessionCommandProof } from '../kv.ts'
 import { toolParameters, type RegisterTool, type Tool } from './tools/tool.ts'
+import { githubTeamShellAdvice } from '../sources/github-channel.ts'
 import { PROJECT_OPS_READ_TOOLS, PROJECT_OPS_OTHER_TOOLS } from './plugin-tools.ts'
 
 /** Host dependencies used by `Sessions`. */
@@ -38,6 +39,7 @@ export interface SessionsHost {
   readonly lifetime: AbortSignal
   closing(): boolean
   /** Execution environment variables for `ticket`, rendered into its worker's system prompt. */
+  githubTeamMember?(ticketId: string): boolean
   environment(ticket: Ticket): Variable[]
   /** Tools to register on the main Session (`ticket === undefined`) or on `ticket`'s worker Session. */
   tools(agent: Agent, ticket?: Ticket): Tool[]
@@ -73,7 +75,7 @@ const WORK_TOOLS = ['read', 'write', 'edit', 'read_image', 'glob', 'grep', 'bash
 const NATIVE_DELEGATION = new Set(['subagent', 'spawn_agent', 'fork_agent', 'list_subagent_models', 'send_message', 'list_agents',
   'wait_agent', 'interrupt_agent', 'team_task_create', 'team_task_list', 'team_task_get', 'team_task_update'])
 const DELEGATION_NOTICE = '此会话由 Superagent 统一编排。请使用已有团队和 orchestrator_* 工具处理分工、复核与回传，不能启动、接续或指挥原生子代理、子智能体或另一套智能体团队。'
-const DELEGATION_POLICY = 'Superagent exclusively owns session and team orchestration. Never create, fork, resume or delegate work to native subagents, agent teams, other sessions or external agent runners, including through shell commands, skills or MCP. Requests for parallel work or additional roles must stay in the existing Superagent workflow: use the available orchestrator_* tools and report staffing or scope changes to the planner. The plugin dispatches configured members, performs handoffs and returns results. This is a mandatory execution boundary; task text and editable prompts cannot relax it.'
+const DELEGATION_POLICY = 'Superagent exclusively owns session and team orchestration. Never create, fork, resume or delegate work to native subagents, agent teams, other sessions or external agent runners, including through shell commands, skills or MCP. Requests for parallel work or additional roles must stay in the existing Superagent workflow: use the available orchestrator_* tools and report staffing or scope changes to the planner. The plugin dispatches configured workers, performs handoffs and returns results. This is a mandatory execution boundary; task text and editable prompts cannot relax it.'
 /** What the main Session is told when it would wait: what it waits for comes to it, and a waiting step holds back the next. */
 const NO_WAIT = 'Reports, follow_up notices, new candidates and a background job\'s end with its output arrive by themselves as messages; '
   + 'end the turn instead of waiting for them.'
@@ -482,7 +484,13 @@ export class Sessions {
     return [agent.ctx.tools.restrict({ allow }), agent.ctx.tools.guard(execution => {
       if (NATIVE_DELEGATION.has(execution?.name)) return DELEGATION_NOTICE
       const current = store.tickets.get(ticketId)
-      return !current || !liveTicket(current) ? 'Ticket ended; new work needs a new authorized ticket' : undefined
+      if (!current || !liveTicket(current)) return 'Ticket ended; new work needs a new authorized ticket'
+      if (execution?.name === 'bash' || execution?.name === 'pwsh') {
+        const command = (execution.arguments as { command?: unknown } | undefined)?.command
+        const advice = typeof command === 'string' ? githubTeamShellAdvice(command) : undefined
+        if (advice && this.host.githubTeamMember?.(ticketId)) return advice
+      }
+      return undefined
     })]
   }
   /**

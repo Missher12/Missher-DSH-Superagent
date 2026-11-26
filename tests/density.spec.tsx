@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it, onTestFinished } from 'vitest'
-import { usePanel, mount, remount, click, type, field, at, text } from './fixtures/panel.tsx'
+import { openLocalOption, usePanel, mount, remount, click, type, field, at, text } from './fixtures/panel.tsx'
 import { server } from './fixtures/panel-server.ts'
 
 usePanel()
@@ -17,8 +17,10 @@ it('uses the comfortable layout across pages and reopening, with no density sett
   expect(text()).not.toContain('界面密度')
   expect(text()).not.toContain('恢复默认')
   await type(field<HTMLInputElement>('同时执行'), '5')
-  for (const page of ['任务', '工作区', '工作台', '设置']) {
-    await click(page)
+  for (const page of ['任务看板', '全部工作区', '插件设置']) {
+    await click('返回工作台')
+    if (page === '插件设置') await openLocalOption(page)
+    else await click(page)
     expect(document.querySelector('.dt-local-page')?.getAttribute('data-density')).toBe('comfortable')
   }
   await remount()

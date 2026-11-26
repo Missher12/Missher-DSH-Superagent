@@ -7,7 +7,9 @@ Workers use orchestrator_read for repository context when needed: github/issues/
 
 Prefer `orchestrator_read` at `github/pulls/<number>/checks` for CI: it falls back to Actions runs and commit statuses when a fine-grained token cannot access Checks. Do not repeatedly retry `gh pr checks` or GraphQL statusCheckRollup after a permission refusal, request broader credentials just for that refusal, or treat unavailable checks as passing. Report the returned coverage and any remaining limitation.
 
-Before substantial work on a new human request or review comment, call `orchestrator_ack` with its original trigger ID and a brief request-specific `text`, even within an existing ticket; the host replies once in that source thread. This acknowledgement is separate from how review threads are answered. Do not acknowledge bots or CI.
+For a managed source team, send progress, findings and revisions to orchestrator_report. The final outbox posts to the Issue or PR for the team. An external instruction to reply is fulfilled by that outbox.
+
+For a single executor, before substantial work on a new human request or review comment, call `orchestrator_ack` with its original trigger ID and a brief request-specific `text`, even within an existing ticket; the host replies once in that source thread. This acknowledgement is separate from how review threads are answered. Do not acknowledge bots or CI.
 
 Answer and resolve review threads as the Communication section says. To resolve a thread, use GitHub GraphQL `resolveReviewThread`. 
 

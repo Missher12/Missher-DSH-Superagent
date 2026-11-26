@@ -6,7 +6,7 @@ import { Button, Dot, Icon, SegmentedTabs } from './controls.tsx'
 import { LocalFollowup, LocalTaskComposer } from './local.tsx'
 import { SessionModelPicker } from './model-picker.tsx'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
-import { actorName, healthText, valueLabel, shortText, workbenchToolLabel as toolLabel, type T } from './text.ts'
+import { actorName, healthText, valueLabel, workbenchToolLabel as toolLabel, type T } from './text.ts'
 import { LoadState, SessionButton, StageMark, When } from './widgets.tsx'
 import { SessionFiles, TaskFilesButton, type FileScope } from './team-file-preview.tsx'
 import { OpenWorkspaceButton } from './local-workspaces.tsx'
@@ -47,7 +47,7 @@ function ActivityFeed({ data, member }: { data: View; member: Member | undefined
         {item.title && <button type="button" className="dt-open dt-workbench-event-title" disabled={!item.ticketId}
           onClick={() => { if (item.ticketId) navigate({ page: 'execution', id: item.ticketId }) }}>{item.title}</button>}
         {item.actor && <span className="dt-workbench-origin">{actorName(t, item.actor)}</span>}
-        {item.summary && <p className="dt-workbench-event-summary">{shortText(item.summary)}</p>}
+        {item.summary && <p className="dt-workbench-event-summary">{item.summary}</p>}
         {item.kind === 'tool' && item.state && <span className="dt-hint">{t(`workbenchToolState.${item.state as 'running' | 'done' | 'error' | 'interrupted'}`)}</span>}
         </div>
       </li>

@@ -16,7 +16,7 @@ function fixture(listed: string[]) {
   const entries: Entry[] = []
   const dictionaries: Record<string, unknown> = {}
   const ctx = {
-    slots: { inject: (_name: string, register: () => void) => register(), register: (options: Entry['options'], component: Entry['component']) => { entries.push({ options, component }); return () => {} } },
+    slots: { entriesOfSlot: (name: string) => name === 'conversation.session.header' ? [{ store: {}, inject: () => ({}) }] : [], subscribe: () => () => {}, inject: (_name: string, register: () => void) => register(), register: (options: Entry['options'], component: Entry['component']) => { entries.push({ options, component }); return () => {} } },
     locale: { register: (ns: string, value: unknown) => { dictionaries[ns] = value; return () => {} }, bind: () => t },
     effect: (effect: () => unknown) => { effect() },
     sessions: { list: { getSnapshot: () => ({ phase: 'ready', byId: Object.fromEntries(listed.map(id => [id, {}])) }) }, refresh: vi.fn(async () => {}) },
@@ -51,7 +51,7 @@ afterEach(() => { vi.unstubAllGlobals() })
 
 it('registers a localized main panel, sidebar entry and Plugin Manager row page, and no settings section', () => {
   const { entries, dictionaries, main, nav } = fixture([])
-  expect(entries.map(entry => entry.options.name)).toEqual(['main', 'superagent.session', 'superagent.context', 'sidebar.panellist', 'plugins.row.config'])
+  expect(entries.map(entry => entry.options.name)).toEqual(['main', 'superagent.session', 'sidebar.panellist', 'plugins.row.config'])
   expect(entries.find(entry => entry.options.name === 'plugins.row.config')!.options).toMatchObject({ key: 'dsh-superagent#dsh-superagent', locale: 'dshSuperagent' })
   expect(Object.keys(dictionaries)).toEqual(['dshSuperagent'])
   expect(main.options).toMatchObject({ key: 'dsh-superagent', locale: 'dshSuperagent' })
@@ -68,19 +68,20 @@ it('opens a listed Session through the workspace from the main panel', async () 
   view.dispose()
 })
 
-it('pins the embedded chat and context views independently of the native preferred view', async () => {
+it('renders the host body once and routes available views through its selection action', async () => {
   const { entries } = fixture([])
-  type Views = ComponentType<{ renderSlot: (name: string, props: { view: string }) => ReactNode }>
-  const renderFactorySlot = (_name: string, _props: unknown, options?: { slots: { views: Views } }) => {
-    const View = options?.slots.views
-    // This session was last opened on the native context tab.
-    return View ? <View renderSlot={(_name, props) => <span>{props.view}</span>} /> : <span>context-manager</span>
-  }
-  for (const [name, expected] of [['superagent.session', 'chat'], ['superagent.context', 'context-manager']]) {
-    const view = await render(entries.find(entry => entry.options.name === name)!, { renderFactorySlot })
-    expect(view.container.textContent).toBe(expected)
-    view.dispose()
-  }
+  const selectView = vi.fn(), renderFactorySlot = vi.fn(() => <textarea defaultValue="未发送" />)
+  const view = await render(entries.find(entry => entry.options.name === 'superagent.session')!, {
+    t, renderFactorySlot, selectView, useStore: () => 'trajectory',
+    useConversationViews: () => [{ id: 'chat', label: '对话' }, { id: 'trajectory', label: '轨迹' }, { id: 'custom', label: '扩展页' }],
+  })
+  const tabs = [...view.container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+  expect(tabs.map(tab => tab.textContent)).toEqual(['对话', '轨迹', '扩展页'])
+  expect(tabs[1]?.getAttribute('aria-selected')).toBe('true')
+  await act(async () => { tabs[2]!.click() })
+  expect(selectView).toHaveBeenCalledWith('custom')
+  expect(renderFactorySlot.mock.calls[0]).toEqual(['conversation.content', { variant: 'embedded', hero: false, phase: 'active' }])
+  view.dispose()
 })
 
 it('reports a Session missing from the catalog in the interface language', async () => {

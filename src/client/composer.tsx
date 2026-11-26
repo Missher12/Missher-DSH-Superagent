@@ -5,6 +5,17 @@ import { usePanel } from './provider.tsx'
 
 const Errors = createContext<Record<string, string>>({})
 
+type Control = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+function isControl(element: Element | null): element is Control {
+  return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement
+}
+function focusTarget(field: Control): HTMLElement {
+  return field.closest('.dt-choice')?.querySelector<HTMLButtonElement>('.dt-choice-trigger') ?? field
+}
+function valid(field: Control) {
+  return field.validity.valid && (!field.required || !!field.value.trim())
+}
+
 export function ComposerModal({ open, title, kind, busy, close, form, action, note, children }: {
   open: boolean; title: string; kind: 'task' | 'member' | 'workspace' | 'followup'; busy: boolean; close: () => void
   form: string; action: string; note?: string; children: ReactNode
@@ -31,39 +42,35 @@ export function ComposerForm({ id, disabled, onSubmit, failure, children }: {
     }
     // Native directory pickers update controlled values without dispatching a text-input event.
     const resolved = Object.keys(errors).filter(id => {
-      const control = form.current?.elements.namedItem(id)
-      return (control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement)
-        && control.validity.valid && (!control.required || !!control.value.trim())
+      const anchor = document.getElementById(id)
+      const control = anchor?.closest('.dt-choice')?.querySelector('select') ?? form.current?.elements.namedItem(id)
+      return !control || (control instanceof Element && isControl(control) && valid(control))
     })
     if (resolved.length) setErrors(current => Object.fromEntries(Object.entries(current).filter(([id]) => !resolved.includes(id))))
   })
   return <Errors.Provider value={errors}><form ref={form} id={id} className="dt-composer-form" noValidate onSubmit={event => {
-    event.preventDefault(); if (disabled) return
-    const invalid = [...event.currentTarget.elements].filter((field): field is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement =>
-      (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement)
-      && field.willValidate && (!field.validity.valid || field.required && !field.value.trim()))
+    event.preventDefault(); event.stopPropagation(); if (disabled) return
+    const invalid = [...event.currentTarget.elements].filter(isControl).filter(field => field.willValidate && !valid(field))
     if (invalid.length) {
-      focus.current = invalid[0]
-      setErrors(Object.fromEntries(invalid.map(field => [field.id, field.validity.valueMissing || !field.value.trim()
+      focus.current = focusTarget(invalid[0]!)
+      setErrors(Object.fromEntries(invalid.map(field => [focusTarget(field).id, field.validity.valueMissing || !field.value.trim()
         ? t('studioRequired', { name: field.getAttribute('aria-label') || field.labels?.[0]?.textContent || t('teamMemberWork') }) : field.validationMessage])))
       return
     }
     setErrors({}); onSubmit()
-  }} onInputCapture={event => {
-    const id = (event.target as HTMLElement).id
-    if (errors[id]) setErrors(current => { const next = { ...current }; delete next[id]; return next })
   }}><fieldset className="dt-composer-fields" disabled={disabled}>{failure && <p className="dt-error dt-composer-failure" role="alert">{failure}</p>}{children}</fieldset></form></Errors.Provider>
 }
 
-export function ComposerField({ label, required, note, children }: {
-  label: string; required?: boolean; note?: ReactNode
+export function ComposerField({ label, required, note, action, children }: {
+  label: string; required?: boolean; note?: ReactNode; action?: ReactNode
   children: ReactElement<{ id?: string; 'aria-label'?: string; 'aria-invalid'?: boolean; 'aria-describedby'?: string }>
 }) {
   const generated = useId(), id = children.props.id ?? generated, errors = useContext(Errors), error = errors[id]
-  return <div className="dt-composer-field"><div className="dt-composer-field-heading"><label htmlFor={id}>{label}{required && <span aria-hidden="true">*</span>}</label>
-    <small id={`${id}-error`} className="dt-composer-field-error" aria-live="polite" title={error}>{error}</small></div>
-    {cloneElement(children, { id, 'aria-label': children.props['aria-label'] ?? label, 'aria-invalid': !!error || undefined,
-      'aria-describedby': [children.props['aria-describedby'], `${id}-error`, note ? `${id}-note` : undefined].filter(Boolean).join(' ') })}
+  const control = cloneElement(children, { id, 'aria-label': children.props['aria-label'] ?? label, 'aria-invalid': !!error || undefined,
+    'aria-describedby': [children.props['aria-describedby'], error && `${id}-error`, note && `${id}-note`].filter(Boolean).join(' ') || undefined })
+  return <div className="dt-composer-field"><div className="dt-composer-field-heading"><label htmlFor={id}>{label}{required && <span aria-hidden="true">*</span>}</label></div>
+    {action ? <div className="dt-composer-field-control">{control}{action}</div> : control}
+    {error && <small id={`${id}-error`} className="dt-composer-field-error" role="alert">{error}</small>}
     {note && <small className="dt-hint" id={`${id}-note`}>{note}</small>}</div>
 }
 

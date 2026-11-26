@@ -2,7 +2,7 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import type { TeamView } from '../src/teams/contracts.ts'
-import { usePanel, mount, all, click, type, field, text, at } from './fixtures/panel.tsx'
+import { openLocalOption, usePanel, mount, remount, all, click, type, field, text, at } from './fixtures/panel.tsx'
 import { server } from './fixtures/panel-server.ts'
 import { zh } from '../src/client/locales.ts'
 
@@ -32,7 +32,7 @@ it('shows interface execution by reviewer and keeps long recovery causes collaps
   view.timeline = [{ id: 'return', at: view.updatedAt, kind: 'review', memberId: 'check', decision: 'revise', targets: ['build'], round: 1, detail: '返回结构不一致，需要实施修复并重新验证。' },
     { id: 'restore', at: view.updatedAt, kind: 'recovered', round: 2, detail: '插件重新接入，沿用原任务与会话' }]
   server.teamViews[view.id] = view; at({ page: 'overview', query: { team: view.id } }); await mount()
-  await click('验收')
+  await click('交付结果'); await click(all('.dt-delivery-review > summary')[0]!)
   expect(all('.dt-team-interface')[0]?.textContent).toContain('跨成员返回值1/2')
   expect(all('.dt-team-interface details')[0]?.hasAttribute('open')).toBe(false)
   expect(all('.dt-team-interface')[0]?.textContent).toContain('未通过')
@@ -40,13 +40,21 @@ it('shows interface execution by reviewer and keeps long recovery causes collaps
   expect(all('.dt-team-records')[0]?.textContent).toContain('审核退回')
   expect(all('.dt-team-records')[0]?.textContent).toContain('插件恢复')
   expect(all('.dt-team-records details').every(item => !item.hasAttribute('open'))).toBe(true)
+  const records = all('.dt-team-records details')
+  for (const entry of records) {
+    const summary = entry.querySelector('summary')!
+    expect(summary.textContent).toBe('查看详情')
+    await click(summary)
+    expect(entry.hasAttribute('open')).toBe(true)
+    expect(view.timeline!.some(event => event.detail === entry.querySelector('p')?.textContent)).toBe(true)
+  }
   vi.spyOn(all('.dt-team-focus-workbench')[0]!, 'getBoundingClientRect').mockReturnValue({ width: 1000 } as DOMRect)
   await click(all('.dt-team-record-meta button')[0]!)
   expect(all('[data-test-session="worker-check-task"]')).toHaveLength(1)
 })
 it('edits acceptance rows without losing input and saves the exact configured command', async () => {
   const view = team(); view.phase = 'draft'; view.state = 'draft'; server.teamViews[view.id] = view
-  at({ page: 'overview', query: { team: view.id } }); await mount(); await click('验收'); await click('编辑'); await click('添加')
+  at({ page: 'overview', query: { team: view.id } }); await mount(); await click('交付结果'); await click(all('.dt-delivery-review > summary')[0]!); await click(all('.dt-team-interface .dt-interface-heading button')[0]!); await click('添加')
   await type(field<HTMLInputElement>('名称'), '前后端契约')
   await type(field<HTMLTextAreaElement>('检查命令'), 'node --test integration.test.mjs')
   expect(field<HTMLInputElement>('名称').value).toBe('前后端契约')
@@ -95,6 +103,25 @@ it('shows the final product count and a reported commander state', async () => {
   await click('交付结果')
   expect(text()).toContain('result.txt')
 })
+it.each(['completed', 'working'] as const)('shows the verified commander report directly in the team room only while %s', async state => {
+  const view = team()
+  view.state = state; view.phase = state
+  view.completion = { ...view.completion!, commander: state === 'completed' }
+  view.commander = { state: state === 'completed' ? 'finished' : 'waiting', tools: [], running: false, summary: '自提已修复，8 项通过。' }
+  view.finalDelivery = { version: 'verified-v1', summary: '策划复核记录', record: {
+    ticketId: 'planner-task', assignmentId: 'planner-review', sessionId: 'worker-planner-task',
+    at: view.updatedAt, files: [], checks: [], unverified: [],
+  } }
+  server.teamViews[view.id] = view
+  at({ page: 'overview', query: { team: view.id } }); await mount()
+  const room = all('.dt-team-room')[0]!
+  const expected = state === 'completed' ? 1 : 0
+  expect(all('.dt-team-details .dt-team-room')).toHaveLength(0)
+  expect(all('.dt-live-canvas + .dt-team-room')[0]).toBe(room)
+  expect(room.querySelector('[role=log]')?.hasAttribute('hidden')).toBe(true)
+  await click(room.querySelector('button')!)
+  expect([...room.querySelectorAll('article')].filter(row => row.textContent?.includes('自提已修复，8 项通过。'))).toHaveLength(expected)
+})
 it.each(['reviewing', 'working'] as const)('shows the real return path during %s and opens its existing conversation', async phase => {
   const view = team(), review = { reviewerId: 'check', ticketId: 'check-task', assignmentId: 'check-one', at: view.updatedAt,
     planVersion: 1, roundId: 'round-one', inputVersion: 'input-one', decision: 'revise' as const,
@@ -125,7 +152,7 @@ it('shows final products and the actual commander report directly in its workspa
   view.summary = '总指挥最终报告'; view.state = 'completed'
   server.teamViews[view.id] = view
   at({ page: 'overview', query: { team: view.id, member: '$commander' } })
-  await mount(); await click('成品')
+  await mount(); await click(zh.teamDelivery)
   expect(text()).toContain('plugin.tgz')
   expect(text()).toContain('总指挥最终报告')
   expect(all('button').some(button => button.textContent === '下载')).toBe(true)
@@ -182,6 +209,80 @@ beforeEach(() => {
   server.teamViews['explicit-team'] = team(); server.nextTeamId = 'explicit-team'
   at({ page: 'overview' })
 })
+it('opens shared settings from a team, saves execution preferences, and keeps the mounted member session', async () => {
+  at({ page: 'overview', query: { team: 'explicit-team', member: 'build' } })
+  await mount()
+  const session = all('[data-test-session="worker-build-task"]')[0]!
+  expect(session).toBeDefined()
+  const entries = () => all('.dt-rail-settings button')
+  expect(entries().map(button => button.textContent)).toEqual(['MCP 接入', '执行设置'])
+  await click(entries()[0]!)
+  const panel = all('#dt-team-right[role=region]')[0]!
+  expect(all('[role=dialog]')).toHaveLength(0)
+  expect(session.closest('[hidden]')).toBeTruthy()
+  expect(panel.querySelector('h2')?.textContent).toBe('MCP 接入')
+  for (const name of ['飞书', 'GitHub', 'MCP']) {
+    await click(panel.querySelector<HTMLButtonElement>(`.dt-connections-nav [aria-label="${name}"]`)!)
+    expect(panel.querySelector('.dt-connections-body')?.textContent).toContain(name === 'MCP' ? '新增连接' : name)
+  }
+  expect(server.requests.some(request => request.path === 'mcp')).toBe(true)
+  await click('返回对话')
+  expect(session.closest('[hidden]')).toBeNull()
+  expect(all('[data-test-session="worker-build-task"]')[0]).toBe(session)
+  await click(entries()[1]!)
+  await type(field<HTMLInputElement>(zh.localMaxWorkers), '4')
+  await click(zh.save)
+  expect(server.settings.executor.maxWorkers).toBe(4)
+  await click('返回对话')
+  expect(all('[data-test-session="worker-build-task"]')[0]).toBe(session)
+  await click(entries()[1]!)
+  expect(field<HTMLInputElement>(zh.localMaxWorkers).value).toBe('4')
+})
+
+it('keeps a native draft and the graph while moving between right-pane tools and a member', async () => {
+  at({ page: 'overview', query: { team: 'explicit-team', member: 'build' } })
+  await mount()
+  const session = all('[data-test-session="worker-build-task"]')[0]!
+  const draft = document.createElement('textarea')
+  draft.value = '待补充的验收条件'; session.append(draft)
+  const graph = all('.dt-live-canvas')[0]
+  await click(zh.graphExpand)
+  expect(session.closest('[hidden]')).not.toBeNull()
+  expect(all('.dt-live-canvas')[0]).toBe(graph)
+  await click(zh.graphCollapse)
+  expect(session.closest('[hidden]')).toBeNull()
+  expect(session.querySelector('textarea')?.value).toBe('待补充的验收条件')
+  await click('MCP 接入')
+  await click('派单规则'); await click('自动规则'); await click('添加规则')
+  expect(all('[role="dialog"]')).toHaveLength(1)
+  expect(field('规则名称')).toBeDefined()
+  await click(all('.dt-rule-dialog .dt-modal-close')[0]!)
+  await click('执行设置')
+  expect(all('#dt-tool-title')[0]?.textContent).toBe('执行设置')
+  await click('返回对话')
+  expect(session.closest('[hidden]')).toBeNull()
+  expect(session.querySelector('textarea')?.value).toBe('待补充的验收条件')
+  await click('记录')
+  expect(all('.dt-live-canvas')[0]).toBe(graph)
+  await click(all('.dt-team-node[aria-label="验证 · 成员详情"]')[0]!)
+  expect(all('.dt-workbench-tool')).toHaveLength(0)
+  expect(all('[data-test-session="worker-check-task"]')).toHaveLength(1)
+})
+
+it('reveals a selected tool on narrow screens and returns to the same member', async () => {
+  const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(890)
+  try {
+    at({ page: 'overview', query: { team: 'explicit-team', member: 'build' } }); await mount()
+    const layout = all('.dt-team-focus-layout')[0]!
+    await click('显示或隐藏团队协作')
+    await click('MCP 接入')
+    expect(layout.dataset.compactPane).toBe('conversation')
+    expect(all('.dt-workbench-tool h2')[0]?.textContent).toBe('MCP 接入')
+    await click('返回对话')
+    expect(all('[data-test-session="worker-build-task"]')[0]?.closest('[hidden]')).toBeNull()
+  } finally { width.mockRestore() }
+})
+
 it('opens the real commander in the same team workspace and keeps member chat and context separate', async () => {
   const view = server.teamViews['explicit-team']!
   Object.assign(view, { commanderSessionId: 'master', commander: { sessionId: 'master', directory: '/tmp/control', running: false, tools: [],
@@ -189,7 +290,7 @@ it('opens the real commander in the same team workspace and keeps member chat an
   at({ page: 'overview', query: { team: view.id, member: 'check' } })
   await mount()
   vi.spyOn(all('.dt-team-focus-workbench')[0]!, 'getBoundingClientRect').mockReturnValue({ width: 1000 } as DOMRect)
-  const card = all('.dt-team-node').find(node => node.textContent?.includes('总指挥'))
+  const card = all('.dt-team-node').find(node => node.textContent?.includes(zh.teamCommander))
   expect(card).toBeDefined()
   expect(card!.textContent).toContain('待命')
   await click(card!)
@@ -200,12 +301,14 @@ it('opens the real commander in the same team workspace and keeps member chat an
   await click('上下文')
   expect(all('[data-test-context="master"]')).toHaveLength(1)
   await click(all('.dt-team-node[aria-label="验证 · 成员详情"]')[0]!)
+  expect(all('[data-test-session="worker-check-task"]')).toHaveLength(1)
+  await click('上下文')
   expect(all('[data-test-context="worker-check-task"]')).toHaveLength(1)
   expect(all('[data-test-context="master"]')).toHaveLength(0)
   expect(view.members).toHaveLength(3)
   expect(server.requests.some(item => item.method === 'POST' && /\/followup$|\/teams$/.test(item.path))).toBe(false)
   await click('编排')
-  await click(all('.dt-flow-node-body').find(node => node.textContent?.includes('总指挥'))!)
+  await click(all('.dt-flow-node-body').find(node => node.textContent?.includes(zh.teamCommander))!)
   await click(all('[role="dialog"] button').find(button => button.textContent === '打开执行会话')!)
   expect(all('[data-test-session="master"]')).toHaveLength(1)
   expect(all('[data-test-session="worker-planner-task"]')).toHaveLength(0)
@@ -239,30 +342,26 @@ it('opens the selected actual member session and sends its durable follow-up thr
   await click('发送')
   expect(server.requests.find(item => item.path === 'local/teams/explicit-team/followup')?.body).toMatchObject({ memberId: 'check', text: '已经登录，请继续验证' })
 })
-it('keeps the same workspace navigation across views and preserves the selected view when switching members', async () => {
-  at({ page: 'overview', query: { team: 'explicit-team', member: 'coordinator' } })
-  await mount()
-  const controls = all('.dt-team-native-controls button')
-  vi.spyOn(all('.dt-team-focus-workbench')[0]!, 'getBoundingClientRect').mockReturnValue({ width: 1000 } as DOMRect)
-  expect(controls.some(button => button.getAttribute('aria-label') === '打开执行会话')).toBe(true)
-  for (const target of ['上下文', '成品', '活动', '打开执行会话']) {
-    await click(target)
-    expect(all('.dt-team-native-controls button')).toEqual(controls)
-    expect(all('.dt-team-detail-tabs')).toHaveLength(0)
-  }
-  await click('成品')
-  await click(all('.dt-studio-session-members button').find(button => button.textContent === '实施')!)
+it('opens the selected member chat from delivery and keeps an expanded team room in the graph', async () => {
+  at({ page: 'overview', query: { team: 'explicit-team', member: 'coordinator' } }); await mount()
+  const room = all('.dt-team-room')[0]!
+  await click(room.querySelector('button')!)
+  await click(zh.teamDelivery)
   expect(all('.dt-team-delivery')).toHaveLength(1)
-  expect(all('[data-test-session]')).toHaveLength(0)
-  await click('打开执行会话')
+  await click(all('.dt-team-node[data-member="build"]')[0]!)
+  expect(all('.dt-team-delivery')).toHaveLength(0)
   expect(all('[data-test-session="worker-build-task"]')).toHaveLength(1)
+  expect(all('.dt-team-room')[0]).toBe(room)
+  expect(room.querySelector('button')?.getAttribute('aria-expanded')).toBe('true')
 })
-it('keeps the context plugin bound to the newly selected member', async () => {
+it('opens chat on node selection and then shows context for that member', async () => {
   at({ page: 'overview', query: { team: 'explicit-team', member: 'coordinator' } })
   await mount(); await click('上下文')
   expect(all('[data-test-context="worker-planner-task"]')).toHaveLength(1)
   vi.spyOn(all('.dt-team-focus-workbench')[0]!, 'getBoundingClientRect').mockReturnValue({ width: 1000 } as DOMRect)
   await click(all('.dt-team-node')[1]!)
+  expect(all('[data-test-session="worker-build-task"]')).toHaveLength(1)
+  await click('上下文')
   expect(all('[data-test-context="worker-build-task"]')).toHaveLength(1)
   expect(all('[data-test-context="worker-planner-task"]')).toHaveLength(0)
 })
@@ -288,13 +387,57 @@ it('prepares an editable workflow without dispatching a goal before entering cha
   expect(all('[data-node="build"]')[0]!.style.top).toBe(moved)
 })
 it('opens member properties immediately and repairs dependencies when deleting a node', async () => {
-  await mount(); await click('新建任务'); await click('添加成员')
+  await mount(); await click('新建任务'); await click('添加成员'); await click(all('.dt-flow-add-member .dt-modal-footer button').at(-1)!)
   expect(field<HTMLInputElement>(zh.teamMemberName).value).toContain('成员')
   await click(all('[data-node="build"] .dt-flow-node-body')[0]!)
   await click('移除此成员')
   const draft = JSON.parse(sessionStorage.getItem('dsh-superagent/local-draft')!)
   expect(draft.members.some((member: { id: string }) => member.id === 'build')).toBe(false)
   expect(draft.members.find((member: { id: string }) => member.id === 'check').dependencies).toEqual([])
+})
+it('chooses the reporting manager and responsibility before adding, and persists the hierarchy separately from handoffs', async () => {
+  await mount(); await click('新建任务'); await click('管理层级')
+  await click('给策划添加下属'); await click('管理成员')
+  await type(field<HTMLInputElement>('名称'), '研发组长')
+  const manager = all('.dt-flow-node[data-selected]')[0]!.dataset.node!
+  await click('添加成员')
+  const chooser = () => all('.dt-flow-add-member')[0]!
+  const parent = () => chooser().querySelector('select')!
+  expect(parent().value).toBe(manager)
+  expect([...parent().options].map(option => option.value)).toEqual(['$commander', 'coordinator', 'build', 'check', manager])
+  await click(chooser().querySelector('.dt-modal-close')!)
+  expect(all('.dt-flow-node')).toHaveLength(5)
+  await click(all('[data-node="coordinator"] .dt-flow-node-body')[0]!)
+  await click('添加成员'); await type(parent(), manager)
+  await click(chooser().querySelectorAll<HTMLButtonElement>('[role=tab]')[1]!)
+  await click(all('.dt-flow-add-member .dt-modal-footer button').at(-1)!)
+  const reviewer = all('.dt-flow-node[data-selected]')[0]!.dataset.node!
+  await type(field<HTMLInputElement>('名称'), '版本检验')
+  expect(all('button[aria-label="连接：研发组长 → 版本检验"]')).toHaveLength(1)
+  await click('进入会话')
+  const request = server.requests.find(item => item.method === 'POST' && item.path === 'local/teams/prepare')
+  expect(request?.body).toMatchObject({ members: expect.arrayContaining([
+    expect.objectContaining({ id: manager, responsibility: 'manager', parentId: 'coordinator', dependencies: [] }),
+    expect.objectContaining({ id: reviewer, responsibility: 'reviewer', parentId: manager, dependencies: [] }),
+  ]) })
+})
+it('adds directly after either root, and adds a direct report to a worker without a delivery dependency', async () => {
+  await mount(); await click('新建任务')
+  await click('在总执行后添加'); await click('检验成员')
+  await type(field<HTMLInputElement>('名称'), '直属检验')
+  await click('在策划后添加'); await click('管理成员')
+  await type(field<HTMLInputElement>('名称'), '项目组长')
+  expect(all('button[aria-label="连接：总执行 → 直属检验"]')).toHaveLength(1)
+  expect(all('button[aria-label="连接：策划 → 项目组长"]')).toHaveLength(1)
+  await click('管理层级'); await click('给实施添加下属'); await click('管理成员')
+  await type(field<HTMLInputElement>('名称'), '现场负责人')
+  await click('进入会话')
+  const request = server.requests.find(item => item.method === 'POST' && item.path === 'local/teams/prepare')
+  expect(request?.body).toMatchObject({ members: expect.arrayContaining([
+    expect.objectContaining({ name: '直属检验', parentId: '$commander', responsibility: 'reviewer', dependencies: [] }),
+    expect.objectContaining({ name: '项目组长', parentId: 'coordinator', responsibility: 'manager', dependencies: [] }),
+    expect.objectContaining({ name: '现场负责人', parentId: 'build', responsibility: 'manager', dependencies: [] }),
+  ]) })
 })
 it('closes the member action menu on Escape without closing the workflow or losing its draft', async () => {
   await mount(); await click('新建任务')
@@ -352,7 +495,8 @@ it('joins the remaining steps when a middle member is removed', async () => {
   expect(draft.members.map((member: { id: string }) => member.id)).toEqual(['front', 'review'])
   expect(draft.members[1].dependencies).toEqual(['front'])
 })
-it('offers a real member name, an explicit parent and add-and-execute action', async () => {
+it('adds a live reviewer with the selected parent and assignment', async () => {
+  server.teamViews['explicit-team']!.members.find(member => member.id === 'build')!.responsibility = 'manager'
   server.teamViews['explicit-team']!.model = { provider: 'worker-provider', model: 'worker-model' }
   at({ page: 'overview', query: { team: 'explicit-team', member: 'coordinator' } })
   await mount(); await click(all('button[aria-label^="添加成员 ·"]')[0]!)
@@ -360,9 +504,15 @@ it('offers a real member name, an explicit parent and add-and-execute action', a
   expect(field<HTMLSelectElement>('上级').value).toBe('coordinator')
   expect(all('[role="dialog"] button').some(button => button.textContent === '添加并执行')).toBe(true)
   expect(field<HTMLSelectElement>(zh.localTaskModel).options[0]!.text).toContain('Worker model')
+  await type(field<HTMLSelectElement>('上级'), 'build')
+  await click('检验')
+  await type(field<HTMLTextAreaElement>('分工'), '复核交付')
+  await click('添加并执行')
+  expect(server.requests.find(request => request.method === 'POST' && request.path === 'local/teams/explicit-team/members')?.body)
+    .toMatchObject({ responsibility: 'reviewer', parentId: 'build', instructions: '复核交付', dependencies: [] })
 })
 it('keeps a new member expanded and focused while entering, clearing, and rewriting the assignment', async () => {
-  await mount(); await click('新建任务'); await click('添加成员')
+  await mount(); await click('新建任务'); await click('添加成员'); await click(all('.dt-flow-add-member .dt-modal-footer button').at(-1)!)
   const assignment = field<HTMLTextAreaElement>('分工')
   assignment.focus()
   for (const value of ['z', '整理接口文档并验证示例', '', '重新填写完整分工']) {
@@ -373,7 +523,7 @@ it('keeps a new member expanded and focused while entering, clearing, and rewrit
   const draft = JSON.parse(sessionStorage.getItem('dsh-superagent/local-draft')!)
   expect(draft.members[2].instructions).toBe('重新填写完整分工')
 })
-it('keeps activity previews short while leaving full reports in the original task', async () => {
+it('renders the full activity report and its recorded event inside the member pane', async () => {
   const view = server.teamViews['explicit-team']!, member = view.members[1]!
   const report = '已完成格式化功能。' + '详细实现和逐项解释。'.repeat(35) + '完整记录末尾'
   member.summary = report
@@ -382,35 +532,42 @@ it('keeps activity previews short while leaving full reports in the original tas
   await mount(); await click('活动')
   const activity = all('.dt-team-member-activity')[0]!
   expect(activity.textContent).toContain('已完成格式化功能')
-  expect(activity.textContent).not.toContain('完整记录末尾')
-  expect(activity.textContent!.length).toBeLessThan(320)
+  expect(activity.querySelector('section p')?.textContent).toBe(report)
+  expect(activity.querySelector('li p')?.textContent).toBe(report)
   expect(member.summary).toBe(report)
   expect(all('button').some(button => button.textContent === '在 DSH 中打开')).toBe(true)
 })
 it('closes all workspace views without stopping tasks and reopens the same member from its task card', async () => {
+  sessionStorage.setItem('dsh-superagent/open-workspaces', JSON.stringify([{ kind: 'session', id: 'all-single', title: '单成员' }]))
   at({ page: 'overview', query: { team: 'explicit-team', member: 'check' } })
   await mount()
   await click('关闭全部工作区')
-  expect(text()).toContain('请打开一个工作区')
+  expect(all('.dt-team-open-invitation h2')[0]?.textContent).toBe('打开工作区')
   expect(text()).toContain('真实团队')
   expect(all('[data-test-session]')).toHaveLength(0)
   expect(server.requests.some(item => /\/stop$/.test(item.path))).toBe(false)
   await click(all('.dt-team-overview-item')[0]!)
   expect(all('.dt-team-workspace-tab')).toHaveLength(1)
-  expect(text()).not.toContain('请打开一个工作区')
+  expect(all('.dt-team-open-invitation')).toHaveLength(0)
 })
 it('returns from management pages to the selected task and member while keeping an explicitly closed workspace empty', async () => {
   at({ page: 'overview', query: { team: 'explicit-team', member: 'build' } })
   await mount()
-  for (const page of ['任务', '工作区', '设置']) {
-    await click(page)
-    await click('工作台')
+  for (const page of ['任务看板', '全部工作区', '插件设置']) {
+    if (page === '插件设置') {
+      await openLocalOption(page)
+      await remount()
+    } else await click(page)
+    expect(all('.dt-workbench-tool')).toHaveLength(1)
+    await click('返回对话')
     expect(all('[data-test-session="worker-build-task"]')).toHaveLength(1)
     expect(JSON.parse(sessionStorage.getItem('dsh-superagent/route')!).route.query).toEqual({ team: 'explicit-team', member: 'build' })
   }
-  await click('关闭全部工作区')
-  await click('设置'); await click('工作台')
-  expect(text()).toContain('请打开一个工作区')
+  expect(all('.dt-team-workspace-tabs > .dt-btn')).toHaveLength(0)
+  await click(all('.dt-team-tab-close')[0]!)
+  expect(all('.dt-team-workspace-tabs')).toHaveLength(0)
+  await openLocalOption('插件设置'); await click('返回工作台')
+  expect(all('.dt-team-open-invitation h2')[0]?.textContent).toBe('打开工作区')
   expect(all('[data-test-session]')).toHaveLength(0)
 })
 it('reviews actual reported files and commands without inventing approvals or passed checks', async () => {
@@ -526,4 +683,30 @@ it('opens the selected team project from its sidebar instead of the shared contr
   await mount(); await click(all('.dt-studio-project button')[0]!)
   expect(server.requests.find(item => item.method === 'POST' && item.path === 'local/workspaces')?.body).toEqual({ directory: '/tmp/project' })
   expect(server.openedWorkspaces).toEqual(['workspace-1'])
+})
+
+it('opens the saved stopped plan for inspection without saving or reviving stale drafts', async () => {
+  const view = server.teamViews['explicit-team']!
+  view.state = 'stopped'
+  view.deliveredBeforeStop = true
+  sessionStorage.setItem('dsh-superagent/workflow-draft/' + view.id, JSON.stringify({ revision: 0, members: [] }))
+  at({ page: 'overview', query: { team: view.id } }); await mount()
+  expect(text()).toContain('已交付 · 已停止')
+  await click('编排')
+  const modal = all('.dt-workflow-modal')[0]!
+  expect(modal.textContent).toContain('团队已停止')
+  await click(modal.querySelector<HTMLButtonElement>('[data-node="build"] .dt-flow-node-body')!)
+  expect(modal.querySelector('input[maxlength="60"]')?.matches(':disabled')).toBe(true)
+  expect(modal.querySelector('button[type="submit"]')).toBeNull()
+  expect(server.requests.some(req => req.method === 'PUT' && req.path.endsWith('/plan'))).toBe(false)
+})
+
+it('keeps three single-line event summaries and opens their complete history from the footer', async () => {
+  const view = server.teamViews['explicit-team']!
+  view.timeline = [1, 2, 3, 4].map(n => ({ id: String(n), at: `2026-11-10T01:0${n}:00Z`, kind: 'blocked', detail: `事件 ${n}\n完整原因 ${n}` }))
+  at({ page: 'overview', query: { team: view.id } }); await mount()
+  expect(all('.dt-studio-event-log .dt-log-text').map(e => e.textContent)).toEqual(['事件 4', '事件 3', '事件 2'])
+  await click(all('.dt-studio-event-log button')[0]!)
+  expect(all('.dt-record-events article')).toHaveLength(4)
+  expect(all('.dt-record-events')[0]?.textContent).toContain('完整原因 1')
 })

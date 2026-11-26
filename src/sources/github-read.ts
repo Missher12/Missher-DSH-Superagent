@@ -10,7 +10,35 @@ const StatusSchema = z.looseObject({ context: z.string(), state: z.string() })
 type Check = Pick<z.infer<typeof CheckSchema>, 'name' | 'status' | 'conclusion'>
 type Status = Pick<z.infer<typeof StatusSchema>, 'context' | 'state'>
 
-export interface CiSnapshot { head: string; checks: Check[]; statuses: Status[]; coverage?: 'actions-and-statuses' }
+export interface PullChanges {
+  number: number
+  base: string
+  head: string
+  total: number
+  files: string[]
+  sameTreeAsBase?: boolean
+}
+
+/** Freeze the PR revision on both sides of the file-list request. Only the first
+ * 100 names are kept; total always comes from GitHub, including for larger PRs. */
+export async function readPullChanges(commands: Commands, number: number): Promise<PullChanges> {
+  const ref = z.object({ sha: z.string().min(1) })
+  const schema = z.object({ base: ref, head: ref, changed_files: z.number().int().nonnegative() })
+  const path = `pulls/${number}`
+  const before = await commands.api(schema, path)
+  const files = await commands.api(z.array(z.object({ filename: z.string().min(1) })), `${path}/files?per_page=100`)
+  // The PR file list uses the merge base. Equal Git tree IDs prove there is no
+  // net content or mode change against today's base, even on a diverged branch.
+  const commit = z.object({ tree: ref })
+  const treeId = async (sha: string) => (await commands.api(commit, `git/commits/${encodeURIComponent(sha)}`)).tree.sha
+  const [baseTree, headTree] = await Promise.all([treeId(before.base.sha), treeId(before.head.sha)])
+  const after = await commands.api(schema, path)
+  if (before.head.sha !== after.head.sha || before.base.sha !== after.base.sha || before.changed_files !== after.changed_files
+      || files.length !== Math.min(100, after.changed_files)) throw new Error('PR 差异已变化或文件记录不完整，请重新读取本轮差异。')
+  return { number, base: after.base.sha, head: after.head.sha, total: after.changed_files, sameTreeAsBase: baseTree === headTree, files: files.map(file => file.filename) }
+}
+
+export interface CiSnapshot { head: string; checks: Check[]; statuses: Status[]; coverage?: 'actions-and-statuses' | 'actions-only' }
 /** Check conclusions and status states that count as failures; `success`, `neutral`, `skipped`, and `stale` do not. */
 const FAILING = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'error'])
 export function ciCounts(snapshot: CiSnapshot): { failed: number; running: number; missing?: true; coverage?: CiSnapshot['coverage'] } {
@@ -31,7 +59,7 @@ export function ciSummary(snapshot: CiSnapshot, where: string, read: string): st
   const names = (list: string[]) => list.slice(0, 5).join(', ') + (list.length > 5 ? `, and ${list.length - 5} more` : '')
   const at = `on ${where} at ${snapshot.head.slice(0, 7)}`
   const still = running.length ? `; ${running.length} still running` : ''
-  const label = snapshot.coverage ? 'CI (GitHub Actions and commit statuses only)' : 'CI'
+  const label = snapshot.coverage === 'actions-only' ? 'CI (GitHub Actions only)' : snapshot.coverage ? 'CI (GitHub Actions and commit statuses only)' : 'CI'
   const line = failed.length ? `${label} failed ${failed.length}/${results.length} ${at}: ${names(failed)}${still}`
     : running.length ? `${label} running ${running.length}/${results.length} ${at}: ${names(running)}`
       : results.length ? `${label} passed ${results.length}/${results.length} ${at}` : `${label} not reported ${at}`
@@ -45,7 +73,7 @@ export function ciFact(counts: { failed: number; running: number; missing?: true
   if (counts.failed) return { label: { zh: 'CI 失败', en: 'CI failed' }, value: String(counts.failed), problem: true }
   if (counts.running) return { label: { zh: 'CI 进行中', en: 'CI running' }, value: String(counts.running) }
   if (counts.missing) return { label: 'CI', value: { zh: '暂无结果', en: 'not reported' } }
-  return { label: counts.coverage ? { zh: 'Actions / 提交状态', en: 'Actions / commit statuses' } : 'CI', value: { zh: '通过', en: 'passed' } }
+  return { label: counts.coverage === 'actions-only' ? 'GitHub Actions' : counts.coverage ? { zh: 'Actions / 提交状态', en: 'Actions / commit statuses' } : 'CI', value: { zh: '通过', en: 'passed' } }
 }
 
 /** Reads a non-hidden file or directory listing from the repository's default branch via the GitHub API; hidden entries and `node_modules` are rejected. */
@@ -69,18 +97,24 @@ async function pullActions(commands: Commands, head: string, tally?: Tally): Pro
     const key = `${run.workflow_id}:${run.event}`
     if (seen.has(key)) continue
     seen.add(key)
-    const pages = await commands.api(z.array(z.looseObject({ jobs: z.array(CheckSchema) })), `actions/runs/${run.id}/jobs?filter=latest&per_page=100`, '--paginate', '--slurp')
+    const pages = await commands.api(z.array(z.looseObject({ jobs: z.array(CheckSchema) })), `actions/runs/${run.id}/jobs?filter=latest&per_page=100`, '--paginate', '--slurp').catch((error: unknown) => {
+      if (!(error instanceof CliError) || error.code !== 403 && !/\bEOF\b|timed? ?out|connection reset/i.test(error.message)) throw error
+      return []
+    })
     const jobs = pages.flatMap(page => page.jobs), name = run.name ?? `Workflow ${run.workflow_id}`
     checks.push(...jobs.map(job => ({ name: `${name} / ${job.name}`, status: job.status, conclusion: job.conclusion })))
     if (!jobs.length || run.status !== 'completed' && jobs.every(job => job.status === 'completed')
       || FAILING.has(run.conclusion ?? '') && !jobs.some(job => FAILING.has(job.conclusion ?? ''))) {
-      checks.push({ name, status: run.status, conclusion: run.conclusion })
+      checks.push({ name: pages.length ? name : `${name} (workflow result; job details unavailable)`, status: run.status, conclusion: run.conclusion })
     }
   }
-  const statuses = await commands.pages(StatusSchema, `commits/${head}/statuses?per_page=100`, tally)
+  const statuses = await commands.pages(StatusSchema, `commits/${head}/statuses?per_page=100`, tally).catch((error: unknown) => {
+    if (error instanceof CliError && error.code === 403) return undefined
+    throw error
+  })
   const latest = new Map<string, string>()
-  for (const status of statuses) if (!latest.has(status.context)) latest.set(status.context, status.state)
-  return { head, coverage: 'actions-and-statuses', checks: checks.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+  for (const status of statuses ?? []) if (!latest.has(status.context)) latest.set(status.context, status.state)
+  return { head, coverage: statuses ? 'actions-and-statuses' : 'actions-only', checks: checks.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
     statuses: [...latest].map(([context, state]) => ({ context, state })).sort((a, b) => a.context.localeCompare(b.context)) }
 }
 
@@ -133,6 +167,8 @@ function threadMessages(thread: GithubComment[], id: (comment: GithubComment) =>
  */
 export async function readGithub(commands: Commands, resource: string): Promise<unknown> {
   // A commit's CI, such as the default branch's, which no PR names.
+  const changes = /^github\/pulls\/([1-9]\d*)\/changes$/.exec(resource)
+  if (changes) return readPullChanges(commands, Number(changes[1]))
   const commit = /^github\/commits\/([0-9a-f]{7,40})\/checks$/.exec(resource)
   if (commit) return pullChecks(commands, commit[1]!)
   const match = /^github\/(issues|pulls)\/([1-9]\d*)(?:\/(comments|reviews|checks|thread)(?:\/([1-9]\d*))?)?$/.exec(resource)

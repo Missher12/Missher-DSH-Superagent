@@ -34,7 +34,7 @@ export interface Api {
   'PUT local/teams/:id/plan': { body: TeamEdit; response: Awaited<ReturnType<LocalTeams['updatePlan']>> }
   'PUT local/teams/:id/acceptance': { body: TeamControls; response: Awaited<ReturnType<LocalTeams['controls']>> }
   'POST local/teams/:id/members': { body: TeamMember; response: Awaited<ReturnType<LocalTeams['addMember']>> }
-  'GET local/teams/:id': { response: ReturnType<LocalTeams['get']> }
+  'GET local/teams/:id': { query?: { history?: 'all' }; response: ReturnType<LocalTeams['get']> }
   'GET local/teams/:id/file': { query: { path: string }; response: ReturnType<LocalTeams['file']> }
   'POST local/teams/:id/stop': { response: ReturnType<LocalTeams['stopTeam']> }
   'POST local/teams/:id/retry': { response: Awaited<ReturnType<LocalTeams['retry']>> }

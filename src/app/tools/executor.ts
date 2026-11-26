@@ -2,7 +2,8 @@
 import { z } from 'zod'
 import { liveTicket, type EngineForExecutor, type Ticket } from '../../core/index.ts'
 import { IM_WORDS } from '../../infra/text.ts'
-import { claimPull, findTicketPull, readPull } from '../../sources/github-pull.ts'
+import { readPullChanges } from '../../sources/github-read.ts'
+import { githubPullTarget, claimPull, findTicketPull, readPull } from '../../sources/github-pull.ts'
 import type { SourceContext } from '../../sources/host.ts'
 import { readResource, type ResourceHost } from '../resources.ts'
 import type { Store } from '../store.ts'
@@ -14,14 +15,14 @@ import type { LocalTeams } from '../../teams/local.ts'
 
 export interface ExecutorToolsHost {
   readonly engine: Pick<EngineForExecutor, 'report' | 'reply' | 'markUnrelated' | 'handback' | 'followForContext'>
-  readonly store: Pick<Store, 'tickets' | 'replyStatus' | 'atomic'>
+  readonly store: Pick<Store, 'tickets' | 'triggers' | 'replyStatus' | 'atomic'>
   readonly sessions: Pick<Sessions, 'relay' | 'notify'>
   readonly resources: ResourceHost
   /** GitHub Source context whose pull-request rules govern claiming a reported PR. */
   readonly github: SourceContext
   sendReplies(): Promise<void>
   recordDelivery?(ticket: Ticket, input: DeliveryInput, state: string): void
-  readonly teams?: Pick<LocalTeams, 'contextFor' | 'recordReview' | 'revisePlan' | 'sourceTicket' | 'recordWait'>
+  readonly teams?: Pick<LocalTeams, 'contextFor' | 'recordReview' | 'revisePlan' | 'sourceTicket' | 'recordWait' | 'recordPullChanges'>
 }
 
 const EventWaitSchema = z.object({ thread: z.string().min(1), after: z.string().min(1) }).strict()
@@ -47,6 +48,7 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
         text: AcknowledgementSchema.describe(`At most ${IM_WORDS} words; Markdown is supported.`),
       }).strict(),
       execute: async args => {
+        if (host.teams?.sourceTicket(ticketId)) throw new Error('团队成员通过 orchestrator_report 汇报，原单回执由总执行统一发送。')
         const reply = host.engine.reply({ purpose: 'acknowledgement', ticketId, triggerId: args.trigger_id, text: args.text })
         if (reply.status !== 'sent') await host.sendReplies()
         return { trigger_id: args.trigger_id, acknowledgement: host.store.replyStatus(reply.id)!, reused: reply.reused }
@@ -106,14 +108,21 @@ export function executorTools(host: ExecutorToolsHost, ticket: Ticket): Tool[] {
         const current = host.store.tickets.get(ticketId)
         if (!current || !liveTicket(current)) throw new Error('Ticket ended (PR was closed or work finished); do not resume it')
         const sourceTicket = host.teams?.sourceTicket(ticketId)
+        const context = sourceTicket && args.state === 'ready' ? host.teams?.contextFor(ticketId) : undefined
+        const internalHandoff = context && ['briefing', 'planning', 'reviewing', 'reporting'].includes(context.phase)
         const pull = args.pr_number != null ? await readPull(host.github, args.pr_number, signal)
-          : args.state === 'ready' ? await findTicketPull(host.github, sourceTicket ?? current, signal) : undefined
+          : args.state === 'ready' && !internalHandoff && review?.decision !== 'revise' ? await findTicketPull(host.github, sourceTicket ?? current, signal) : undefined
+        const target = sourceTicket && githubPullTarget(sourceTicket, host.store.triggers.get(sourceTicket.origin.triggerId))
+        const number = pull?.number ?? target?.number
+        const changes = target && number && review?.decision === 'pass' && context?.memberId === 'coordinator' && context.phase === 'integrating'
+          ? await readPullChanges(host.github.commands.withSignal(signal), number) : undefined
         // Claim the PR, record the report, and queue the relay atomically so a rejected PR claim or invalid report leaves no partial state, and a recorded report always reaches the main Session.
         return host.store.atomic(() => {
           const refused = pull && claimPull(host.github, sourceTicket?.id ?? ticketId, pull)
-          if (refused) throw new Error(refused)
+          if (refused) throw new Error(sourceTicket ? `${refused}. Keep the existing PR. Report the conflict to the planner without creating another PR or sending a second reply.` : refused)
           if (args.delivery) host.recordDelivery?.(current, DeliverySchema.parse(args.delivery), review?.decision === 'revise' ? 'progress' : args.state)
           host.teams?.recordReview(current, review, args.state)
+          if (changes) host.teams?.recordPullChanges(ticketId, changes)
           host.teams?.recordWait(current, args.state, wait)
           const report = { state: args.state, summary: args.summary, ...(args.human_action !== undefined ? { question: args.human_action } : {}),
             ...(args.question_for_trigger_id ? { askedBy: args.question_for_trigger_id } : {}),

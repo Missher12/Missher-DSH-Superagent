@@ -2,14 +2,14 @@
 
 ![Superagent · 项目任务（品牌插画）](docs/images/cover-v2.png)
 
-当前版本 **1.14.2** · [下载安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.14.2)
+当前版本 **1.15.35** · [GitHub Release 和安装包](https://github.com/Missher12/Missher-DSH-Superagent/releases/tag/v1.15.35) · [工作台使用说明](docs/local-mode.md#三栏团队工作台)
 在 DSH 里派出任务，在 Superagent 的独立工作区中查看执行会话、文件目录、进度和结果。
 
 适用场景：调研代码、定位问题、修改功能、运行相关检查。任务会在自动创建的独立目录或你选择的已有项目目录内工作，遵守该项目的 `AGENTS.md`。
 
 ## 安装
 
-要求：DeepSeek Harness `0.2.1-rc.4` 或 `0.2.2-rc.1`，已配置可用模型。
+当前版本已在 DeepSeek Harness `0.2.2-rc.5` 的 Intel Mac 上全新安装，并在日常宿主验证团队派单、复核和交付。安装前配置可用模型。
 
 1. 在 DSH「插件 → 添加插件 → 安装第三方插件」填入本地 `.tgz` 的绝对路径。
 2. 安装完成后点击「立即启用」。

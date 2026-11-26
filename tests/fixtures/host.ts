@@ -134,7 +134,7 @@ export function subagentRuntime(agents: Map<string, FakeAgent>) {
 }
 
 /** @param seed - writes to the database before the Runtime opens it, such as records an earlier version stored. */
-export async function startRuntime(seed?: (store: Store) => void, machine: Partial<Machine> = {}) {
+export async function startRuntime(seed?: (store: Store) => void, machine: Partial<Machine> = {}, reservedSession?: string) {
   const directory = mkdtempSync(join(tmpdir(), 'orchestrator-host-'))
   const AGENT = join(directory, 'agent-gh'), BOT = join(directory, 'lark-bot')
   const repository = { default_branch: 'master', permissions: { push: true } }
@@ -172,6 +172,7 @@ export async function startRuntime(seed?: (store: Store) => void, machine: Parti
   const resolveDefault = async (id: string) => agents.has(id) ? { agent: agents.get(id) } : { error: { code: 'session/not-found' } }
   const controller = {
     create: vi.fn(async ({ sessionId }: { sessionId: string }) => {
+      if (sessionId === reservedSession) throw new Error('failed to create session: Error: session/delete-busy')
       if (agents.has(sessionId)) return
       const agentCtx = new Context()
       const sessionTools = new Map<string, RegisteredTool>()

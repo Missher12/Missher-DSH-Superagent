@@ -412,8 +412,23 @@ Local desktop adaptation additions:
 | `src/client/model-labels.ts` | Localized reasoning-effort labels while retaining provider-specific descriptions |
 | `src/client/select.tsx` | Native form values with the host's themed Menu, keyboard navigation and local sizing |
 | `src/client/team-ui.tsx`, `team-locales.ts` | Team/member state labels, bounded text and bilingual copy |
+| `src/client/member-pressure.tsx` | Read current occupancy from native session projections |
+| `src/client/team-progress.tsx` | Show the persisted project stage and active return |
+| `src/client/team-room.tsx` | Present project-scoped public reports and handoffs |
+| `src/client/workflow-routing.ts` | Route live and editable links using orthogonal segments |
+| `src/client/team-acceptance.tsx` | Review and edit acceptance checks |
+| `src/client/team-participants.ts` | Resolve worker roles and public status |
+| `src/client/team-records.tsx` | Inspect the workflow timeline |
+| `src/client/workflow-editor.tsx` | Edit delivery and reporting relationships |
+| `src/client/workflow.css` | Style the workflow editor |
+| `src/teams/git-workspaces.ts` | Isolate and integrate team worktrees |
+| `src/teams/plan.ts` | Validate team relationships |
+| `src/client/team-transitions.ts` | Map recorded handoffs and reviews to their graph routes |
+| `src/client/team-graph-routing.ts` | Route horizontal dependencies and returns between measured card bounds |
+| `src/client/member-frame.tsx` | Mount the host conversation frame and its extensions for a selected member |
+| `src/client/team-graph-tip.tsx` | Display member status and usage on pointer or keyboard focus |
 | `src/client/team-graph.tsx` | Real dispatch and explicit dependency connectors with responsive member nodes |
-| `src/client/team-details.tsx`, `team-delivery.tsx` | Member tools, embedded session, durable follow-up, reported files/checks and bounded text previews |
+| `src/client/team-details.tsx`, `team-delivery.tsx` | Member tools, embedded session, durable follow-up, reported files/checks and full activity reports |
 | `src/client/team-file-preview.tsx` | Task-scoped artifact and diff-link matching, same-name file selection and bounded in-panel previews |
 | `src/client/team-collaboration.tsx` | Team graph/member/completion views and validated runtime member addition |
 | `src/client/team-members-editor.tsx` | Editable team roles, model choices and acyclic delivery dependencies |
@@ -458,6 +473,12 @@ Local desktop adaptation checks:
 | `tests/local-teams.spec.ts` | Actual dependency dispatch, planning/final-review separation, follow-ups, evidence, stop and restart recovery |
 | `tests/feishu-connect.spec.ts`, `tests/feishu-gateway.spec.ts` | Application connection, credential handling and owned event gateway lifecycle |
 | `tests/dispatch-settings.spec.tsx` | Source selection and native dispatch settings forms |
+| `tests/git-workspaces.spec.ts` | Team Git isolation |
+| `tests/team-git-runtime.spec.ts` | Git integration and reporting |
+| `tests/team-recovery.spec.ts` | Recover interrupted teams |
+| `tests/worker-launchers.spec.ts` | Worker launch contracts |
+| `tests/workflow-persistence.spec.tsx` | Recover persisted editable workflows |
+| `tests/team-transitions.spec.ts` | Recorded dispatch, review and return paths and their orthogonal geometry |
 | `tests/team-panel.spec.tsx` | Explicit team overview, member selection, task creation, native sessions and delivery previews |
 | `tests/client-registration.spec.ts` | Host-owned conversation slot contract and cold session initialization |
 | `tests/studio-panel.spec.tsx` | Inline task validation, workspace form registration and persisted sidebar resizing |

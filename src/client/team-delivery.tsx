@@ -32,6 +32,7 @@ export function TeamDelivery({ team, compact = false }: { team: TeamView; compac
   const [path, setPath] = useState<string>()
   const final = team.finalDelivery && { memberId: 'coordinator', name: t('teamCoordinator'), record: team.finalDelivery.record }
   const deliveries = [...team.deliveries.filter(delivery => !final || delivery.record.assignmentId !== final.record.assignmentId), ...(final ? [final] : [])]
+  const changes = team.finalDelivery?.githubChanges
   const files = team.finalDelivery?.artifacts ?? [...new Map(deliveries.flatMap(delivery => delivery.record.files.map(file => [file.path, { ...file, name: delivery.name }] as const))).values()]
   const checks = deliveries.flatMap(delivery => delivery.record.checks.map((check, index) => ({ ...check, name: delivery.name, sessionId: delivery.record.sessionId, id: `${delivery.record.assignmentId}:${index}` })))
   // A coordinator's final review supersedes stage-specific caveats such as “tests not run by the implementer”.
@@ -40,6 +41,11 @@ export function TeamDelivery({ team, compact = false }: { team: TeamView; compac
   return <div className="dt-team-delivery">
     <TeamSourceDelivery team={team} />
     {!compact && <details className="dt-team-result-summary"><summary>{t(team.completion?.commander !== undefined ? 'teamFinalReport' : 'teamResultReport')}</summary><MarkdownLite text={team.commander?.summary || team.summary || t('teamReportPending')} /></details>}
+    {changes && <section><h3>{t('teamPullChanges', { number: String(changes.number) })}<span className="dt-count">{changes.total}</span></h3>
+      <details><summary>{t('teamReviewedCommit', { sha: changes.head.slice(0, 8) })}</summary>
+        {changes.sameTreeAsBase && <p>{t('teamSameBaseTree', { sha: changes.base.slice(0, 8) })}</p>}
+        <ul>{changes.files.map(file => <li key={file}><code>{file}</code></li>)}</ul>
+        {changes.total > changes.files.length && <p className="dt-hint">{t('teamLimitedChanges', { count: String(changes.files.length) })}</p>}</details></section>}
     <section><h3>{t(compact ? 'teamSharedFiles' : 'teamFiles')}<span className="dt-count">{files.length}</span></h3>
       {files.length ? <ul className="dt-team-files">{files.map(file => <li key={file.path}>
         <Icon name="folder" size={16} /><div><button className="dt-open" type="button" disabled={!file.exists} title={file.path}

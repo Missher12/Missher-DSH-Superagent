@@ -2,6 +2,7 @@
 import { execFile } from 'node:child_process'
 import { basename } from 'node:path'
 import { promisify } from 'node:util'
+import { setTimeout as delay } from 'node:timers/promises'
 import { z } from 'zod'
 import { githubAccount, type Deployment } from '../deployment.ts'
 import { FeishuGatewayError, type FeishuGateway } from './feishu-gateway.ts'
@@ -85,9 +86,21 @@ export class Commands {
   async api<T>(schema: z.ZodType<T>, path: string, ...flags: string[]): Promise<T>
   async api(path: string, ...flags: string[]): Promise<string>
   async api<T>(schema: z.ZodType<T> | string, ...rest: string[]): Promise<T | string> {
-    if (typeof schema === 'string') return this.run(githubAccount(this.deployment).cli, ['api', this.path(schema), ...rest])
+    if (typeof schema === 'string') return this.githubRead(rest, () => this.run(githubAccount(this.deployment).cli, ['api', this.path(schema), ...rest]))
     const [path = '', ...flags] = rest
-    return schema.parse(await this.gh(['api', this.path(path), ...flags]))
+    return schema.parse(await this.githubRead(flags, () => this.gh(['api', this.path(path), ...flags])))
+  }
+  /** Retry a plain GET once after a transport failure. Method and payload flags
+   * are deliberately outside this allowlist so an ambiguous write is never replayed. */
+  private async githubRead<T>(flags: string[], request: () => Promise<T>): Promise<T> {
+    try { return await request() }
+    catch (error) {
+      if (this.signal.aborted || !(error instanceof CliError) || error.code !== undefined
+        || !/\bEOF\b|ECONNRESET|connection reset|TLS handshake timeout/i.test(error.message)
+        || !flags.every(flag => ['--include', '--paginate', '--slurp'].includes(flag))) throw error
+      await delay(350, undefined, { signal: this.signal })
+      return request()
+    }
   }
   /** Fetches all pages of a GitHub API list within the configured repository, skipping items that fail schema validation. */
   async pages<T>(item: z.ZodType<T>, path: string, tally?: Tally): Promise<T[]> {

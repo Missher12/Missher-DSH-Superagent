@@ -7,7 +7,6 @@ import { FilePreview, type FileScope } from './team-file-preview.tsx'
 import { useAction, usePanel, usePanelData } from './provider.tsx'
 import type { Route } from './route.ts'
 import { TeamStatus } from './team-ui.tsx'
-import { shortText } from './text.ts'
 
 const WIDTHS = 'dsh-superagent/studio-widths'
 function readWidth(side: 'left' | 'right', fallback: number) {
@@ -66,8 +65,8 @@ function useStudioState(route: Extract<Route, { page: 'overview' }>): StudioStat
     measure(); if (typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(measure); observer.observe(element); return () => observer.disconnect()
   }, [])
-  const left = usePaneWidth('left', width - 640), compact = width < 800
-  const contentWidth = width - (!compact && !hidden ? left.width + 6 : 0), compactTeam = contentWidth < 800
+  const left = usePaneWidth('left', width - 640), compact = width < 800 || !!route.query?.team
+  const contentWidth = width - (!compact && !hidden ? left.width + 6 : 0), compactTeam = contentWidth < 960
   return { ...snapshot, route, root, left, compact, contentWidth, compactTeam, hidden, drawer, rightHidden, pane, setPane, setRightHidden,
     closeDrawer: () => setDrawer(false), toggleLeft: () => compact ? setDrawer(value => !value) : setHidden(value => !value),
     toggleRight: () => compactTeam ? setPane(value => value === 'conversation' ? 'team' : 'conversation') : setRightHidden(value => !value) }
@@ -84,7 +83,7 @@ export function StudioHeaderTools({ workbench }: { workbench: boolean }) {
     {workbench && studio.data?.team && <Button variant="ghost" size="sm" icon={<Icon name="sidebar-right" />} aria-label={t('studioToggleRight')}
       title={t('studioToggleRight')} aria-pressed={studio.compactTeam ? studio.pane === 'team' : !studio.rightHidden} onClick={studio.toggleRight} />}</div>
 }
-function lastMember(id: string) { try { return sessionStorage.getItem(`dsh-superagent/team-member/${id}`) ?? 'coordinator' } catch { return 'coordinator' } }
+function lastMember(id: string) { try { return sessionStorage.getItem(`dsh-superagent/team-member/${id}`) ?? '$commander' } catch { return '$commander' } }
 
 function StudioSidebar() {
   const { t, call, navigate, openWorkspace } = usePanel(), { data, route, closeDrawer, setPane } = useStudio()
@@ -94,7 +93,7 @@ function StudioSidebar() {
   const scope: FileScope = { kind: team ? 'team' : session?.taskId ? 'task' : 'session', id: team?.id ?? session?.taskId ?? session?.id ?? '',
     directory, sessionId: team?.members.find(member => member.role === 'coordinator')?.sessionId ?? session?.id, files: files.map(file => file.path) }
   const groups = Map.groupBy(files, file => file.path.replace(`${directory}/`, '').split('/').slice(0, -1).join('/'))
-  const go = (route: Route) => { closeDrawer(); setFile(undefined); setPane('conversation'); navigate(route, true) }
+  const go = (route: Route) => { closeDrawer(); setFile(undefined); setPane('conversation'); navigate(route, route.page === 'overview') }
   const selectTeam = (id: string) => go({ page: 'overview', query: { team: id, member: lastMember(id) } })
   const single = data?.tasks.filter(task => !data.teamTicketIds.includes(task.id)) ?? []
   const open = useAction(async () => {
@@ -104,21 +103,23 @@ function StudioSidebar() {
   const fileButton = (file: typeof files[number]) => <li key={file.path}><button type="button" disabled={!file.exists} title={file.path}
     onClick={() => setFile(file.path)}><Icon name="file" size={14} /><span>{file.path.split('/').at(-1)}</span></button></li>
   return <nav className="dt-team-sidebar dt-studio-sidebar" aria-label={t('teamList')}>
-    <div className="dt-studio-project"><span className="dt-studio-project-icon"><Icon name="folder" size={20} /></span><div>
-      <strong title={directory}>{team?.name ?? directory?.split('/').filter(Boolean).at(-1) ?? t('studioWorkspace')}</strong>{(team || directory) && <span>{t('studioWorkspace')}</span>}</div>
+    {(team || directory || data?.workspace) && <div className="dt-studio-project"><span className="dt-studio-project-icon"><Icon name="folder" size={20} /></span><div>
+      <strong title={directory}>{team?.name ?? directory?.split('/').filter(Boolean).at(-1) ?? data?.workspace?.title}</strong></div>
       <Button variant="ghost" size="sm" icon={<Icon name="folder" />} aria-label={t(directory ? 'localOpenWorkspace' : 'workbenchOpenWorkspace')} title={directory ?? data?.workspace?.directory}
-        disabled={!directory && !data?.workspace || open.busy} onClick={() => { void open.run() }} /></div>
+        disabled={!directory && !data?.workspace || open.busy} onClick={() => { void open.run() }} /></div>}
     <div className="dt-studio-sidebar-scroll">
       {directory && <section className="dt-studio-file-section"><div className="dt-studio-section-title"><strong>{t('teamWorkingFiles')}</strong><span>{files.length}</span></div>
         {files.length ? [...groups].map(([folder, list]) => folder ? <details className="dt-studio-file-folder" key={folder} open><summary><Icon name="chevron-right" size={12} /><Icon name="folder" size={14} /><span>{folder}</span></summary>
           <ul className="dt-studio-files">{list.map(fileButton)}</ul></details> : <ul key="root" className="dt-studio-files">{list.map(fileButton)}</ul>) : <p className="dt-hint dt-studio-no-files">{t('teamNoFiles')}</p>}</section>}
-      <section><div className="dt-studio-section-title"><strong>{t('teamTasks')}</strong><span>{data?.teams.length ?? 0}</span></div>
+      <section><div className="dt-studio-section-title"><strong>{t('teamTasks')}</strong><span>{data?.teams.length ?? 0}</span>
+        <Button variant="ghost" size="sm" icon={<Icon name="queue" size={14} />} aria-label={t('localTaskBoard')} title={t('localTaskBoard')}
+          onClick={() => go({ page: 'execution' })} /></div>
         <button type="button" className="dt-team-nav-item dt-studio-all" aria-pressed={!route.query?.team && !route.query?.session}
           onClick={() => go({ page: 'overview' })}><Icon name="history" size={14} />{t('teamAll')}</button>
         <ul>{data?.teams.map(item => <li key={item.id}><button type="button" className="dt-team-nav-item" data-active={!!item.activeMembers || undefined}
           aria-pressed={route.query?.team === item.id} title={item.currentAction || item.name} onClick={() => selectTeam(item.id)}>
           <Icon name={item.state === 'completed' ? 'decision' : item.state === 'stopped' ? 'stop' : item.state === 'failed' ? 'alert' : item.state === 'attention' ? 'message' : item.activeMembers ? 'running' : 'clock'} size={14} />
-          <span><strong>{item.name}</strong><TeamStatus state={item.state} /><small className="dt-team-live-action">{shortText(item.currentAction || item.summary || item.instructions, 60)}</small></span>
+          <span><strong>{item.name}</strong><TeamStatus state={item.state} label={item.deliveredBeforeStop ? t('teamDeliveredStopped') : undefined} />{!!item.activeMembers && item.currentAction && <small className="dt-team-live-action">{item.currentAction}</small>}</span>
         </button></li>)}</ul></section>
       <section className="dt-team-singles"><button type="button" className="dt-team-nav-item" onClick={() => go({ page: 'overview', query: { session: 'all-single' } })}>
         <Icon name="session" size={14} /><strong>{t('teamSingle')}</strong><span className="dt-count">{single.length}</span></button>

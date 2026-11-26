@@ -8,6 +8,28 @@ import type { SourceContext } from './host.ts'
 import type { ChannelLink, ChannelLinks } from './kind.ts'
 import { githubAddress, githubPage } from './github-trigger.ts'
 
+const TEAM_REPLY = '该来源团队由总执行统一回传。请用 orchestrator_report 提交内部结果，插件负责回复原 Issue 或 PR。'
+/** Managed teams publish source replies through the outbox. Match the direct CLI,
+ * HTTP and scripting forms used in worker shells before the host starts them. */
+export function githubTeamShellAdvice(raw: string): string | undefined {
+  const command = raw.replace(/(?:\\|`|\^)\r?\n[ \t]*/g, ' ')
+  const commentUrl = /(?:github\.com|\/repos\/|\bgithub_api_url\b)[^\s"'<>]*\/(?:issues|pulls)\/[^\s"'<>/]+\/comments\b/i.test(command)
+  const httpWrite = /(?:^|\s)(?:-X\s*(?:POST|PATCH|PUT|DELETE)\b|--(?:request|method)[=\s]+(?:POST|PATCH|PUT|DELETE)\b|-Method\s+(?:Post|Patch|Put|Delete)\b|-d\s|--(?:data(?:-[\w-]+)?|json)(?:\s|=)|-Body\s)|\b(?:requests|session|client|axios|httpx)\s*\.\s*(?:post|patch|put|delete)\s*\(|\bmethod['"]?\s*[:=]\s*['"](?:POST|PATCH|PUT|DELETE)['"]/im.test(command)
+  if (commentUrl && httpWrite || /\b(?:addComment|addPullRequestReviewComment)\s*\(/.test(command) && /graphql/i.test(command)) return TEAM_REPLY
+  const invocation = /(?:^|[;&|\n])\s*(?:&\s+)?(?:[^\s;&|]+?=\S+\s+)*(?:["']?(?:[^\s;&|]*\/)?(?:gh(?:\.exe)?|github-agent)["']?|["']?\$[\w{}:]+["']?)\s+(?:(?:--repo|-R|--hostname)\s+\S+\s+)*/gi
+  for (const match of command.matchAll(invocation)) {
+    const rest = command.slice(match.index! + match[0].length).split(/\s*(?:&&|\|\||;|\n)/, 1)[0]!
+    if (/^(?:issue|pr)\s+comment\b/i.test(rest) ||
+        /^api\s/i.test(rest) && (/\b(?:issues|pulls)\/[^\s]+\/comments\b/i.test(rest) && /(?:--method[=\s]+POST|-X\s*POST|--(?:raw-)?field\b|--input\b|\s-[fF]\s)/i.test(rest) || /\baddComment\s*\(/.test(rest))) {
+      return TEAM_REPLY
+    }
+    if (/^pr\s+checks\b|^pr\s+view\b.*\bstatusCheckRollup\b|^api\s+.*\/check-runs\b/i.test(rest)) {
+      return '请用 orchestrator_read 读取 github/pulls/<实际编号>/checks。宿主会在 Checks 403 时改查同一提交的 Actions 和提交状态，并标出覆盖范围。'
+    }
+  }
+  return undefined
+}
+
 const CommentSchema = z.looseObject({
   id: z.number(), body: z.string().nullish(), in_reply_to_id: z.number().nullish(), user: z.looseObject({ login: z.string() }).nullish(),
 })

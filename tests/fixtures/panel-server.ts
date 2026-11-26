@@ -341,7 +341,7 @@ const ROUTES: { [K in keyof Api]: Route<K> } = {
     }
     return { session: `worker-${params.id}` }
   } },
-  'GET local/teams/:id': { answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },
+  'GET local/teams/:id': { query: ['history'], answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },
   'GET local/teams/:id/file': { query: ['path'], answer: ({ query }) => server.teamFiles[query.path ?? ''] ?? refuse(404, 'File not found') },
   'GET local/tasks/:id/file': { query: ['path'], answer: ({ query }) => server.teamFiles[query.path ?? ''] ?? refuse(404, 'File not found') },
   'POST local/teams/:id/stop': { answer: ({ params }) => server.teamViews[params.id] ?? refuse(404, 'Team not found') },

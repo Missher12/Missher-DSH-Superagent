@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { expect, it } from 'vitest'
+import { act } from 'react'
 import { usePanel, mount, remount, all, find, click, type, field, text, at } from './fixtures/panel.tsx'
 import { server } from './fixtures/panel-server.ts'
 import type { SourceView } from '../src/client/api.ts'
@@ -47,6 +48,34 @@ it('lists multiple MCP applications and edits one workspace grant without changi
   expect(server.mcp.clients[0]!.projects.map(project => project.id)).toEqual(['a', 'b'])
   expect(server.mcp.clients[1]).toMatchObject({ name: '文档助手', enabled: false, projects: [{ id: 'b' }] })
   expect(server.requests.some(request => request.path === 'settings/policy' && request.method === 'PUT')).toBe(false)
+})
+it('keeps selected grants across path searches and rejects incomplete submissions', async () => {
+  server.additionalSources = [source('mcp', 'MCP 外部派单')]
+  server.workspaceChoices = Array.from({ length: 7 }, (_, i) => ({ id: String(i), title: '同名项目', directory: `/tmp/project-${i}/client` }))
+  await open(); await click(find('MCP', '.dt-source-policy-nav button')); await click(zh.mcpAdd)
+  const form = document.querySelector<HTMLFormElement>('.dt-mcp-form')!
+  const submit = () => act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
+  const created = () => server.requests.filter(item => item.method === 'POST' && item.path === 'mcp/clients')
+  const search = field<HTMLInputElement>(zh.localSearchWorkspaces), name = field<HTMLInputElement>(zh.mcpName)
+  const labels = () => [...form.querySelectorAll('.dt-mcp-workspaces small')].map(item => item.textContent)
+  expect(labels()[2]).toBe('project-2/client')
+  await click(zh.mcpFullPaths); expect(labels()[2]).toBe('/tmp/project-2/client')
+  await click(zh.mcpFullPaths)
+  await type(name, '验收连接'); await submit()
+  expect(created()).toHaveLength(0)
+  for (const i of [2, 6]) {
+    await type(search, `/tmp/project-${i}`)
+    expect(labels()).toEqual([`project-${i}/client`])
+    expect(form.querySelectorAll('input[type="checkbox"]')).toHaveLength(1)
+    await click(form.querySelector<HTMLInputElement>('input[type="checkbox"]')!)
+  }
+  await type(search, 'no-match')
+  expect(form.textContent).toContain(zh.localNoWorkspaceMatches)
+  expect(form.textContent).toContain('已选 2 项')
+  await type(name, '  '); await submit()
+  expect(created()).toHaveLength(0)
+  await type(name, '验收连接'); await click(find(zh.save, '[role="dialog"] button'))
+  expect(created().map(item => item.body)).toEqual([{ name: '验收连接', workspaceIds: ['2', '6'] }])
 })
 it('edits an automatic rule in a focused form and retains it when switching source permissions', async () => {
   await open(); await click('自动规则'); await click(zh.addRule)

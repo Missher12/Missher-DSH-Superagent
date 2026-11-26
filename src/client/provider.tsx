@@ -9,6 +9,9 @@ import COMPOSER_STYLES from './composer.css?raw'
 import WORKFLOW_STYLES from './workflow.css?raw'
 import { errorText, setupText, valueLabel, type T } from './text.ts'
 
+export interface MemberChatRequest { team: string; member: string }
+export const MemberChat = createContext<{ name: string; request?: MemberChatRequest } | null>(null)
+
 export interface PanelContext {
   t: T
   call: Call
@@ -16,6 +19,7 @@ export interface PanelContext {
   back: () => void
   backLabel: string
   openSession: (sessionId: string) => Promise<void>
+  renderPressure?: (id: string, active?: boolean) => ReactNode
   renderSession?: (sessionId: string) => ReactNode
   renderContext?: (sessionId: string) => ReactNode
   nativeSession?: boolean
@@ -81,9 +85,10 @@ function Toast({ text, onDone, holdMs = 3000 }: { text: string; onDone: () => vo
 const stay = () => {}
 const noSession = async () => {}
 const noWorkspace = async () => { throw new Error('Workspace navigation is unavailable') }
-export function PanelProvider({ t, interval = 5000, openSession = noSession, renderSession, renderContext, nativeSession, enableSource, openWorkspace = noWorkspace, pickDirectory = noWorkspace, navigate = stay, back = stay, backLabel = '', children }: {
+export function PanelProvider({ t, interval = 5000, openSession = noSession, renderSession, renderContext, renderPressure, nativeSession, enableSource, openWorkspace = noWorkspace, pickDirectory = noWorkspace, navigate = stay, back = stay, backLabel = '', children }: {
   t: T; interval?: number; openSession?: (sessionId: string) => Promise<void>; navigate?: PanelContext['navigate']; back?: () => void
   openWorkspace?: (workspaceId: string) => Promise<void>
+  renderPressure?: PanelContext['renderPressure']
   renderSession?: PanelContext['renderSession']
   renderContext?: PanelContext['renderContext']
   nativeSession?: boolean
@@ -112,8 +117,8 @@ export function PanelProvider({ t, interval = 5000, openSession = noSession, ren
     const timer = setTimeout(() => setRestarting(undefined), 30_000)
     return () => clearTimeout(timer)
   }, [restarting])
-  const context = useMemo(() => ({ t, call, navigate, back, backLabel, openSession, renderSession, renderContext, nativeSession, enableSource, openWorkspace, pickDirectory, notify, restart }), [t, call, navigate, back, backLabel,
-    openSession, renderSession, renderContext, nativeSession, enableSource, openWorkspace, pickDirectory, notify, restart])
+  const context = useMemo(() => ({ t, call, navigate, back, backLabel, openSession, renderSession, renderContext, renderPressure, nativeSession, enableSource, openWorkspace, pickDirectory, notify, restart }), [t, call, navigate, back, backLabel,
+    openSession, renderSession, renderContext, renderPressure, nativeSession, enableSource, openWorkspace, pickDirectory, notify, restart])
   const data = useMemo(() => ({ state, error, reload, setup: state?.setup, running: state?.load.running ?? 0, restarts }), [state, error,
     reload, restarts])
   return <Panel.Provider value={context}><PanelState.Provider value={data}>

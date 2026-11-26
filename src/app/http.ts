@@ -200,7 +200,7 @@ function routes(runtime: HttpHost): Routes {
       if (!runtime.local) throw new RouteError(404, 'Local mode is not enabled')
       return runtime.local.file(params.id, query.path ?? '')
     },
-    'GET local/teams/:id': ({ params }) => teams().get(params.id),
+    'GET local/teams/:id': ({ params, query }) => teams().get(params.id, query.history === 'all'),
     'PUT local/teams/:id/acceptance': async ({ params, body }) => teams().controls(params.id, await body(64 * 1024) as Api['PUT local/teams/:id/acceptance']['body']),
     'GET local/teams/:id/file': ({ params, query }) => teams().file(params.id, query.path ?? ''),
     'POST local/teams/:id/stop': ({ params }) => teams().stopTeam(params.id),

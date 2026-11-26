@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react'
 import { beforeEach, afterEach, expect, it } from 'vitest'
-import { usePanel, mount, all, click, type, field, at } from './fixtures/panel.tsx'
+import { openLocalOption, usePanel, mount, all, click, type, field, at } from './fixtures/panel.tsx'
 import { server } from './fixtures/panel-server.ts'
 
 usePanel()
@@ -15,7 +15,11 @@ afterEach(() => localStorage.removeItem('dsh-superagent/studio-widths'))
 it('validates a task inline before dispatch and keeps its text through menu and dialog changes', async () => {
   await mount(); await click('新建任务'); await click('单成员'); await click('派出任务')
   expect(all('.dt-composer-field-error').some(error => error.textContent?.includes('任务要求'))).toBe(true)
-  expect(document.activeElement).toBe(field('任务要求'))
+  const instructions = field<HTMLTextAreaElement>('任务要求')
+  expect(document.activeElement).toBe(instructions)
+  await type(instructions, '  ')
+  expect(instructions.getAttribute('aria-invalid')).toBe('true')
+  expect(document.getElementById(instructions.getAttribute('aria-describedby')!)?.textContent).toContain('任务要求')
   expect(server.requests.some(item => item.method === 'POST' && item.path === 'local/tasks')).toBe(false)
   await type(field<HTMLTextAreaElement>('任务要求'), '核对真实输入\n保留第二行和中文内容')
   await click('取消'); await click('新建任务')
@@ -49,7 +53,7 @@ it('resizes the project sidebar with the keyboard and keeps its width across pag
   const initial = Number(separator.getAttribute('aria-valuenow'))
   await act(async () => { separator.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) })
   expect(Number(separator.getAttribute('aria-valuenow'))).toBe(initial + 16)
-  await click('设置'); await click('工作台')
+  await openLocalOption('插件设置'); await click('返回工作台')
   expect(all('[role="separator"][aria-label="调整项目侧栏宽度"]')[0]!.getAttribute('aria-valuenow')).toBe(String(initial + 16))
   expect(JSON.parse(localStorage.getItem('dsh-superagent/studio-widths')!).left).toBe(initial + 16)
 })

@@ -1,5 +1,5 @@
 /** Browser plugin entry point registering the sidebar icon, main management panel, and Plugin Manager config view. */
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useContext, useEffect, useLayoutEffect, useId, useRef, useState } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { SidebarPanelIconOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -11,10 +11,14 @@ import type { PluginConfigViewProps } from '@deepseek-ai/dsh-client-ui-plugin-ma
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
-import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { PropsRenderSlots, PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ConversationSessionHeaderInjected, ConversationSessionHeaderSlotProps, ConversationStore, ConversationStoreState, ViewTab } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { PropsRenderSlots, PropsRenderFactories, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { openKnownSession, retainKnownSession, pickWorkspaceDirectory, SessionNavigationError } from '../navigation.ts'
+import { SegmentedTabs } from './controls.tsx'
+import { MemberChat, type MemberChatRequest } from './provider.tsx'
+import { installMemberFrame } from './member-frame.tsx'
+import { MemberPressure } from './member-pressure.tsx'
 import { App } from './app.tsx'
 import { PluginConfig, usePageForm } from './deployment.tsx'
 import { en, zh } from './locales.ts'
@@ -27,25 +31,34 @@ declare module '@deepseek-ai/dsh-api-session-controller/client' {
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     'superagent.session': { kind: 'single'; scope: 'session' }
-    'superagent.context': { kind: 'single'; scope: 'session' }
   }
 }
-type ConversationSeat = PropsRenderSlots<'superagent.session' | 'superagent.context'>
-const CONTEXT_VIEW = 'context-manager'
+type ConversationSeat = PropsRenderSlots<'superagent.session'>
+type NativeNavigation = Pick<ConversationSessionHeaderSlotProps, 'useConversationViews' | 'useStore' | 'selectView'> & { t: T }
 
-/** Keep the embedded transcript independent of the native page's last selected view. */
-function ChatSessionView({ renderSlot }: ConversationViewsProps) {
-  return renderSlot('conversation.session', { view: 'chat' })
-}
-
-/** Select the installed context plugin inside an independently scoped native Conversation factory. */
-function ContextPluginView({ renderSlot }: ConversationViewsProps) {
-  return renderSlot('conversation.session', { view: CONTEXT_VIEW })
+/** The native header owns its view roster, developer-tools visibility and per-session selection.
+ * The host's default body follows the same store, including focus requests from tool calls. */
+function NativeConversation({ useConversationViews, useStore, selectView, renderFactorySlot, renderSlot, t }: NativeNavigation & PropsRenderFactories & PropsRenderSlots<'superagent.member.frame'>) {
+  const panel = useId()
+  const tabs = useConversationViews((items: readonly ViewTab[]) => items) as readonly ViewTab[], preferred = useStore((state: ConversationStoreState) => state.view)
+  const selected = tabs.find(tab => tab.id === preferred) ?? tabs.find(tab => tab.id === 'chat')
+  const member = useContext(MemberChat), request = member?.request, handled = useRef<MemberChatRequest>()
+  useLayoutEffect(() => {
+    if (!request || handled.current === request || !tabs.some(tab => tab.id === 'chat')) return
+    handled.current = request
+    if (preferred !== 'chat') selectView('chat')
+  }, [request, tabs, preferred, selectView])
+  if (member) return renderSlot('superagent.member.frame', {}, { fallback: renderFactorySlot('conversation.content', { variant: 'embedded', phase: 'active', hero: false }) })
+  const navigation = tabs.length > 1 && <SegmentedTabs className="dt-host-view-tabs" label={t('workbenchConversation')} value={selected?.id ?? ''}
+    items={tabs.map(tab => ({ value: tab.id, label: tab.label, id: `${panel}-${tab.id}`, panelId: panel }))} onChange={selectView} />
+  return <>{navigation}
+    <div className="dt-host-view-body" id={panel} role="tabpanel" aria-labelledby={tabs.length > 1 && selected ? `${panel}-${selected.id}` : undefined} aria-label={tabs.length > 1 ? undefined : t('workbenchConversation')}>
+      {renderFactorySlot('conversation.content', { variant: 'embedded', phase: 'active', hero: false })}</div></>
 }
 
 /** Own a native Session reference only while this embedded transcript is mounted. Native input is adopted by the durable task intake. */
-function EmbeddedSession({ ctx, id, seat, t, slot = 'superagent.session' }: { ctx: ClientContext; id: string; seat: ConversationSeat; t: T;
-  slot?: 'superagent.session' | 'superagent.context' }) {
+function EmbeddedSession({ ctx, id, seat, t }: { ctx: ClientContext; id: string; seat: ConversationSeat; t: T }) {
+  const member = useContext(MemberChat)
   const [reference, setReference] = useState<SessionReference>()
   const [error, setError] = useState<Error>()
   useEffect(() => {
@@ -65,9 +78,15 @@ function EmbeddedSession({ ctx, id, seat, t, slot = 'superagent.session' }: { ct
   }, [ctx, id, t])
   if (!reference) return <LoadState loading={!error} error={error} />
   const { SessionProvider, renderSlot } = seat
-  return <SessionProvider session={reference}>{slot === 'superagent.context'
-    ? <div className="dt-native-context" data-superagent-context={id}>{renderSlot(slot, {})}</div>
-    : <div className="dt-native-transcript" data-superagent-session={id}>{renderSlot(slot, {})}</div>}</SessionProvider>
+  return <SessionProvider session={reference}><div className="dt-native-transcript" data-superagent-session={id}
+    onClick={member ? event => {
+      // DSH displays its right sidebar only in the main conversation. The native
+      // button has already requested expansion for this member before bubbling here.
+      if (event.target instanceof Element && event.target.closest('button[data-sidebar-right-expand]')) {
+        ctx.uiWorkspace.openSession(id as SessionId)
+      }
+    } : undefined}>
+    {renderSlot('superagent.session', {})}</div></SessionProvider>
 }
 
 type ClientContext = Context & { sessions: ISessions }
@@ -113,12 +132,9 @@ function Mounted({ ctx, t, seat }: { ctx: ClientContext; t: T; seat: Conversatio
     if (result.value.application !== 'applied') throw new Error(t('sourceConnectRestart'))
   }, [ctx, t])
   const form = usePageForm(ctx.get('configForms')?.get<Record<string, unknown>>(ENTRY))
-  const subscribeContext = useCallback((listener: () => void) => ctx.slots.subscribe('conversation.view', listener), [ctx])
-  const contextAvailable = useSyncExternalStore(subscribeContext, useCallback(() =>
-    ctx.slots.entriesOfSlot('conversation.view').some(entry => entry.options.id === CONTEXT_VIEW), [ctx]))
   const renderSession = useCallback((id: string) => <EmbeddedSession key={id} ctx={ctx} id={id} seat={seat} t={t} />, [ctx, seat, t])
-  const renderContext = useCallback((id: string) => <EmbeddedSession key={id} ctx={ctx} id={id} seat={seat} t={t} slot="superagent.context" />, [ctx, seat, t])
-  return <App t={t} openSession={openSession} renderSession={renderSession} renderContext={contextAvailable ? renderContext : undefined} nativeSession enableSource={enableSource} openWorkspace={openWorkspace} pickDirectory={pickDirectory} deploymentForm={form} />
+  const renderPressure = useCallback((id: string, active?: boolean) => <MemberPressure key={id} sessions={ctx.sessions} id={id} active={active} t={t} />, [ctx, t])
+  return <App renderPressure={renderPressure} t={t} openSession={openSession} renderSession={renderSession} nativeSession enableSource={enableSource} openWorkspace={openWorkspace} pickDirectory={pickDirectory} deploymentForm={form} />
 }
 
 export const inject = ['slots', 'locale', 'sessions', 'uiWorkspace', 'remote.pluginManager']
@@ -127,14 +143,22 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-superagent: dictionaries')
   const t = ctx.locale.bind(NS)
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS, inject: () => ({}),
-    children: { 'superagent.session': { kind: 'single', scope: 'session' }, 'superagent.context': { kind: 'single', scope: 'session' } } },
+    children: { 'superagent.session': { kind: 'single', scope: 'session' } } },
     (props: { t: T } & ConversationSeat) => <Mounted ctx={ctx} t={props.t} seat={props} />))
-  ctx.slots.inject('superagent.session', () => ctx.slots.register({ name: 'superagent.session' },
-    ({ renderFactorySlot }: PropsRenderFactories) => renderFactorySlot('conversation.content', { variant: 'embedded', phase: 'active', hero: false },
-      { slots: { views: ChatSessionView } })))
-  ctx.slots.inject('superagent.context', () => ctx.slots.register({ name: 'superagent.context' },
-    ({ renderFactorySlot }: PropsRenderFactories) => renderFactorySlot('conversation.content', { variant: 'embedded', phase: 'active', hero: false },
-      { slots: { views: ContextPluginView } })))
+  ctx.slots.inject('superagent.session', () => ctx.slots.inject('conversation.session.header.actions', () => {
+    const header = ctx.slots.entriesOfSlot('conversation.session.header')[0]
+    // The public registry erases entry-specific types. Both seats are strict-session
+    // owners of the same declared Conversation store and native header actions.
+    const store = header?.store as ConversationStore | undefined
+    const bind = header?.inject as ((id: SessionId, actions: PropsStore<ConversationStore>['actions']) => ConversationSessionHeaderInjected) | undefined
+    if (!store || !bind) return ctx.slots.register({ name: 'superagent.session' }, ({ renderFactorySlot }: PropsRenderFactories) =>
+      renderFactorySlot('conversation.content', { variant: 'embedded', phase: 'active', hero: false }))
+    return ctx.slots.register({ name: 'superagent.session', children: { 'superagent.member.frame': { kind: 'single', scope: 'session-maybe' } }, locale: NS, store, inject: (id, actions) => {
+      const { hooks, selectView } = bind(id, actions)
+      return { hooks: { conversationViews: hooks.conversationViews }, selectView }
+    } }, NativeConversation)
+  }))
+  ctx.slots.inject('superagent.member.frame', () => installMemberFrame(ctx.slots))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 10, label: () => t('panel'), locale: NS }, HammerIcon))
   ctx.slots.inject('plugins.row.config', () => ctx.slots.register({ name: 'plugins.row.config', key: `${ENTRY}#${ENTRY}`, locale: NS },
     (props: PluginConfigViewProps & { t: T }) => <PluginConfig t={props.t} view={props.view} form={props.form} />))

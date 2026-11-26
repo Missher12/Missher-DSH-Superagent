@@ -2,7 +2,8 @@
 import type { TeamMemberView, TeamView } from '../teams/contracts.ts'
 import { workbenchToolLabel, type T } from './text.ts'
 
-export const COMMANDER = '$commander'
+import { COMMANDER } from '../teams/plan.ts'
+export { COMMANDER }
 export type TeamParticipant = Omit<TeamMemberView, 'role' | 'state'> & {
   role: TeamMemberView['role'] | 'commander'
   state: TeamMemberView['state'] | 'idle'

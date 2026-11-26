@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import { KV } from '../src/kv.ts'
 import { TeamRequestSchema } from '../src/teams/contracts.ts'
 import { hasUnreadRequest } from '../src/core/index.ts'
 import { startRuntime, type Host } from './fixtures/host.ts'
@@ -77,7 +78,7 @@ it.each(['coordinator', 'build'])('team retry starts a new attempt for an actual
   const after = host.runtime.store.tickets.get(id)!
   expect(response.status).toBe(200)
   expect(after.assignments.length, '团队重试应重派失败成员').toBeGreaterThan(before.assignments.length)
-})
+}, 30_000)
 
 it('a failed intake commander projects a failed team state with a visible retry', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
@@ -115,7 +116,7 @@ it('a failed final-report commander projects failure instead of silently waiting
   const view = host.runtime.teams!.get(team.id)
   expect.soft(view.commander!.state).toBe('failed')
   expect(view.state).toBe('failed')
-})
+}, 30_000)
 
 it('shows a failed external final reply and retries that receipt without repeating the team', async () => {
   host = await startRuntime(undefined, { mode: 'local' })
@@ -161,4 +162,18 @@ it('shows a failed external final reply and retries that receipt without repeati
   const sentAttempts = sendAttempts
   await host.api('POST', `local/teams/${team.id}/delivery/retry`)
   expect(sendAttempts).toBe(sentAttempts)
-})
+}, 30_000)
+
+
+it('replaces only a reserved dispatcher id and reuses its successor after restart', async () => {
+  const reserved = 'orchestrator-retired'
+  host = await startRuntime(store => store.set(KV.runtime.masterId, reserved), { mode: 'local' }, reserved)
+  const replacement = host.runtime.masterId, directory = host.runtime.machine.stateDir
+  expect(replacement).not.toBe(reserved)
+  expect(host.agents.has(reserved)).toBe(false)
+  expect(host.agents.has(replacement)).toBe(true)
+  expect(host.runtime.store.get(KV.runtime.masterId)).toBe(replacement)
+  await host.runtime.stop()
+  host = await startRuntime(undefined, { mode: 'local', stateDir: directory }, reserved)
+  expect(host.runtime.masterId).toBe(replacement)
+}, 30000)

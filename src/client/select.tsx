@@ -1,11 +1,11 @@
 /** Native form values with the host's themed, portalled Menu presentation. */
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type SelectHTMLAttributes } from 'react'
 import { Menu, type MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
-import { Button, Icon } from './controls.tsx'
+import { Button, Icon, type IconName } from './controls.tsx'
 
 /** Small action lists use the same host menu and portal as settings choices. */
-export function ActionMenu({ label, items, onSelect, disabled, compact = false }: {
-  label: string; items: { id: string; label: string }[]; onSelect: (id: string) => void; disabled?: boolean; compact?: boolean
+export function ActionMenu({ label, items, onSelect, disabled, compact = false, icon = 'plus' }: {
+  label: string; items: { id: string; label: string }[]; onSelect: (id: string) => void; disabled?: boolean; compact?: boolean; icon?: IconName
 }) {
   const [open, setOpen] = useState(false), anchor = useRef<HTMLSpanElement>(null), owner = useId()
   const close = () => { setOpen(false); anchor.current?.querySelector('button')?.focus({ preventScroll: true }) }
@@ -25,7 +25,7 @@ export function ActionMenu({ label, items, onSelect, disabled, compact = false }
       onSelect={id => { setOpen(false); onSelect(id) }} onClose={close}
       portal align="end" side="bottom" getAnchorRect={() => anchor.current?.getBoundingClientRect() ?? null}
       anchor={<Button size="sm" disabled={disabled} aria-label={label} title={compact ? label : undefined} aria-haspopup="menu" aria-expanded={open}
-        icon={<Icon name="plus" size={14} />} onClick={() => setOpen(value => !value)}>{!compact && label}</Button>} />
+        icon={<Icon name={icon} size={14} />} onClick={() => setOpen(value => !value)}>{!compact && label}</Button>} />
   </span>
 }
 
@@ -116,9 +116,9 @@ export function Select({ id, className = '', value, children, disabled, title, o
     <Menu open={open} selectedId={String(value ?? '')} items={items} onSelect={choose} onClose={() => close()} portal align="start" side={side}
       className="dt-choice-anchor" getAnchorRect={() => trigger.current?.getBoundingClientRect() ?? null}
       anchor={<button id={id} ref={trigger} type="button" className="dt-choice-trigger" disabled={disabled} aria-label={props['aria-label']}
-        aria-labelledby={props['aria-labelledby']} aria-invalid={props['aria-invalid']} aria-describedby={props['aria-describedby']}
+        aria-labelledby={props['aria-labelledby']} aria-invalid={props['aria-invalid']} aria-describedby={[`${owner}-caption`, props['aria-describedby']].filter(Boolean).join(' ')}
         aria-required={props.required} aria-haspopup="menu" aria-expanded={open} title={title ?? caption} onClick={() => setOpen(value => !value)}>
-        <span>{caption}</span><Icon name="chevron-down" size={14} />
+        <span id={`${owner}-caption`}>{caption}</span><Icon name="chevron-down" size={14} />
       </button>} />
   </span>
 }

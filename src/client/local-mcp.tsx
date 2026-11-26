@@ -1,5 +1,5 @@
 /** Native settings for external applications dispatching tasks over MCP. */
-import { useId, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import type { ApiResponse } from '../app/api.ts'
 import { usePoll } from './api.ts'
 import { Button, Icon, Input, Modal, Switch } from './controls.tsx'
@@ -16,6 +16,24 @@ type Credential = ApiResponse<'POST mcp/clients/:id/token'>
 const TOOL_LABELS: Record<TaskTool, DshSuperagentKey> = {
   workspace_list: 'mcpTool.workspace_list', task_create: 'mcpTool.task_create', task_get: 'mcpTool.task_get',
   task_list: 'mcpTool.task_list', task_followup: 'mcpTool.task_followup', task_stop: 'mcpTool.task_stop', task_retry: 'mcpTool.task_retry',
+}
+
+/** Only matching project names need enough parent folders to distinguish them. Compute
+ * against the whole grant list so typing in search never changes a project's label. */
+function workspaceLocations(projects: readonly { id: string; title: string; directory: string }[]) {
+  const groups = Map.groupBy(projects, project => project.title.trim().toLocaleLowerCase())
+  const labels = new Map<string, string>()
+  for (const group of groups.values()) {
+    const paths = group.map(project => project.directory.replaceAll('\\', '/').split('/').filter(Boolean))
+    group.forEach((project, index) => {
+      const parts = paths[index]!
+      let count = 1
+      while (count < parts.length && paths.some((other, i) => i !== index && other.slice(-count).join('/') === parts.slice(-count).join('/'))) count++
+      const suffix = parts.slice(-count).join('/')
+      labels.set(project.id, group.length === 1 && suffix === project.title ? '' : suffix || project.directory)
+    })
+  }
+  return labels
 }
 
 function CredentialDialog({ credential, onClose }: { credential: Credential; onClose: () => void }) {
@@ -59,6 +77,11 @@ export function McpSettings({ permissions = false }: { permissions?: boolean }) 
   const { data, error, reload } = usePoll(() => call('GET mcp'), [call])
   const { data: workspaces, error: workspaceError } = usePoll(() => call('GET local/workspaces'), [call])
   const [editing, setEditing] = useState<{ id?: string; name: string; workspaceIds: string[] }>()
+  const [query, setQuery] = useState(''), [fullPaths, setFullPaths] = useState(false)
+  const locations = useMemo(() => workspaceLocations(workspaces ?? []), [workspaces])
+  const searchable = (workspaces?.length ?? 0) > 5 || !!query
+  const search = query.trim().toLocaleLowerCase()
+  const matches = workspaces?.filter(project => `${project.title}\n${project.directory}`.toLocaleLowerCase().includes(search))
   const [credential, setCredential] = useState<Credential>()
   const [busy, setBusy] = useState(false), [failure, setFailure] = useState<string>()
   const perform = async (run: () => Promise<unknown>) => {
@@ -69,14 +92,15 @@ export function McpSettings({ permissions = false }: { permissions?: boolean }) 
   }
   const open = (client?: Connection) => {
     setFailure(undefined)
+    setQuery(''); setFullPaths(false)
     setEditing(client ? { id: client.id, name: client.name, workspaceIds: client.projects.map(project => project.id) }
       : { name: '', workspaceIds: [] })
   }
   const save = async () => {
-    if (!editing) return
+    if (busy || !editing?.name.trim() || !editing.workspaceIds.length) return
     const value = editing
     await perform(async () => {
-      const body = { name: value.name, workspaceIds: value.workspaceIds }
+      const body = { name: value.name.trim(), workspaceIds: value.workspaceIds }
       if (value.id) await call('PUT mcp/clients/:id', { id: value.id, body })
       else {
         const result = await call('POST mcp/clients', { body })
@@ -85,7 +109,7 @@ export function McpSettings({ permissions = false }: { permissions?: boolean }) 
       setEditing(undefined)
     })
   }
-  return <Section title={t(permissions ? 'mcpDispatchPermissions' : 'mcpTitle')} hint={t(permissions ? 'mcpDispatchPermissionsHint' : 'mcpHint')} action={<Button variant="outline" size="sm" icon={<Icon name="plus" size={14} />}
+  return <Section title={t(permissions ? 'mcpDispatchPermissions' : 'mcpAppConnections')} hint={t(permissions ? 'mcpDispatchPermissionsHint' : 'mcpHint')} action={<Button variant="outline" size="sm" icon={<Icon name="plus" size={14} />}
     disabled={!data || busy} onClick={() => open()}>{t('mcpAdd')}</Button>}>
     {!permissions && <div className="dt-mcp-capabilities"><span>{t('mcpToolsTitle')}</span><ul className="dt-mcp-tools">
       {Object.entries(TOOL_LABELS).map(([tool, label]) => <li key={tool} title={tool}>{t(label)}</li>)}
@@ -95,7 +119,7 @@ export function McpSettings({ permissions = false }: { permissions?: boolean }) 
     <Fields disabled={busy}>
       {data?.clients.map(client => <div className="dt-mcp-connection" key={client.id}>
         <div className="dt-mcp-description"><strong title={client.name}>{client.name}</strong>
-          <span className="dt-mcp-meta" title={client.projects.map(project => project.title).join(' · ')}>{client.projects.map(project => project.title).join(' · ')}
+          <span className="dt-mcp-meta" title={client.projects.map(project => project.title).join(' · ')}>{client.projects[0]?.title}{client.projects.length > 1 && ` +${client.projects.length - 1}`}
             {client.lastUsedAt && <small title={t('mcpLastUsed')}> · <When at={client.lastUsedAt} /></small>}</span>
         </div>
         <div className="dt-actions">
@@ -112,16 +136,27 @@ export function McpSettings({ permissions = false }: { permissions?: boolean }) 
       </>}>
       {editing && <form id={formId} className="dt-form dt-mcp-form" onSubmit={event => { event.preventDefault(); event.stopPropagation(); void save() }}>
         <Fields disabled={busy}>
-          <Field label={t('mcpName')}><Input value={editing.name} required maxLength={100}
+          <Field label={t('mcpName')}><Input placeholder={t('mcpNameExample')} value={editing.name} required maxLength={100}
             onChange={event => setEditing({ ...editing, name: event.target.value })} /></Field>
-          <Field label={t('mcpWorkspaces')}><fieldset className="dt-fieldset dt-mcp-workspaces" aria-label={t('mcpWorkspaces')}>
-            {workspaces?.map(project => <label key={project.id} title={project.directory}><input type="checkbox"
-              checked={editing.workspaceIds.includes(project.id)} onChange={event => setEditing({ ...editing,
-                workspaceIds: event.target.checked ? [...editing.workspaceIds, project.id] : editing.workspaceIds.filter(id => id !== project.id) })} />
-              <span>{project.title}</span></label>)}
-            {!workspaces?.length && <Hint>{t('mcpNoWorkspaces')}</Hint>}
-          </fieldset></Field>
-          <Hint>{t('mcpGrantHint')}</Hint>
+          <fieldset className="dt-mcp-grants" aria-describedby={`${formId}-permission`}>
+            <legend>{t('mcpWorkspaces')}</legend>
+            <div className="dt-mcp-selection"><Button size="sm" aria-pressed={fullPaths} onClick={() => setFullPaths(value => !value)}>{t('mcpFullPaths')}</Button><span role="status">{t('mcpSelection', { count: editing.workspaceIds.length })}</span>
+              {searchable && <Input type="search" icon={<Icon name="search" size={14} />}
+                aria-label={t('localSearchWorkspaces')} placeholder={t('localSearchWorkspaces')} value={query} onChange={event => setQuery(event.target.value)} />}</div>
+            <div className="dt-mcp-workspaces" data-searchable={searchable || undefined} data-full-paths={fullPaths || undefined}>
+              {matches?.map(project => {
+                const path = fullPaths ? project.directory : locations.get(project.id)
+                return <label key={project.id} title={project.directory}><input type="checkbox"
+                  aria-label={path ? `${project.title} ${path}` : project.title}
+                  checked={editing.workspaceIds.includes(project.id)} onChange={event => setEditing({ ...editing,
+                    workspaceIds: event.target.checked ? [...editing.workspaceIds, project.id] : editing.workspaceIds.filter(id => id !== project.id) })} />
+                  <span><strong>{project.title}</strong>{path && <small><bdi>{path}</bdi></small>}</span></label>
+              })}
+              {!matches?.length && <p className={workspaceError ? 'dt-error' : 'dt-hint'} role="status">{workspaceError?.message ??
+                t(!workspaces ? 'loading' : workspaces.length ? 'localNoWorkspaceMatches' : 'mcpNoWorkspaces')}</p>}
+            </div>
+            <p className="dt-hint" id={`${formId}-permission`}>{t('mcpGrantHint')}</p>
+          </fieldset>
           {failure && <p className="dt-error" role="status">{failure}</p>}
           {editing.id && <div className="dt-mcp-credentials">
             <ConfirmButton label={t('mcpResetToken')} title={t('mcpResetToken')} message={t('mcpResetHint')}

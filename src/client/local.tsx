@@ -16,7 +16,7 @@ import { WorkflowEditor, transferWorkflowView } from './workflow-editor.tsx'
 
 const DRAFT = 'dsh-superagent/local-draft'
 const DRAFT_CHANGED = 'dsh-superagent/task-draft-changed'
-interface TaskDraft { requestId: string; title: string; directory: string; instructions: string; open: boolean; existing: boolean; model?: RoleModel; permissionPreset?: string; mode: 'single' | 'team'; teamName: string; members?: TeamMember[]; interfaceChecks?: InterfaceCheck[]; maxRounds?: number; workspace?: 'shared' | 'worktree' }
+interface TaskDraft { requestId: string; title: string; directory: string; instructions: string; open: boolean; existing: boolean; model?: RoleModel; permissionPreset?: string; mode: 'single' | 'team'; teamName: string; members?: TeamMember[]; interfaceChecks?: InterfaceCheck[]; maxRounds?: number | ''; workspace?: 'shared' | 'worktree' }
 const blank = (): TaskDraft => ({ requestId: crypto.randomUUID(), title: '', directory: '', instructions: '', open: false, existing: false, mode: 'team', teamName: '' })
 function readDraft() {
   const fallback = blank()
@@ -29,7 +29,7 @@ function readDraft() {
       existing: typeof value.existing === 'boolean' ? value.existing : !!value.directory,
       permissionPreset: typeof value.permissionPreset === 'string' && value.permissionPreset.trim() ? value.permissionPreset.trim() : undefined,
       mode: value.mode === 'team' ? 'team' as const : 'single' as const, teamName: typeof value.teamName === 'string' ? value.teamName : '',
-      maxRounds: typeof value.maxRounds === 'number' && value.maxRounds >= 1 && value.maxRounds <= 8 ? value.maxRounds : 3,
+      maxRounds: value.maxRounds === '' ? '' as const : typeof value.maxRounds === 'number' && value.maxRounds >= 1 && value.maxRounds <= 8 ? value.maxRounds : 3,
       interfaceChecks: Array.isArray(value.interfaceChecks) && value.interfaceChecks.length <= 8 && value.interfaceChecks.every(check => check && typeof check.id === 'string' && typeof check.name === 'string' && typeof check.command === 'string') ? value.interfaceChecks as InterfaceCheck[] : undefined,
       workspace: value.workspace === 'worktree' ? 'worktree' as const : value.workspace === 'shared' ? 'shared' as const : undefined,
       members: Array.isArray(value.members) && value.members.length <= 12 && value.members.every(member => member
@@ -90,18 +90,20 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
     call('GET settings').then(settings => { if (active) setDefaultWorkspace(settings.blocks.executor.value.teamWorkspace ?? 'shared') }, () => {})
     return () => { active = false }
   }, [call, draft.open])
+  const selectedDirectory = workspaces.some(project => project.directory === draft.directory) ? draft.directory : ''
   const edit = (patch: Partial<typeof draft>) => { setFailure(undefined); setDraft(current => ({ ...current, ...patch })) }
   const submit = useAction(async () => {
     setFailure(undefined)
     try {
       const title = draft.title.trim() || draft.instructions.trim().split('\n')[0]!.slice(0, 80) || t('flowNewTeam')
+      if (draft.mode === 'team' && draft.maxRounds === '') throw new Error(t('studioRequired', { name: t('teamRoundLimit') }))
       const workspace = draft.workspace ?? defaultWorkspace
       const body = { requestId: draft.requestId, title, ...(draft.existing || draft.mode === 'team' && workspace === 'worktree' ? { directory: draft.directory.trim() } : {}),
         ...(draft.permissionPreset ? { permissionPreset: draft.permissionPreset } : {}),
         ...(draft.model ? { model: draft.model } : {}), instructions: draft.instructions.trim() }
       const { instructions, ...setup } = body
-      const task = draft.mode === 'team' ? await call('POST local/teams/prepare', { body: { ...setup, coordinatorName: t('teamCoordinator'),
-        ...(draft.teamName.trim() ? { name: draft.teamName.trim() } : {}), members: draft.members ?? defaultMembers(t), interfaceChecks: draft.interfaceChecks, workflow: { maxRounds: draft.maxRounds ?? 3, workspace } } })
+      const task = draft.mode === 'team' ? await call('POST local/teams/prepare', { body: { ...setup, confirmStart: true, coordinatorName: t('teamCoordinator'),
+        ...(draft.teamName.trim() ? { name: draft.teamName.trim() } : {}), members: draft.members ?? defaultMembers(t), interfaceChecks: draft.interfaceChecks, workflow: { maxRounds: Number(draft.maxRounds ?? 3), workspace } } })
         : await call('POST local/tasks', { body })
       if ('members' in task) transferWorkflowView(`new-team/${draft.requestId}`, task.id)
       const next = { ...blank(), directory: draft.directory, existing: draft.existing }
@@ -119,18 +121,20 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
       <ComposerForm key={draft.requestId} id={formId} disabled={submit.busy || paused} failure={failure} onSubmit={() => { void submit.run() }}>
         <WorkflowEditor storageKey={`new-team/${draft.requestId}`} members={draft.members ?? defaultMembers(t)} onChange={members => edit({ members })} model={draft.model} disabled={submit.busy || paused}
           settings={<><ComposerField label={t('teamName')}><Input maxLength={160} value={draft.title} placeholder={t('flowNewTeam')} onChange={event => edit({ title: event.target.value })} /></ComposerField>
+            <h4>{t('localWorkspaces')}</h4>
             <ComposerField label={t('localWorkspaceMode')}><Select value={draft.existing || (draft.workspace ?? defaultWorkspace) === 'worktree' ? 'existing' : 'independent'} onChange={event => edit({ existing: event.target.value === 'existing' })}>
               <option value="independent" disabled={(draft.workspace ?? defaultWorkspace) === 'worktree'}>{t('localIndependent')}</option><option value="existing">{t('localExistingProject')}</option></Select></ComposerField>
             <ComposerField label={t('teamWorkspaceMode')}><Select value={draft.workspace ?? defaultWorkspace} onChange={event => edit({ workspace: event.target.value as 'shared' | 'worktree', ...(event.target.value === 'worktree' ? { existing: true } : {}) })}>
               <option value="shared">{t('teamWorkspaceShared')}</option><option value="worktree">{t('teamWorkspaceGit')}</option></Select></ComposerField>
             {(draft.workspace ?? defaultWorkspace) === 'worktree' && <p className="dt-hint">{t('teamWorkspaceGitHint')}</p>}
             {(draft.existing || (draft.workspace ?? defaultWorkspace) === 'worktree') && <><ComposerField label={t('localDirectory')} required><Input required value={draft.directory} onChange={event => edit({ directory: event.target.value })} /></ComposerField>
-              {!!workspaces.length && <ComposerField label={t('localChooseWorkspace')}><Select value="" onChange={event => { if (event.target.value) edit({ directory: event.target.value }) }}><option value="">{t('localChooseWorkspacePlaceholder')}</option>
-                {workspaces.map(workspace => <option key={workspace.directory} value={workspace.directory}>{workspace.title}</option>)}</Select></ComposerField>}</>}
+              {!!workspaces.length && <ComposerField label={t('localChooseWorkspace')}><Select value={selectedDirectory} onChange={event => { if (event.target.value) edit({ directory: event.target.value }) }}><option value="" disabled>{t('localChooseWorkspacePlaceholder')}</option>
+                {workspaces.map(workspace => <option key={workspace.directory} value={workspace.directory} data-detail={workspace.directory}>{workspace.title}</option>)}</Select></ComposerField>}</>}
+            <h4>{t('studioExecutionSettings')}</h4>
             <ComposerField label={t('localTaskModel')}><ModelSelect value={draft.model} onChange={model => edit({ model })} /></ComposerField>
             <ComposerField label={t('modelEffort')}><ReasoningSelect value={draft.model} onChange={model => edit({ model })} /></ComposerField>
             <ComposerField label={t('localPermissionTitle')}><PermissionSelect value={draft.permissionPreset} onChange={permissionPreset => edit({ permissionPreset })} /></ComposerField>
-            <ComposerField label={t('teamRoundLimit')}><Input type="number" min={1} max={8} required value={draft.maxRounds ?? 3} onChange={event => edit({ maxRounds: Number(event.target.value) })} /></ComposerField>
+            <ComposerField label={t('teamRoundLimit')}><Input type="number" min={1} max={8} required value={draft.maxRounds ?? 3} onChange={event => edit({ maxRounds: event.target.value === '' ? '' : Number(event.target.value) })} /></ComposerField>
             <InterfaceCheckFields checks={draft.interfaceChecks ?? []} change={interfaceChecks => edit({ interfaceChecks })} />
           </>} />
       </ComposerForm>
@@ -139,6 +143,8 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
       close={() => edit({ open: false })}>
       <ComposerForm key={draft.requestId} id={formId} disabled={submit.busy || paused} onSubmit={() => { void submit.run() }} failure={failure}>
         <section className="dt-composer-brief" aria-label={t('studioTaskInfo')}>
+          <ComposerField label={t('teamMode')}><SegmentedControl label={t('teamMode')} value={draft.mode} onChange={mode => edit({ mode })}
+            options={[{ value: 'team', label: t('teamModeTeam') }, { value: 'single', label: t('teamModeSingle') }]} /></ComposerField>
           <ComposerField label={t('localTaskTitle')}><Input maxLength={160} className="dt-composer-name" value={draft.title}
             placeholder={t('localTitlePlaceholder')} onChange={event => edit({ title: event.target.value })} /></ComposerField>
           <ComposerField label={t('localInstructions')} required><WritingArea required value={draft.instructions}
@@ -146,25 +152,24 @@ export function LocalTaskComposer({ paused = false, team = false }: { paused?: b
             onChange={event => edit({ instructions: event.target.value })} /></ComposerField>
         </section>
         <section className="dt-composer-properties dt-composer-grid" aria-label={t('studioExecutionSettings')}>
+          <h3>{t('studioExecutionSettings')}</h3>
           <ComposerField label={t('localWorkspaceMode')}><Select value={draft.existing ? 'existing' : 'independent'} onChange={event => edit({ existing: event.target.value === 'existing' })}>
             <option value="independent">{t('localIndependent')}</option><option value="existing">{t('localExistingProject')}</option>
           </Select></ComposerField>
-          <ComposerField label={t('teamMode')}><SegmentedControl label={t('teamMode')} value={draft.mode} onChange={mode => edit({ mode })}
-            options={[{ value: 'team', label: t('teamModeTeam') }, { value: 'single', label: t('teamModeSingle') }]} /></ComposerField>
+          {draft.existing && <div className="dt-composer-project dt-composer-full">
+            <ComposerField label={t('localDirectory')} required><Input required value={draft.directory} placeholder="/Users/.../project"
+              onChange={event => edit({ directory: event.target.value })} /></ComposerField>
+            {!!workspaces.length && <ComposerField label={t('localChooseWorkspace')}><Select value={selectedDirectory}
+              onChange={event => { if (event.target.value) edit({ directory: event.target.value }) }}>
+              <option value="" disabled>{t('localChooseWorkspacePlaceholder')}</option>{workspaces.map(workspace =>
+                <option key={workspace.directory} value={workspace.directory} data-detail={workspace.directory}>{workspace.title}</option>)}
+            </Select></ComposerField>}
+          </div>}
           <ComposerField label={t('localTaskModel')}><ModelSelect value={draft.model} onChange={model => edit({ model })} /></ComposerField>
           <ComposerField label={t('modelEffort')}><ReasoningSelect value={draft.model} onChange={model => edit({ model })} /></ComposerField>
           <div className="dt-composer-full"><ComposerField label={t('localPermissionTitle')}>
             <PermissionSelect value={draft.permissionPreset} onChange={permissionPreset => edit({ permissionPreset })} />
           </ComposerField></div>
-          {draft.existing && <div className="dt-composer-project dt-composer-full">
-            <ComposerField label={t('localDirectory')} required><Input required value={draft.directory} placeholder="/Users/.../project"
-              onChange={event => edit({ directory: event.target.value })} /></ComposerField>
-            {!!workspaces.length && <ComposerField label={t('localChooseWorkspace')}><Select value=""
-              onChange={event => { if (event.target.value) edit({ directory: event.target.value }) }}>
-              <option value="">{t('localChooseWorkspacePlaceholder')}</option>{workspaces.map(workspace =>
-                <option key={workspace.directory} value={workspace.directory}>{workspace.title} — {workspace.directory}</option>)}
-            </Select></ComposerField>}
-          </div>}
         </section>
         <div className="dt-composer-danger"><Button variant="ghost" size="sm" disabled={submit.busy || paused} onClick={() => {
           setFailure(undefined); setDraft({ ...blank(), directory: draft.directory, existing: draft.existing, open: true, mode: draft.mode })

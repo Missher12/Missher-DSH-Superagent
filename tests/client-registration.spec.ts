@@ -32,7 +32,7 @@ it('registers alongside the native conversation without redeclaring its slots', 
   expect(() => apply(context)).not.toThrow()
 })
 
-it('offers context only while its native conversation view is registered', async () => {
+it('keeps one native session provider while host views are registered or removed', async () => {
   const { core, context } = hostSlots()
   apply(context)
   core.register({ name: 'conversation.view', id: 'chat' }, () => null)
@@ -46,7 +46,8 @@ it('offers context only while its native conversation view is registered', async
     expect(renderApp.mock.lastCall?.[0].renderContext).toBeUndefined()
     let removeContext!: () => void
     await act(async () => { removeContext = core.register({ name: 'conversation.view', id: 'context-manager' }, () => null) })
-    expect(renderApp.mock.lastCall?.[0].renderContext).toBeTypeOf('function')
+    expect(core.entriesOfSlot('conversation.view').map(entry => entry.options.id)).toContain('context-manager')
+    expect(core.entriesOfSlot('superagent.session')).toHaveLength(1)
     await act(async () => { removeContext() })
     expect(renderApp.mock.lastCall?.[0].renderContext).toBeUndefined()
     expect(renderApp.mock.lastCall?.[0].renderSession).toBeTypeOf('function')
@@ -54,4 +55,36 @@ it('offers context only while its native conversation view is registered', async
     await act(async () => { root.unmount() })
     globalThis.IS_REACT_ACT_ENVIRONMENT = previous
   }
+})
+
+it('keeps the member header extensions in sync with the native frame and releases its own slots', async () => {
+  const { installMemberFrame } = await import('../src/client/member-frame.tsx')
+  const core = new SlotCore()
+  core.register({ name: 'root', children: {
+    'main.conversation': { kind: 'single', scope: 'session-maybe' },
+    'superagent.member.frame': { kind: 'single', scope: 'session-maybe' },
+  } }, (_props: PropsRenderSlots<'main.conversation' | 'superagent.member.frame'>) => null)
+  const stop = installMemberFrame(core)
+  const detach = core.register({ name: 'main.conversation', children: {
+    'conversation.header': { kind: 'single', scope: 'session-maybe' },
+  } }, (_props: PropsRenderSlots<'conversation.header'>) => null)
+  core.register({ name: 'conversation.header', children: {
+    'conversation.header.leading': { kind: 'single', scope: 'root' },
+    'conversation.session.header': { kind: 'single', scope: 'session' },
+  } }, (_props: PropsRenderSlots<'conversation.header.leading' | 'conversation.session.header'>) => null)
+  core.register({ name: 'conversation.session.header', children: {
+    'conversation.session.header.actions': { kind: 'list', scope: 'session' },
+  } }, (_props: PropsRenderSlots<'conversation.session.header.actions'>) => null)
+  const local = 'superagent.member.frame.conversation.session.header.actions'
+  const action = () => null
+  const remove = core.register({ name: 'conversation.session.header.actions', id: 'executor' }, action)
+  await vi.waitFor(() => expect(core.entriesOfSlot(local).map(entry => entry.component)).toEqual([action]))
+  expect(core.specDynamic('superagent.member.frame.conversation.header.leading')).toBeUndefined()
+  remove()
+  await vi.waitFor(() => expect(core.entriesOfSlot(local)).toHaveLength(0))
+  core.register({ name: 'conversation.session.header.actions', id: 'executor' }, action)
+  stop()
+  expect(core.specDynamic(local)).toBeUndefined()
+  expect(core.entriesOfSlot('conversation.session.header.actions')[0]?.component).toBe(action)
+  detach()
 })

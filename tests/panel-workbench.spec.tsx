@@ -23,7 +23,7 @@ it('changes the selected embedded session model without leaving the workspace', 
 
 it('opens the real dedicated workspace and coordinator session from the workbench', async () => {
   await mount()
-  expect(all('[role="tab"][aria-selected="true"]').map(tab => tab.textContent)).toEqual(['工作台'])
+  expect(all('main[aria-label="工作台"]')).toHaveLength(1)
   await click('打开专属工作区')
   expect(server.openedWorkspaces).toEqual(['superagent-space'])
   await click('共享任务调度')

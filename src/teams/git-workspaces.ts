@@ -13,10 +13,12 @@ export interface GitTeam {
   repository: string; base: string; integration: GitWorkspace; members: Record<string, GitWorkspace>
 }
 export interface GitMerge { workspace: GitWorkspace; conflicts: string[]; pending: string[] }
+/** A delivery still has outstanding Git changes to reconcile. */
 export class GitDeliveryPending extends Error {}
 const hash = (value: string) => createHash('sha256').update(value).digest('hex').slice(0, 16)
 const inside = (root: string, path: string) => { const part = relative(root, path); return !part || !isAbsolute(part) && part !== '..' && !part.startsWith('..' + sep) }
 
+/** Creates and integrates isolated Git worktrees for a team. */
 export class GitWorkspaces {
   constructor(private readonly root: string, private readonly signal?: AbortSignal) {}
   private async run(directory: string, args: string[], allowFailure = false): Promise<{ output: string; code: number }> {

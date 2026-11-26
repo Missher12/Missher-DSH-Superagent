@@ -85,7 +85,8 @@ export class Runtime extends Service implements SourceHost {
   readonly ready: Promise<void>
   private readonly board = new HealthBoard()
   private readonly runtimeHealth = this.board.claim('runtime', { state: 'starting', detail: '' })
-  readonly masterId: string
+  private controlSessionId: string
+  get masterId(): string { return this.controlSessionId }
   private readonly sourceLinks = new TextCache(200_000)
   private readonly stopped = new AbortController()
   private readonly disposers: (() => void)[] = []
@@ -113,8 +114,8 @@ export class Runtime extends Service implements SourceHost {
         ? environmentOf({ deployment: setup.deployment, sources: this.sources, settings: store.settings() }) : undefined
       const feishu = () => setup.configured() && !!setup.deployment.feishu
       const prompts = this.prompts = new Prompts(store, () => machine.promptMaxChars.get(), deployed, feishu, () => machine.mode === 'local')
-      const masterId = this.masterId = store.get(KV.runtime.masterId) ?? `orchestrator-${key(machine.stateDir)}`
-      store.set(KV.runtime.masterId, masterId)
+      this.controlSessionId = store.get(KV.runtime.masterId) ?? `orchestrator-${key(machine.stateDir)}`
+      store.set(KV.runtime.masterId, this.masterId)
       const commands = this.commands = new Commands(() => setup.deployment, setup.commandEnvironment, this.lifetime, new FeishuGateway(ctx.get('credentials')))
       const board = this.board
       const effects = this.effects = new Effects(store, board)
@@ -127,12 +128,16 @@ export class Runtime extends Service implements SourceHost {
       const links: LinkHost = { store, links: this.sourceLinks, commands, sources, lifetime: this.lifetime }
       const link = (trigger: Trigger, signal?: AbortSignal) => sourceLink(links, trigger, signal)
       const environment = (ticket: Ticket) => this.ticketEnvironment(ticket)
-      const resources: ResourceHost = { store, pages: new TextCache(4_000_000), prompts, commands, masterId, context: ctx,
+      const resources: ResourceHost = { store, pages: new TextCache(4_000_000), prompts, commands, get masterId() { return runtime.masterId }, context: ctx,
         promptVersion: id => this.sessions.promptVersion(id), mayRead: (id, revision) => this.sessions.mayRead(id, revision),
         feishuPageSize: () => feishuSettings(sources).readPageSize, sourceLink: link }
-      const sessions = this.sessions = new Sessions({ context: ctx, store, prompts, effects, health: board.claim('models'), masterId,
+      const sessions = this.sessions = new Sessions({ context: ctx, store, prompts, effects, health: board.claim('models'), get masterId() { return runtime.masterId },
         lifetime: this.lifetime, local: machine.mode === 'local',
         closing: () => this.closing(), environment,
+        githubTeamMember: id => {
+          const root = this.teams?.sourceTicket(id)
+          return !!root && store.triggers.get(root.origin.triggerId)?.source === 'github'
+        },
         tools: (agent, ticket) => ticket ? executorTools(this.toolHost, ticket) : mainTools(this.toolHost, agent) })
       const policyChanged: EngineForSettings['policyChanged'] = (from, to, effects) => { this.engine.policyChanged(from, to, effects) }
       this.settings = new Settings({ store, sources, engine: { policyChanged }, health: board, context: ctx, lifetime: this.lifetime, sessions,
@@ -148,7 +153,7 @@ export class Runtime extends Service implements SourceHost {
         repliedTo: trigger => repliedTo({ store, sources }, trigger) })
       this.assessor = new MasterAssessor({ get engine() { return runtime.engine }, commands, get deployment() { return setup.deployment }, effects,
         settings: () => store.settings(), paused: () => this.paused(), threadContext: trigger => sources.threadContext(trigger),
-        deliver: (id, text) => sessions.prompt(masterId, id, text, 'steer'), candidateCard: candidate => candidateCard(links, candidate) })
+        deliver: (id, text) => sessions.prompt(this.masterId, id, text, 'steer'), candidateCard: candidate => candidateCard(links, candidate) })
       const outbox = this.outbox = new Outbox({ store, effects, sources, commands, paused: () => this.paused() })
       const { assessor, executor } = this
       const policy = () => settingsPolicy(store.settings(), sources)
@@ -244,7 +249,18 @@ export class Runtime extends Service implements SourceHost {
     this.executor.install()
     this.local?.installTools()
     await this.local?.ensureWorkspace()
-    await this.sessions.ensure(this.masterId, this.machine.mode === 'local' ? executionRoot(this.store.settings(), this.machine.stateDir) : this.machine.stateDir, 'dsh-superagent orchestrator', 'orchestrator')
+    const directory = this.machine.mode === 'local' ? executionRoot(this.store.settings(), this.machine.stateDir) : this.machine.stateDir
+    const ensureControl = () => this.sessions.ensure(this.masterId, directory, 'dsh-superagent orchestrator', 'orchestrator')
+    try { await ensureControl() }
+    catch (error) {
+      // A deleted native session ID can be permanently reserved by the host.
+      // Replace only our dispatcher, never a worker or a user's original transcript.
+      if (!(error instanceof Error) || !/failed to create session: (?:Error: )?session\/delete-busy$/.test(error.message)) throw error
+      const previous = this.masterId
+      this.controlSessionId = `orchestrator-${key('replacement', previous)}`
+      try { await ensureControl() } catch (retryError) { this.controlSessionId = previous; throw retryError }
+      this.store.set(KV.runtime.masterId, this.masterId)
+    }
     for (const id of this.settings.syncable()) await this.settings.sync(id).catch(() => { /* sync() records its failure in health. */ })
     // If stop() was called while awaiting setup, session creation, or policy sync, do not start background loops.
     if (this.closing()) return
@@ -256,11 +272,11 @@ export class Runtime extends Service implements SourceHost {
   }
   private httpHost(): HttpHost {
     const runtime = this
-    const { store, sources, prompts, sessions, settings, engine, executor, health, machine, masterId, ready, sourceLinks, setup, passes } = this
-    return { store, sources, prompts, sessions, settings, engine, executor, health, machine, masterId, ready, sourceLinks, local: this.local, mcp: this.mcp, teams: this.teams,
+    const { store, sources, prompts, sessions, settings, engine, executor, health, machine, ready, sourceLinks, setup, passes } = this
+    return { store, sources, prompts, sessions, settings, engine, executor, health, machine, get masterId() { return runtime.masterId }, ready, sourceLinks, local: this.local, mcp: this.mcp, teams: this.teams,
       connectFeishu: createFeishuConnector({ machine, store, settings, sources, credentials: this.ctx.get('credentials'), active: () => executor.activeCount(), signal: this.lifetime }),
       workbench: (session?: string, team?: string) => workbench({ store, sources, links: this.links() }, this.ctx, sessions,
-        machine.mode === 'local' ? executionRoot(store.settings(), machine.stateDir) : machine.stateDir, masterId, machine.stateDir, session, this.teams, team),
+        machine.mode === 'local' ? executionRoot(store.settings(), machine.stateDir) : machine.stateDir, runtime.masterId, machine.stateDir, session, this.teams, team),
       get deployment() { return setup.deployment },
       get setupProblem() { return setup.problem }, get feishuProblem() { return setup.feishuProblem }, get githubProblem() { return setup.githubProblem },
       configured: () => setup.configured(), links: () => runtime.links(), ticketEnvironment: ticket => runtime.ticketEnvironment(ticket),

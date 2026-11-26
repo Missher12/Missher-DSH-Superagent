@@ -1,6 +1,6 @@
 /** Pull request binding, lifecycle observation, and terminal IM notification helpers. */
 import { z } from 'zod'
-import { key, liveTicket, type Follow, type OutboundMessage, type ThreadFact, type Ticket } from '../core/index.ts'
+import { key, liveTicket, type Follow, type OutboundMessage, type ThreadFact, type Ticket, type Trigger } from '../core/index.ts'
 import { githubAccount, type Deployment } from '../deployment.ts'
 import { sameName } from '../infra/text.ts'
 import type { SourceContext } from './host.ts'
@@ -15,11 +15,18 @@ const PullSchema = z.looseObject({
 export type Pull = z.infer<typeof PullSchema> & { number: number }
 export const readPull = async (ctx: SourceContext, number: number, signal?: AbortSignal): Promise<Pull> =>
   ({ ...await ctx.commands.withSignal(signal).api(PullSchema, `pulls/${number}`), number })
+const taskBranch = (name: string) => `agent/${name}`
+/** One publication target shared by intake, planning, execution and PR discovery. */
+export function githubPullTarget(ticket?: Ticket, origin?: Trigger) {
+  if (!ticket || origin?.source !== SOURCE) return undefined
+  const number = origin.meta.isPr === true && typeof origin.meta.number === 'number' ? origin.meta.number : pullOf(ticket)
+  return { number, branch: number || !ticket.execution?.name ? undefined : taskBranch(ticket.execution.name) }
+}
 /** Reconcile an omitted PR on the conventional task branch before a GitHub ready report can end its ticket. */
 export async function findTicketPull(ctx: SourceContext, ticket: Ticket, signal?: AbortSignal): Promise<Pull | undefined> {
   if (!ctx.config(SOURCE) || !ctx.deployment.github || !ticket.execution?.name || pullOf(ticket)
     || ctx.triggers.get(ticket.origin.triggerId)?.source !== SOURCE) return
-  const head = `${ctx.deployment.github.login}:agent/${ticket.execution.name}`
+  const head = `${ctx.deployment.github.login}:${taskBranch(ticket.execution.name)}`
   const pulls = await ctx.commands.withSignal(signal).api(z.array(PullSchema.extend({ number: z.number().int().positive() })),
     `pulls?state=open&head=${encodeURIComponent(head)}&per_page=2`)
   if (pulls.length > 1) throw new Error('Multiple open task PRs; report the intended pr_number')
